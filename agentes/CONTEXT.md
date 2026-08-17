@@ -1,6 +1,7 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-16 — fase 06 (Dashboard I) concluída
+Atualizado por último: 2026-08-17 — fase 07 (Dashboard II) EM ANDAMENTO:
+backend completo, testado e commitado; front-end ainda não iniciado.
 
 ## Status das fases
 
@@ -12,7 +13,7 @@ Atualizado por último: 2026-08-16 — fase 06 (Dashboard I) concluída
 | 04 | Booking público | ✅ |
 | 05 | Área do cliente | ✅ |
 | 06 | Dashboard I | ✅ |
-| 07 | Dashboard II | ⬜ |
+| 07 | Dashboard II | 🟨 backend ✅ testado · front-end ⬜ |
 | 08 | Super Admin | ⬜ |
 | 09 | Integrações & Hardening (GATE) | ⬜ |
 
@@ -185,6 +186,115 @@ de aceite "BARBER tentando acessar agenda de outro barbeiro".
 | POST | `/staff-agenda` | Cria pelo staff — cliente cadastrado OU walk-in (`guestName`/`guestPhone`). Reusa `AvailabilityService`/`CatalogService`/`SubscriptionCoverageService` da fase 04; `origin: DASHBOARD`. |
 | PATCH | `/staff-agenda/:id/move` | Remarca (novo horário e/ou barbeiro), revalida a grade. |
 | PATCH | `/staff-agenda/:id/cancel` | Cancela e devolve uso de assinatura, se houver. |
+
+### Comandas / POS (`/api/v1/orders`) — fase 07
+
+`@Roles('OWNER','MANAGER','BARBER')` — `BARBER` só vê/mexe nas próprias
+comandas (`StaffScopeService`, mesmo recorte da agenda interna). Sem gate de
+feature — comandas são o core do produto, liberado em todo plano.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/orders/catalog` | Serviços/produtos/barbeiros ativos para o balcão. |
+| GET | `/orders` | Lista abertas/fechadas — `status`/`search`/`barberId`, paginado. |
+| GET \| POST | `/orders/:id` \| `/orders` | Detalhe; abrir (cliente cadastrado, walk-in `{name,phone}`, ou vinculado a um `appointmentId`). |
+| POST \| PATCH \| DELETE | `/orders/:id/items(/:itemId)` | Adiciona/atualiza quantidade/remove item. Serviço com cliente coberto por assinatura ativa entra a R$0 automaticamente (`quantity` 1 apenas). |
+| PATCH | `/orders/:id/discount` | Desconto percentual (basis points) ou fixo (centavos). |
+| PATCH | `/orders/:id/loyalty` | Liga/desliga o resgate de pontos (aplica `valorDesconto` de uma vez, se o saldo cobrir `pontosParaDesconto`). |
+| POST | `/orders/:id/close` | **Fechamento em transação única** — ver "Decisões técnicas". |
+| POST | `/orders/:id/reopen` | Só `OWNER`/`MANAGER` (`@Roles` no método, não na classe), sempre `AuditLog`. |
+
+### Financeiro (`/api/v1/finance`) — fase 07
+
+`@Roles('OWNER','MANAGER')`. Caixa é liberado em todo plano; o resto atrás de
+`contasPagarReceber` (Profissional+).
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET \| POST | `/finance/cash-register` \| `/cash-register/open` \| `/cash-register/close` | Abrir com saldo inicial, fechar com valor conferido (`differenceCents` = contado − esperado). |
+| GET \| POST | `/finance/payables` \| `/receivables` | Categoria travada em `ACCOUNT_PAYABLE_CATEGORIES`/`ACCOUNT_RECEIVABLE_CATEGORIES` (`@barbervp/types`). |
+| PATCH | `/finance/payables/:id/pay` \| `/receivables/:id/receive` | Marca pago/recebido individualmente. |
+| GET \| POST \| PATCH | `/finance/bank-accounts(/:id)` | Nome, tipo (texto livre), formas de pagamento aceitas (`PaymentMethod[]`), saldo. |
+| GET | `/finance/cash-flow` | Mensal agregado (`?months=`, default 6) — Pagamentos + recebíveis (entrada) vs. contas pagas (saída). |
+
+### Comissões (`/api/v1/commissions`) — fase 07
+
+`@Roles('OWNER','MANAGER','BARBER')` atrás de `comissoes` (Profissional+) —
+gate no CONTROLLER inteiro, então Essencial toma 403 mesmo sendo `BARBER`
+pedindo o próprio extrato. `BARBER` só vê a si mesmo.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET \| POST \| PATCH | `/commissions/rules(/:id)` | `FIXED` (%) ou `TIERED` (faixas); `barberIds` substitui o vínculo `Barber.commissionRuleId`. |
+| GET | `/commissions/period?month=YYYY-MM` | Extrato — lê os `CommissionEntry` já gravados no fechamento da comanda. |
+| POST | `/commissions/period/close` | Recalcula a taxa definitiva pelo faturamento TOTAL do mês, trava (`status: PAID`) e quita os vales do período. |
+| GET \| POST | `/commissions/vales` | Atrás de `vales` (Profissional+) — vale entra automaticamente no desconto do próximo fechamento de período. |
+
+### Fidelidade (`/api/v1/loyalty`) — fase 07
+
+`@Roles('OWNER','MANAGER')`. Pontos/sorteios atrás de `fidelidadePontos`/
+`fidelidadeSorteios` (Profissional+); planos de assinatura administrados pela
+barbearia atrás de `fidelidadeAssinaturas` (Avançado).
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET \| PATCH | `/loyalty/program` | `gastoPorPonto`/`pontosParaDesconto`/`valorDesconto`/`expiracaoMeses`. |
+| GET | `/loyalty/clients` | Saldo por cliente (top 200 por saldo). |
+| GET \| POST | `/loyalty/raffles` | Criar dispara aviso de WhatsApp (mock) para clientes com histórico de pontos. |
+| POST | `/loyalty/raffles/:id/draw` | Sorteio ponderado pelo nº de cupons (`LoyaltyRaffleEntry.entries`). |
+| GET \| POST \| PATCH | `/loyalty/plans(/:id)` \| `/plans/:id/archive` | CRUD do `ClientPlan` vendido pela barbearia — o MESMO modelo que a fase 05 já usa do lado do cliente. |
+| GET | `/loyalty/subscribers` | Assinantes com uso do ciclo (`SubscriptionUsage`) e status. |
+
+### WhatsApp (`/api/v1/whatsapp-config`) — fase 07
+
+`@Roles('OWNER','MANAGER')`. Lembrete/confirmação/cancelamento liberados em
+todo plano; aniversário/reativação/avaliação exigem `whatsappCompleto`
+(Profissional+) — checado por EVENTO, não no controller inteiro (ligar um
+evento avançado sem o plano é que toma 403; ler a lista sempre funciona, com
+os avançados sempre `enabled:false` se o plano não cobre).
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/whatsapp-config` | Os 6 eventos, com `requiresFullFeature` para o front pintar o cadeado certo. |
+| PATCH | `/whatsapp-config/:event` | Liga/desliga, edita template/`offsetMinutes`. |
+
+### Assistente IA (`/api/v1/assistant`) — fase 07
+
+`@Roles('OWNER','MANAGER')`. Sem gate de feature — o limite mensal por plano
+(`AI_MESSAGE_LIMIT_BY_TIER`: Essencial 50, Profissional 200, Avançado
+ilimitado) já regula o uso, contado por `AiChatMessage` do mês corrente.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/assistant/messages` | Histórico (até 100 últimas) + uso do mês. |
+| POST | `/assistant/messages` | 403 `AI_MESSAGE_LIMIT_REACHED` ao estourar o limite do plano. |
+
+### Relatórios (`/api/v1/reports`) — fase 07
+
+`@Roles('OWNER','MANAGER')`. `summary` liberado em todo plano; `advanced`
+atrás de `relatoriosAvancados` (Profissional+) — rota DISTINTA de propósito,
+pro 403 do critério de aceite ter onde acontecer.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/reports/summary` | Faturamento, ticket médio, distribuição por forma de pagamento — `?from=&to=` (`YYYY-MM-DD`, default 30 dias). |
+| GET | `/reports/advanced` | Por barbeiro/serviço/dia (raw SQL agregado, sem N+1), ocupação, no-show, taxa de retorno por faixa de dias sem visita. |
+
+### Configurações e Minha Página (`/api/v1/settings`, `/api/v1/my-page`) — fase 07
+
+`@Roles('OWNER','MANAGER')`. Unidades atrás de `multiUnidades`, calculadora
+atrás de `calculadoraPreco` (Avançado); o resto liberado em todo plano.
+`/my-page` não tem gate — branding público não está em `FEATURE_KEYS`.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET \| PATCH | `/settings/barbershop` | Nome/CNPJ/endereço/telefone/fuso + `TenantBusinessHour` (não repropaga pra `WorkSchedule` dos barbeiros — ver decisão). |
+| GET \| POST \| PATCH | `/settings/units(/:id)` | `Unit` — a primeira criada vira `isDefault`. |
+| GET \| POST | `/settings/plan` \| `/plan/change` | Plano atual + faturas (`SaasInvoice`) + troca (recusa downgrade se `maxBarbers` não comportar os barbeiros ativos). |
+| GET \| PATCH | `/settings/preferences` | `bloquearFaltasAtivo`/`bloquearFaltasQtd`/`antecedenciaMinima`/`cancelamentoHoras`. |
+| POST | `/settings/price-calculator` | Puro cálculo, sem persistência. |
+| GET \| PATCH | `/my-page` | Slug (valida com `SlugService`, mesma trava de reservados do onboarding), sobre, Instagram, endereço, toggles. |
+| POST \| DELETE | `/my-page/photos(/:id)` | Galeria — URL simples, mesma convenção de `logoUrl`/`coverUrl` (sem upload real). |
 
 ## O que a fase 01 entregou
 
@@ -470,6 +580,88 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   unit + 78 e2e + 36 isolamento, todos verdes.
 - **Sem dependência nova.**
 
+## O que a fase 07 entregou (backend — front-end ainda pendente)
+
+- **Quase todo o modelo de dados desta fase já existia desde a migration
+  inicial da fase 01** (`Order`/`OrderItem`/`Payment`, `CommissionRule`/
+  `Tier`/`Entry`, `Vale`, `CashRegister`/`CashMovement`, `BankAccount`,
+  `AccountPayable`/`Receivable`, `LoyaltyProgram`/`Points`/`Raffle`, `Unit`,
+  `WhatsappAutomationConfig`) — o trabalho real desta fase foi escrever a
+  CAMADA DE API por cima do que já estava modelado e semeado, não desenhar
+  schema novo. `migration 20260817000000_dashboard_ii` (escrita à mão, mesmo
+  motivo de sempre) só acrescentou o que faltava: `SaasInvoice` (histórico de
+  faturas do plano SaaS), `TenantPhoto` (galeria de "Minha Página"),
+  `AiChatMessage` (histórico + contagem de uso do Assistente IA),
+  `TenantSettings.showPhotos`/`showBusinessHours`/`bloquearFaltasAtivo`,
+  `BankAccount.type`/`acceptedMethods`, `Order.guestName` (walk-in sem
+  agendamento).
+- **`FeatureGuard` + `@RequireFeature()`** (`common/guards/feature.guard.ts`,
+  `common/decorators/require-feature.decorator.ts`) — gate de plano SaaS
+  agora é UM guard global (`APP_GUARD`, depois de `TenantGuard`/`RolesGuard`),
+  não checagem ad hoc por serviço. Lê `SaasPlan.features` do tenant ativo e
+  devolve 403 `FEATURE_NOT_IN_PLAN`; `SUPER_ADMIN` atravessa.
+- **Módulos novos** (`apps/api/src/`):
+  - `pos/` (`OrdersService`) — Comandas. Abrir (cliente cadastrado, walk-in,
+    ou vinculado a um `Appointment`), itens de serviço/produto, desconto
+    (percentual/fixo), resgate de pontos, **fechamento em transação única**
+    (ver decisões abaixo), reabertura só `MANAGER+` auditada.
+  - `commissions/` (`CommissionsService` + `CommissionCalcService`) — regras
+    `FIXED`/`TIERED`, extrato por período, "fechar período", vales.
+    `CommissionCalcService` é exportado do módulo porque o fechamento de
+    comanda precisa gravar `CommissionEntry` DENTRO da própria transação —
+    não dá pra chamar endpoint HTTP de dentro de outra transação.
+  - `finance/` — caixa (abrir/fechar com conferência), contas a pagar/
+    receber, contas bancárias, fluxo de caixa mensal agregado.
+  - `loyalty/` — programa de pontos, saldo por cliente, sorteios (criar +
+    sortear, ponderado por cupom), planos de assinatura administrados pela
+    barbearia (reusa `ClientPlan`/`ClientSubscription`/`SubscriptionUsage` da
+    fase 01/05, só adiciona a escrita do lado da barbearia).
+  - `whatsapp-config/` — CRUD do `WhatsappAutomationConfig`.
+  - `assistant/` — chat do "Navalha" atrás de `AI_ASSISTANT_ADAPTER` (mock,
+    mesmo padrão de `NotificationAdapter`/`PaymentAdapter`; novo driver mock +
+    binding em `AdaptersModule` + `AI_ASSISTANT_DRIVER` no `envSchema`).
+  - `reports/` — `summary` (todo plano) + `advanced` (`relatoriosAvancados`,
+    rota DISTINTA de propósito) com SQL agregado (`$queryRaw` com `JOIN`/
+    `GROUP BY`, sem N+1) para faturamento por barbeiro/serviço/dia, ocupação,
+    no-show e taxa de retorno.
+  - `settings/` (`SettingsService` + `MyPageService`) — barbearia, unidades
+    (`multiUnidades`), plano + troca + faturas, preferências, calculadora de
+    preço (`calculadoraPreco`), Minha Página + galeria de fotos.
+- **`packages/types`**: `pos.ts`, `finance.ts` (+ `ACCOUNT_PAYABLE_CATEGORIES`/
+  `ACCOUNT_RECEIVABLE_CATEGORIES` — as categorias REAIS do bundle, não as que
+  a fase 01 tinha inventado no seed, ver decisão), `commissions.ts`,
+  `loyalty.ts`, `whatsapp-config.ts`, `reports.ts`, `settings.ts`,
+  `assistant.ts` (+ `AI_MESSAGE_LIMIT_BY_TIER`).
+- **`seed-data.ts`/`seed.ts`**: `CATEGORIAS_PAGAR`/`CATEGORIAS_RECEBER` e as
+  linhas de `ACCOUNTS_PAYABLE`/`ACCOUNTS_RECEIVABLE`/`BANK_ACCOUNTS` agora são
+  as REAIS de `CONTAS_PAGAR_DATA`/`CONTAS_RECEBER_DATA`/
+  `CONTAS_BANCARIAS_DATA` do `Dashboard.dc.html` (regra 2 nomeia
+  `CONTAS_PAGAR_DATA` explicitamente — as datas do bundle viram deslocamento
+  relativo ao dia do seed, pra nunca "nascerem vencidas"). `SaasInvoice`
+  seedado (4 faturas pagas retroativas). `CommissionEntry` do seed agora linka
+  `orderItemId` (o extrato mostra o nome do serviço, não mais "—") e usa o mês
+  de competência real do fechamento.
+- **Testes novos**: `test/dashboard-ii.e2e-spec.ts` (fechamento "tudo ou
+  nada" — pagamento que não bate não fecha nada; ciclo completo comanda →
+  fechamento → baixa de estoque → `CommissionEntry` → pontos de fidelidade →
+  "fechar período" → `/reports/summary`, com os valores conferidos um a um;
+  reabertura só `MANAGER+`, auditada) e
+  `test/isolation/dashboard-ii.isolation-spec.ts` (16 casos — os 403 de
+  feature flag do critério de aceite, um tenant Essencial e um Profissional
+  de verdade, mais isolamento de tenant em `/orders`). Total do projeto: 79
+  unit (1 flaky pré-existente, ver dívidas) + 81 e2e + 52 isolamento, todos
+  verdes.
+- **Dependência nova**: nenhuma (o Assistente IA usa só o padrão de
+  adapter já existente).
+- **NÃO entregue nesta fase ainda — ver dívidas**: front-end das 9 telas
+  (Comandas, Financeiro, Comissões, Fidelidade, WhatsApp, Assistente IA,
+  Relatórios, Configurações, Minha Página). O backend foi verificado
+  manualmente ponta a ponta via HTTP (login real, abrir comanda, fechar,
+  conferir `CommissionEntry`/estoque/relatório, trocar de plano via SQL pra
+  bater os 403) além da suíte automatizada — mas a fase 07 só pode virar ✅
+  quando o "Checklist de responsividade aplicado, com atenção especial ao
+  POS" do critério de aceite também estiver satisfeito, e isso é front-end.
+
 ## Decisões tomadas
 
 - 2026-08-14 — Design system unificado no tema de produto (`#0F1115` +
@@ -485,6 +677,124 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   mantida a exigência de OTP do `system-map.md` por segurança, com
   calibração de rate limit a decidir pelo agente 04. Ver `SPEC.md` →
   Decisões tomadas.
+
+### Fase 07 — decisões técnicas
+
+- **Fechamento de comanda — o que entra na MESMA `prisma.$transaction`, nesta
+  ordem**: (1) `recompute()` de novo (a comanda pode ter mudado entre a
+  última leitura do front e o clique em "Finalizar"); (2) para cada item
+  coberto por assinatura, `SubscriptionCoverageService.debit(tx, usageId)` —
+  se a quota esgotou nesse meio-tempo, o item é recobrado ao preço cheio ALI,
+  antes de qualquer outra coisa; (3) recalcula subtotal/desconto/fidelidade/
+  total com os preços já corrigidos; (4) **valida que a soma dos pagamentos
+  bate EXATAMENTE com o total** — não bate, `400` e nada foi escrito; (5)
+  baixa estoque dos produtos; (6) grava `CommissionEntry` por item de serviço
+  com barbeiro atribuído; (7) grava os `Payment`; (8) se algum pagamento é
+  `CASH` e há caixa aberto, lança `CashMovement`; (9) marca o `Appointment`
+  vinculado como `DONE`; (10) credita pontos de fidelidade e grava o resgate,
+  se houve; (11) atualiza `ClientProfile.lastVisitAt`/`visitCount`/
+  `totalSpentCents`; (12) fecha o `Order`. Qualquer exceção em qualquer passo
+  desfaz tudo — é o "tudo ou nada" do critério de aceite, coberto por teste
+  (`dashboard-ii.e2e-spec.ts`).
+- **Fórmula final de pontos de fidelidade**: `Math.round(subtotalCents /
+  gastoPorPonto)` — o `Math.round(subtotal)` cru do protótipo (que tratava
+  R$1 = 1 ponto) foi ajustado pela config real `LoyaltyProgram.gastoPorPonto`
+  (padrão 100 centavos = 1 ponto), exatamente como o SPEC já mandava. Resgate
+  é BINÁRIO por comanda (`useLoyalty` liga/desliga), não uma quantidade livre
+  de pontos — aplica o bloco inteiro de `valorDesconto` de uma vez quando o
+  saldo cobre `pontosParaDesconto`, no mesmo modelo do toggle único que o
+  protótipo mostra.
+- **Comissão sobre SERVIÇO, nunca sobre produto** — decisão herdada do
+  comentário já existente no seed da fase 01 ("comissão sobre o serviço,
+  produto não gera comissão nesta regra"); mantida por consistência, e porque
+  nem o SPEC nem o enunciado desta fase pedem comissão sobre a venda de
+  produto.
+- **Faixa (`TIERED`) é PROVISÓRIA a cada comanda, DEFINITIVA só no fechar
+  período**: cada `CommissionEntry` nasce com a taxa calculada pelo
+  faturamento ACUMULADO do barbeiro no mês até aquele item (mês a mês,
+  comanda a comanda). "Fechar período" (`POST /commissions/period/close`)
+  recalcula TODAS as entradas do mês com o faturamento FINAL e trava
+  (`status: PAID`) — é o "fechar período trava o cálculo" do enunciado, sem
+  precisar saber o faturamento do mês inteiro antes da primeira comanda
+  fechar. Os vales não quitados do mês são marcados `settledAt` no mesmo
+  fechamento — a dedução automática que o enunciado pede.
+- **`OVERDUE` de conta a pagar/receber é calculado na LEITURA, nunca
+  guardado.** `AccountPayable`/`Receivable.status` só vira `PAID`/`RECEIVED`
+  por ação explícita; o serviço deriva `OVERDUE` comparando `dueDate` com
+  `now()` na hora de montar a resposta. Guardar o status exigiria um job
+  batendo a cada meia-noite (fila que só existe na fase 09) só pra manter uma
+  coluna sincronizada com uma comparação de data — sem necessidade.
+- **Categorias reais do seed, não as inventadas da fase 01.** O
+  `seed-data.ts` original tinha `ACCOUNTS_PAYABLE`/`RECEIVABLE` com
+  categorias como "Ocupação"/"Utilidades"/"Convênio", que não existem no
+  bundle. `CATEGORIAS_PAGAR`/`CATEGORIAS_RECEBER` (`Dashboard.dc.html`) viraram
+  `ACCOUNT_PAYABLE_CATEGORIES`/`ACCOUNT_RECEIVABLE_CATEGORIES` em
+  `@barbervp/types` (fonte única, usada tanto na validação do DTO quanto no
+  seed), e as 10+8 linhas de `CONTAS_PAGAR_DATA`/`CONTAS_RECEBER_DATA` do
+  bundle substituíram as 4+2 inventadas. Decisão do usuário, tomada
+  explicitamente no início desta sessão.
+- **`Order.guestName` novo** — o walk-in "abrir comanda sem agendamento" do
+  enunciado não tinha onde guardar o nome de quem não é cliente cadastrado
+  (`Order` só tinha `clientId`, diferente de `Appointment`, que já carrega
+  `guestName`/`guestPhone` desde a fase 04). Campo novo, mesmo padrão.
+- **`bloquearFaltasAtivo` novo, separado de `bloquearFaltasQtd`** — o
+  protótipo modela como dois controles independentes na tela de Preferências
+  (liga/desliga + o número), e o schema da fase 01 só tinha o número. Sem o
+  toggle, "desligar o bloqueio" teria que ser simulado com um número
+  artificialmente alto, o que poluiria o campo que também aparece como texto
+  ("após N faltas"). O bloqueio real do booking público
+  (`appointments.service.ts`) passou a checar os dois.
+- **`BankAccount.type`/`acceptedMethods` novos** — o enunciado pede
+  explicitamente "formas de pagamento aceitas" por conta bancária, campo que
+  não existia. `type` é texto livre (o protótipo mostra "Pix / Transferência
+  / Cartão" ou "Caixa físico", não um enum fechado); `acceptedMethods` é
+  `PaymentMethod[]`.
+- **`PaymentMethod.SUBSCRIPTION`/`LOYALTY` não aparecem no split de
+  pagamento da comanda.** O protótipo só mostra Pix/Dinheiro/Débito/Crédito
+  (+ "Dividir") no fechamento — cobertura por assinatura e resgate de pontos
+  são DESCONTOS que reduzem o total a dividir entre esses 4 métodos, não um
+  "método" próprio. Os dois valores do enum continuam existindo no schema
+  para outros contextos (ex.: o `Payment` da assinatura do cliente, fase 05),
+  só não são usados aqui.
+- **`CommissionCalcService` é exportado de `CommissionsModule`** e importado
+  por `PosModule` — mesmo motivo de `SubscriptionCoverageService` na fase 04:
+  o fechamento de comanda precisa gravar `CommissionEntry` DENTRO da mesma
+  transação Prisma, e isso só é possível chamando o serviço diretamente, não
+  batendo num endpoint HTTP separado.
+- **`FeatureGuard` é o quarto `APP_GUARD` global**, depois de `RolesGuard` —
+  antes desta fase, o único precedente (`ClientSubscriptionService.
+  featureEnabled`) checava a feature manualmente dentro do serviço. Um guard
+  global elimina esse padrão ad hoc: qualquer endpoint futuro só precisa de
+  `@RequireFeature('chave')`, sem repetir a consulta ao `SaasPlan`.
+- **"Relatórios avançados" é rota DISTINTA (`/reports/advanced`), não um
+  campo condicional dentro de `/reports/summary`.** O critério de aceite pede
+  literalmente um 403 num "endpoint de relatórios avançados" — só existe
+  onde 403 acontecer se for uma rota própria. `summary` (faturamento, ticket
+  médio, distribuição por forma de pagamento) fica liberado em todo plano;
+  `advanced` (por barbeiro/serviço/dia, ocupação, no-show, retorno) exige
+  `relatoriosAvancados`.
+- **Ocupação é aproximada, não geometricamente exata.** `minutos agendados
+  (DONE/CONFIRMED) ÷ (barbeiros ativos × média diária de minutos de
+  expediente × dias do período)` — não cruza escala individual por barbeiro
+  nem folgas/exceções (isso pertence ao motor de disponibilidade da fase 04,
+  caro demais para rodar por período inteiro num relatório). Suficiente para
+  o indicador do dashboard; documentado aqui para não ser lido como
+  precisão de agenda.
+- **`Unit`/multi-unidade e `TenantPhoto`/Minha Página não têm upload real de
+  arquivo** — mesma dívida herdada de `logoUrl`/`coverUrl` desde a fase 01/03
+  (campo é uma URL string; não há pipeline de upload no projeto ainda).
+  `Minha Página` NÃO é gate de plano: o overlay "disponível no plano
+  Avançado" que aparece no protótipo (`minhaPaginaLocked`) é código morto lá
+  mesmo — hardcoded `false`, nunca liga — e `minhaPagina`/branding público
+  não está na tabela oficial de `FEATURE_KEYS` do SPEC. Todo tenant edita a
+  própria página pública, em qualquer plano.
+- **Assistente IA sem chave real** — `AiAssistantAdapter`/
+  `MockAiAssistantDriver` seguem o mesmo padrão de `NotificationAdapter`/
+  `PaymentAdapter` (driver mock injetado por símbolo, trocar por LLM real é
+  1 binding em `AdaptersModule` + 1 variável de ambiente
+  `AI_ASSISTANT_DRIVER`), exatamente como o enunciado pediu. O limite mensal
+  por plano é real (conta `AiChatMessage` do mês corrente), só a
+  "inteligência" da resposta é mock.
 
 ### Fase 06 — decisões técnicas
 
@@ -1159,6 +1469,58 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   catálogo de centenas de produtos aparecer, trocar por `$queryRaw` com
   `WHERE stock <= "estoqueMin"`.
 
+### Dívidas novas da fase 07
+
+- **FRONT-END NÃO ENTREGUE NESTA SESSÃO.** É a dívida principal: as 9 telas
+  (Comandas/POS, Financeiro, Comissões, Fidelidade, WhatsApp, Assistente IA,
+  Relatórios, Configurações, Minha Página) ainda são o placeholder da fase
+  06 (`ready: false` em `apps/dashboard/lib/nav.ts`). O backend foi
+  verificado ponta a ponta via HTTP real e suíte automatizada (79 unit + 81
+  e2e + 52 isolamento), mas a fase só pode virar ✅ com o "checklist de
+  responsividade, atenção especial ao POS" do critério de aceite — que é
+  front-end puro. Próxima sessão: seguir literalmente o `agente-07-
+  dashboard-ii.md` → "Tarefas frontend", reaproveitando `ResponsiveTable`/
+  `Tabs`/`Modal`/`Card`/`StatCard` de `packages/ui` (fase 02) — os contratos
+  de `packages/types` (`pos.ts`/`finance.ts`/`commissions.ts`/`loyalty.ts`/
+  `whatsapp-config.ts`/`reports.ts`/`settings.ts`/`assistant.ts`) já estão
+  prontos, é só consumir.
+- **Sem marcar `NO_SHOW` pela Comandas.** O fechamento de comanda marca o
+  `Appointment` vinculado como `DONE` (regra do enunciado), mas não existe
+  NENHUM caminho — nem na Agenda (fase 06), nem em Comandas (fase 07) — para
+  marcar um agendamento como `NO_SHOW`. Consequência: `ClientProfile.
+  noShowCount` (a base do bloqueio de agendamento online desde a fase 04)
+  continua sem nenhuma escrita real no produto, só no seed. Resolver: um
+  endpoint `PATCH /staff-agenda/:id/no-show` (ou equivalente em Comandas)
+  que incrementa `noShowCount` e marca o `Appointment`.
+- **Split de pagamento não valida método duplicado nem quantidade de
+  parcelas** — `CloseOrderDto.payments` aceita, por exemplo, dois lançamentos
+  `PIX` separados (soma continua validada, então não é bug financeiro, só
+  falta de UX — o front deveria consolidar/alertar).
+- **Calculadora de preço (`POST /settings/price-calculator`) é STATELESS,
+  não lê o catálogo real.** O enunciado pede "escopo simples nesta fase" —
+  a fórmula (`custo + rateio de fixos, dividido por 1 − margem − comissão`)
+  não persiste nada nem sugere aplicar o preço calculado direto num
+  `Service`. Se o produto quiser "aplicar preço sugerido" no catálogo, é
+  fase futura.
+- **Sorteio "aviso via WhatsApp" notifica só quem já tem histórico de
+  pontos** (`LoyaltyPoints` do tenant, até 100 destinatários) — o enunciado
+  não define "elegibilidade" com precisão; clientes sem NENHUM ponto ainda
+  (primeira visita) não são avisados. Ajustar quando houver critério de
+  produto mais específico (ex.: todos os clientes com `notifyWhatsapp:
+  true`, sem exigir histórico).
+- **`AiChatMessage`/Assistente IA sem paginação de histórico** — `GET /
+  assistant/messages` sempre devolve as últimas 100 mensagens inteiras, sem
+  cursor. Suficiente para o volume de um chat de suporte interno; revisar se
+  o uso real acumular milhares de mensagens por usuário.
+- **Teste unitário pré-existente flaky, não é regressão desta fase**:
+  `booking.spec.ts` → "não repete em 2 mil sorteios" ocasionalmente falha por
+  colisão genuína de `generateBookingCode()` (paradoxo do aniversário com
+  alfabeto pequeno) — reproduzido isolado e também passou limpo na
+  re-execução. Prioridade baixa (a fase 04 já mitiga colisão real com retry
+  na escrita), mas caso vire ruído recorrente no CI, aumentar a amostra do
+  alfabeto ou reduzir o `n` do teste para descolar da margem exata do
+  paradoxo do aniversário.
+
 ## Como retomar
 
 Abrir sessão nova do Claude Code → colar o conteúdo do próximo
@@ -1286,3 +1648,40 @@ Com a stack de pé (`make up && make seed`):
 8. **Testes**: `make test` (80 unit + 78 e2e, inalterados) e
    `make test-isolation` (36 — os 25 de antes + os 11 desta fase, incluindo
    os dois casos de papel do critério de aceite).
+
+### Como conferir a fase 07 rodando (backend — sem UI própria ainda)
+
+Sem tela no dashboard ainda (nav continua `ready: false` nestas rotas) — a
+verificação é via API direta, com a stack de pé (`make up && make seed`):
+
+1. **Login + ciclo completo**:
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:3333/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email":"dono@barbeariacentral.com.br","password":"BarberVP@2026"}' \
+     | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).accessToken))")
+   curl -s http://localhost:3333/api/v1/orders/catalog -H "Authorization: Bearer $TOKEN"
+   ```
+   Abrir comanda (`POST /orders`), adicionar item (`POST /orders/:id/items`),
+   fechar com pagamento que NÃO bate (`400`) e depois com o valor certo
+   (`201`, `status: CLOSED`) — confirma no Prisma Studio que `CommissionEntry`
+   nasceu, `Product.stock` baixou e `LoyaltyPoints` creditou.
+2. **Feature flags por plano** (o tenant demo é Avançado; baixar o tier na
+   marra pra conferir o 403):
+   ```bash
+   docker exec barbervp-db psql -U barbervp -d barbervp -c \
+     "UPDATE \"Tenant\" SET \"planId\"=(SELECT id FROM \"SaasPlan\" WHERE code='essencial') WHERE slug='barbearia-central';"
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3333/api/v1/finance/payables -H "Authorization: Bearer $TOKEN"
+   # 403 — depois, restaurar:
+   docker exec barbervp-db psql -U barbervp -d barbervp -c \
+     "UPDATE \"Tenant\" SET \"planId\"=(SELECT id FROM \"SaasPlan\" WHERE code='avancado') WHERE slug='barbearia-central';"
+   ```
+3. **Swagger**: `http://localhost:3333/api/docs` — todos os endpoints desta
+   fase já documentados (`@ApiOperation`), inclusive os gates de feature.
+4. **Testes**: `make test` (79 unit — 1 flaky pré-existente, ver dívidas),
+   `make test test:e2e` equivalente via `pnpm --filter @barbervp/api test:e2e`
+   (81 — os 78 de antes + `dashboard-ii.e2e-spec.ts`), `make test-isolation`
+   (52 — os 36 de antes + `dashboard-ii.isolation-spec.ts`).
+5. **`make seed` de novo ao terminar** — os testes/smoke rodam contra o
+   banco de dev; reseedar deixa os dados como o próximo agente espera
+   encontrar.
