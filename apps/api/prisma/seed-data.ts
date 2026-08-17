@@ -6,7 +6,12 @@
  * divergir do SPEC, o SPEC vence.
  */
 
-import { featuresForTier, PlanTier } from '@barbervp/types';
+import {
+  ACCOUNT_PAYABLE_CATEGORIES,
+  ACCOUNT_RECEIVABLE_CATEGORIES,
+  featuresForTier,
+  PlanTier,
+} from '@barbervp/types';
 
 // ───────────────────────────────────────────────────────── Tenants ──────────
 
@@ -387,25 +392,54 @@ export const WHATSAPP_TEMPLATES = [
 ] as const;
 
 // ──────────────────────────────────────────────── Financeiro de exemplo ────
+//
+// Linhas e categorias REAIS de `CONTAS_PAGAR_DATA`/`CONTAS_RECEBER_DATA`/
+// `CONTAS_BANCARIAS_DATA` (`Dashboard.dc.html`) — regra 2 (zero dado
+// mockado) nomeia `CONTAS_PAGAR_DATA` explicitamente. As datas do bundle
+// (jul/2026) viram deslocamento relativo a partir do seed (`dueInDays`), pra
+// nunca ficarem "vencidas" por causa da data de quando o seed rodou; o
+// `status` de cada linha é o mesmo do bundle.
 
-export const BANK_ACCOUNT = {
-  name: 'Conta corrente principal',
-  bank: 'Banco do Brasil',
-  agency: '1234-5',
-  account: '98765-4',
-  balanceCents: 1_284_500,
-} as const;
+export const CATEGORIAS_PAGAR = ACCOUNT_PAYABLE_CATEGORIES;
+export const CATEGORIAS_RECEBER = ACCOUNT_RECEIVABLE_CATEGORIES;
+
+export const BANK_ACCOUNTS = [
+  {
+    name: 'Nubank PJ',
+    type: 'Pix / Transferência / Cartão',
+    balanceCents: 842_000,
+    acceptedMethods: ['PIX', 'CREDIT', 'DEBIT'] as const,
+  },
+  {
+    name: 'Dinheiro em espécie',
+    type: 'Caixa físico',
+    balanceCents: 74_000,
+    acceptedMethods: ['CASH'] as const,
+  },
+] as const;
 
 export const ACCOUNTS_PAYABLE = [
-  { description: 'Aluguel do salão', category: 'Ocupação', supplier: 'Imobiliária Centro', amountCents: 320_000, dueInDays: 5 },
-  { description: 'Energia elétrica', category: 'Utilidades', supplier: 'Enel', amountCents: 48_700, dueInDays: 12 },
-  { description: 'Reposição de produtos', category: 'Estoque', supplier: 'Distribuidora BarberPro', amountCents: 96_400, dueInDays: -3 },
-  { description: 'Internet e telefone', category: 'Utilidades', supplier: 'Vivo', amountCents: 19_900, dueInDays: 20 },
+  { description: 'Aluguel do salão', category: 'Aluguel', supplier: 'Imobiliária Silva & Cia', installment: 8, installments: 12, amountCents: 220_000, dueInDays: -20, status: 'PAID' as const },
+  { description: 'Produtos de revenda', category: 'Produtos', supplier: 'Barber Supply Distribuidora', installment: 1, installments: 1, amountCents: 89_000, dueInDays: 6, status: 'PENDING' as const },
+  { description: 'Conta de energia', category: 'Energia', supplier: 'Enel Distribuição', installment: 1, installments: 1, amountCents: 42_000, dueInDays: 8, status: 'PENDING' as const },
+  { description: 'Assinatura sistema de gestão', category: 'Software', supplier: 'SaaS Gestão Barber', installment: 1, installments: 1, amountCents: 18_900, dueInDays: 10, status: 'PENDING' as const },
+  { description: 'Internet e telefone', category: 'Internet', supplier: 'Vivo Empresas', installment: 1, installments: 1, amountCents: 21_000, dueInDays: -2, status: 'PAID' as const },
+  { description: 'Manutenção de equipamentos', category: 'Manutenção', supplier: 'Barber Tech Serviços', installment: 3, installments: 6, amountCents: 35_000, dueInDays: 25, status: 'PENDING' as const },
+  { description: 'Produtos de revenda', category: 'Produtos', supplier: 'Hair Pro Cosméticos', installment: 1, installments: 1, amountCents: 48_000, dueInDays: 13, status: 'PENDING' as const },
+  { description: 'Água e esgoto', category: 'Água', supplier: 'Sabesp', installment: 1, installments: 1, amountCents: 9_500, dueInDays: -5, status: 'PAID' as const },
+  { description: 'Marketing digital', category: 'Marketing', supplier: 'Agência Digital Barber', installment: 1, installments: 1, amountCents: 35_100, dueInDays: 7, status: 'PENDING' as const },
+  { description: 'Serviços contábeis', category: 'Contabilidade', supplier: 'Escritório Contábil ABC', installment: 1, installments: 1, amountCents: 158_500, dueInDays: -3, status: 'PENDING' as const },
 ] as const;
 
 export const ACCOUNTS_RECEIVABLE = [
-  { description: 'Convênio empresa Alfa — outubro', category: 'Convênio', customer: 'Alfa Tecnologia', amountCents: 145_000, dueInDays: 8 },
-  { description: 'Pacote corporativo — time comercial', category: 'Convênio', customer: 'Beta Consultoria', amountCents: 89_000, dueInDays: -2 },
+  { description: 'Mensalidade Clube do Corte', category: 'Mensalidade', customer: 'João Pedro', installment: 2, installments: 12, amountCents: 12_990, dueInDays: 4, status: 'PENDING' as const },
+  { description: 'Mensalidade Clube do Corte', category: 'Mensalidade', customer: 'Rafael Nunes', installment: 4, installments: 12, amountCents: 8_990, dueInDays: 6, status: 'PENDING' as const },
+  { description: 'Mensalidade Clube do Corte', category: 'Mensalidade', customer: 'Bruno Carvalho', installment: 6, installments: 12, amountCents: 8_990, dueInDays: 8, status: 'PENDING' as const },
+  { description: 'Venda parcelada — Kit de produtos', category: 'Venda parcelada', customer: 'Marina Costa', installment: 1, installments: 3, amountCents: 26_000, dueInDays: 10, status: 'PENDING' as const },
+  { description: 'Mensalidade Clube do Corte', category: 'Mensalidade', customer: 'André Souza', installment: 9, installments: 12, amountCents: 8_990, dueInDays: -8, status: 'RECEIVED' as const },
+  { description: 'Venda parcelada — Máquina de corte', category: 'Venda parcelada', customer: 'Gabriel Lima', installment: 2, installments: 4, amountCents: 17_500, dueInDays: 16, status: 'PENDING' as const },
+  { description: 'Mensalidade Clube do Corte', category: 'Mensalidade', customer: 'Lucas Ferreira', installment: 5, installments: 12, amountCents: 8_990, dueInDays: -12, status: 'RECEIVED' as const },
+  { description: 'Venda parcelada — Produtos premium', category: 'Venda parcelada', customer: 'Thiago Melo', installment: 3, installments: 3, amountCents: 22_000, dueInDays: 24, status: 'PENDING' as const },
 ] as const;
 
 export const RAFFLES = [

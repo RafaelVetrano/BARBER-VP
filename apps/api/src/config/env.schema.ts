@@ -73,6 +73,8 @@ export const envSchema = z.object({
   NOTIFICATION_DRIVER: z.enum(['mock']).default('mock'),
   PAYMENT_DRIVER: z.enum(['mock']).default('mock'),
   MAIL_DRIVER: z.enum(['mock']).default('mock'),
+  /** Provedor de LLM do Assistente IA ("Navalha") — só `mock` nesta fase (SPEC → fora de escopo). */
+  AI_ASSISTANT_DRIVER: z.enum(['mock']).default('mock'),
 });
 
 /** Todas as chaves de ambiente conhecidas — derivadas do próprio schema. */

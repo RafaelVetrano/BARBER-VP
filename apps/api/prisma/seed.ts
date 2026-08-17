@@ -29,6 +29,7 @@ import {
   Prisma,
   PrismaClient,
   RaffleStatus,
+  SaasInvoiceStatus,
   SubscriptionStatus,
   TenantStatus,
   WhatsappEvent,
@@ -36,7 +37,7 @@ import {
 import {
   ACCOUNTS_PAYABLE,
   ACCOUNTS_RECEIVABLE,
-  BANK_ACCOUNT,
+  BANK_ACCOUNTS,
   BARBERS,
   BUSINESS_HOURS,
   CLIENTS,
@@ -200,13 +201,21 @@ async function seedDemoTenant(planIds: Map<string, string>): Promise<void> {
           offsetMinutes: template.offsetMinutes,
         })),
       },
-      bankAccounts: { create: { ...BANK_ACCOUNT } },
+      bankAccounts: {
+        create: BANK_ACCOUNTS.map((account) => ({
+          name: account.name,
+          type: account.type,
+          balanceCents: account.balanceCents,
+          acceptedMethods: [...account.acceptedMethods] as PaymentMethod[],
+        })),
+      },
     },
     select: { id: true },
   });
 
   const tenantId = tenant.id;
 
+  await seedSaasInvoices(tenantId, planId);
   const users = await seedUsers(tenantId);
   const commissionRuleIds = await seedCommissionRules(tenantId);
   const serviceIds = await seedServices(tenantId);
@@ -227,6 +236,26 @@ async function seedDemoTenant(planIds: Map<string, string>): Promise<void> {
   await seedFinance(tenantId);
   await seedVales(tenantId, barberIds);
   await seedReviews(tenantId, barberIds);
+}
+
+/** Histórico de faturas do plano SaaS (`faturas` de `Dashboard.dc.html` → Configurações → Plano). */
+async function seedSaasInvoices(tenantId: string, planId: string): Promise<void> {
+  const plan = await prisma.saasPlan.findUniqueOrThrow({ where: { id: planId }, select: { priceCents: true } });
+  const subscription = await prisma.tenantSubscription.findFirstOrThrow({
+    where: { tenantId },
+    select: { id: true },
+  });
+
+  await prisma.saasInvoice.createMany({
+    data: [1, 2, 3, 4].map((monthsAgo) => ({
+      tenantId,
+      subscriptionId: subscription.id,
+      amountCents: plan.priceCents,
+      status: SaasInvoiceStatus.PAID,
+      issuedAt: daysFromNow(-30 * monthsAgo),
+      paidAt: daysFromNow(-30 * monthsAgo),
+    })),
+  });
 }
 
 // ─────────────────────────────────────────────────────────── Usuários ───────
@@ -781,17 +810,19 @@ async function seedOrders(
           },
         },
       },
-      select: { id: true },
+      select: { id: true, items: { where: { kind: OrderItemKind.SERVICE }, select: { id: true } } },
     });
 
     // Comissão sobre o serviço (produto não gera comissão nesta regra).
     const percentBps = appointment.barberKey === 'diego' ? 4_000 : 4_000;
+    const referenceMonth = new Date(Date.UTC(closedAt.getUTCFullYear(), closedAt.getUTCMonth(), 1));
     await prisma.commissionEntry.create({
       data: {
         tenantId,
         barberId,
         orderId: order.id,
-        referenceMonth: currentMonthStart(),
+        orderItemId: order.items[0]?.id ?? null,
+        referenceMonth,
         baseCents: serviceTotal,
         percentBps,
         amountCents: Math.round((serviceTotal * percentBps) / 10_000),
@@ -941,8 +972,10 @@ async function seedCashRegister(tenantId: string, openedByUserId: string): Promi
 // ────────────────────────────────────────────────────────── Financeiro ─────
 
 async function seedFinance(tenantId: string): Promise<void> {
+  // As contas de cartão/Pix caem na Nubank PJ — a mesma que o modal "Conta de
+  // entrada/saída" do bundle usa como padrão (`contaSaida`/`contaEntrada`).
   const bankAccount = await prisma.bankAccount.findFirst({
-    where: { tenantId },
+    where: { tenantId, name: 'Nubank PJ' },
     select: { id: true },
   });
 
@@ -954,7 +987,10 @@ async function seedFinance(tenantId: string): Promise<void> {
       supplier: account.supplier,
       amountCents: account.amountCents,
       dueDate: daysFromNow(account.dueInDays),
-      status: account.dueInDays < 0 ? AccountStatus.OVERDUE : AccountStatus.PENDING,
+      installment: account.installment,
+      installments: account.installments,
+      status: account.status === 'PAID' ? AccountStatus.PAID : AccountStatus.PENDING,
+      paidAt: account.status === 'PAID' ? daysFromNow(account.dueInDays) : null,
       bankAccountId: bankAccount?.id ?? null,
     })),
   });
@@ -967,7 +1003,10 @@ async function seedFinance(tenantId: string): Promise<void> {
       customer: account.customer,
       amountCents: account.amountCents,
       dueDate: daysFromNow(account.dueInDays),
-      status: account.dueInDays < 0 ? AccountStatus.OVERDUE : AccountStatus.PENDING,
+      installment: account.installment,
+      installments: account.installments,
+      status: account.status === 'RECEIVED' ? AccountStatus.RECEIVED : AccountStatus.PENDING,
+      receivedAt: account.status === 'RECEIVED' ? daysFromNow(account.dueInDays) : null,
       bankAccountId: bankAccount?.id ?? null,
     })),
   });

@@ -198,6 +198,21 @@ enum OtpChannel {
   CALL
 }
 
+/// Papel da mensagem no chat do Assistente IA ("Navalha", fase 07).
+enum AiMessageRole {
+  USER
+  ASSISTANT
+}
+
+/// Fatura do plano SaaS (Configurações → Plano). Distinta de `PaymentStatus`
+/// (que é do pagamento do CLIENTE à barbearia) — aqui é a barbearia pagando a
+/// plataforma.
+enum SaasInvoiceStatus {
+  PAID
+  PENDING
+  FAILED
+}
+
 // ════════════════════════════════════════════════════════════ GLOBAIS ═══════
 // Modelos sem `tenantId` — vivem acima da fronteira de tenant.
 
@@ -283,6 +298,9 @@ model Tenant {
   serviceComboParts   ServiceComboPart[]
   appointmentServices AppointmentService[]
   reviews             Review[]
+  photos              TenantPhoto[]
+  aiChatMessages      AiChatMessage[]
+  saasInvoices        SaasInvoice[]
 
   @@index([status])
   @@index([planId])
@@ -304,9 +322,29 @@ model TenantSubscription {
 
   tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan   SaasPlan @relation(fields: [planId], references: [id])
+  invoices SaasInvoice[]
 
   @@index([tenantId, status])
   @@index([currentPeriodEnd])
+}
+
+/// Histórico de faturas do plano SaaS (Configurações → Plano). O driver mock
+/// do `PaymentAdapter` aprova na hora, no mesmo padrão da assinatura do
+/// cliente (fase 05) — não existe fila de cobrança recorrente ainda.
+model SaasInvoice {
+  id             String            @id @default(cuid())
+  tenantId       String
+  subscriptionId String
+  amountCents    Int
+  status         SaasInvoiceStatus @default(PAID)
+  issuedAt       DateTime          @default(now()) @db.Timestamptz(3)
+  paidAt         DateTime?         @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, issuedAt])
 }
 
 /// Login de estabelecimento (owner/gerente/barbeiro) e super admin do SaaS.
@@ -335,6 +373,7 @@ model User {
   /// Conta de cliente final vinculada a este login (fluxo "vincular conta" do
   /// Cadastro Estabelecimento). Um `User` tem no máximo um `Client`.
   client        Client?
+  aiChatMessages AiChatMessage[]
 
   @@index([isSuperAdmin])
 }
@@ -992,6 +1031,10 @@ model Order {
   tenantId      String
   unitId        String?
   clientId      String?
+  /// Nome do walk-in sem cadastro (comanda aberta direto no balcão, sem
+  /// agendamento) — só preenchido quando `clientId` é `null` e não há
+  /// `appointmentId` (que já carrega `guestName` do próprio agendamento).
+  guestName     String?
   barberId      String?
   appointmentId String?       @unique
   /// Sequencial por tenant, exibido na UI.
@@ -1226,6 +1269,12 @@ model BankAccount {
   bank         String?
   agency       String?
   account      String?
+  /// Descrição livre do tipo (ex.: "Pix / Transferência / Cartão", "Caixa físico") —
+  /// texto solto no protótipo, sem enum próprio.
+  type         String?
+  /// Formas de pagamento que caem nesta conta — alimenta o seletor "Conta de
+  /// entrada/saída" do modal de Contas a pagar/receber.
+  acceptedMethods PaymentMethod[]
   balanceCents Int       @default(0)
   active       Boolean   @default(true)
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
@@ -1292,6 +1341,9 @@ model AccountReceivable {
 model TenantSettings {
   id                 String   @id @default(cuid())
   tenantId           String   @unique
+  /// Liga/desliga o bloqueio por faltas — `bloquearFaltasQtd` fica guardado
+  /// mesmo desligado, para o campo não zerar ao reativar.
+  bloquearFaltasAtivo Boolean @default(true)
   /// Nº de faltas que bloqueiam o agendamento online (padrão 3).
   bloquearFaltasQtd  Int      @default(3)
   /// Antecedência mínima para agendar, em minutos.
@@ -1328,6 +1380,11 @@ model TenantSettings {
   showTeam           Boolean  @default(true)
   showAbout          Boolean  @default(true)
   showReviews        Boolean  @default(true)
+  /// Toggles reais de "Minha Página" (`mpShowFotos`/`mpShowHorario` do bundle) —
+  /// distintos de `showTeam`/`showAbout` acima, que a fase 04 já usa para a
+  /// vitrine pública e esta tela não expõe editor próprio.
+  showPhotos         Boolean  @default(true)
+  showBusinessHours  Boolean  @default(true)
   allowOnlineBooking Boolean  @default(true)
   /// Wizard de configuração: maior passo já concluído (0 = nada) e conclusão.
   /// Permite retomar o onboarding de onde parou, em qualquer dispositivo.
@@ -1337,6 +1394,20 @@ model TenantSettings {
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// Galeria de fotos de "Minha Página" — mesma convenção de `logoUrl`/`coverUrl`
+/// (URL simples, sem pipeline de upload real nesta fase).
+model TenantPhoto {
+  id        String   @id @default(cuid())
+  tenantId  String
+  url       String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sortOrder])
 }
 
 /// Horário de funcionamento da barbearia por dia da semana.
@@ -1371,6 +1442,22 @@ model WhatsappAutomationConfig {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, event])
+}
+
+/// Histórico do Assistente IA ("Navalha") — também a base da contagem de uso
+/// mensal por plano (`AI_MESSAGE_LIMIT_BY_TIER` em `@barbervp/types`).
+model AiChatMessage {
+  id        String        @id @default(cuid())
+  tenantId  String
+  userId    String
+  role      AiMessageRole
+  content   String
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────── Sessões e códigos ───

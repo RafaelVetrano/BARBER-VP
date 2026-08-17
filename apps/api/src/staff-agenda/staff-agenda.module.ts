@@ -13,5 +13,8 @@ import { StaffScopeService } from './staff-scope.service';
   imports: [BookingModule],
   controllers: [StaffAgendaController],
   providers: [StaffAppointmentsService, StaffScopeService],
+  // `StaffScopeService` é reusado pela fase 07 (Comandas, Comissões) — mesmo
+  // recorte "BARBER só enxerga o próprio", sem duplicar a resolução do papel.
+  exports: [StaffScopeService],
 })
 export class StaffAgendaModule {}

@@ -612,7 +612,9 @@ export class AppointmentsService {
       return;
     }
 
-    if (profile.blocked || profile.noShowCount >= tenant.settings.bloquearFaltasQtd) {
+    const noShowBlocked =
+      tenant.settings.bloquearFaltasAtivo && profile.noShowCount >= tenant.settings.bloquearFaltasQtd;
+    if (profile.blocked || noShowBlocked) {
       throw ApiException.forbidden(
         'Seu agendamento online está bloqueado nesta barbearia. Fale com a equipe pelo WhatsApp.',
         ErrorCode.ACCOUNT_DISABLED,
@@ -657,6 +659,7 @@ export class AppointmentsService {
           select: {
             allowOnlineBooking: true,
             cancelamentoHoras: true,
+            bloquearFaltasAtivo: true,
             bloquearFaltasQtd: true,
             antecedenciaMinima: true,
           },
@@ -676,6 +679,7 @@ export class AppointmentsService {
       settings: {
         allowOnlineBooking: tenant.settings?.allowOnlineBooking ?? true,
         cancelamentoHoras: tenant.settings?.cancelamentoHoras ?? 2,
+        bloquearFaltasAtivo: tenant.settings?.bloquearFaltasAtivo ?? true,
         bloquearFaltasQtd: tenant.settings?.bloquearFaltasQtd ?? 3,
         antecedenciaMinima: tenant.settings?.antecedenciaMinima ?? 60,
       },
@@ -815,6 +819,7 @@ interface TenantContextRow {
   settings: {
     allowOnlineBooking: boolean;
     cancelamentoHoras: number;
+    bloquearFaltasAtivo: boolean;
     bloquearFaltasQtd: number;
     antecedenciaMinima: number;
   };

@@ -7,6 +7,8 @@ import { MAIL_ADAPTER } from './mail/mail.adapter';
 import { MockMailDriver } from './mail/mock-mail.driver';
 import { PAYMENT_ADAPTER } from './payment/payment.adapter';
 import { MockPaymentDriver } from './payment/mock-payment.driver';
+import { AI_ASSISTANT_ADAPTER } from '../assistant/ai-assistant.adapter';
+import { MockAiAssistantDriver } from '../assistant/mock-ai-assistant.driver';
 
 /**
  * Único lugar do projeto que conhece drivers concretos.
@@ -21,6 +23,7 @@ import { MockPaymentDriver } from './payment/mock-payment.driver';
     MockNotificationDriver,
     MockMailDriver,
     MockPaymentDriver,
+    MockAiAssistantDriver,
     {
       provide: NOTIFICATION_ADAPTER,
       inject: [CONFIG, MockNotificationDriver],
@@ -51,8 +54,18 @@ import { MockPaymentDriver } from './payment/mock-payment.driver';
         }
       },
     },
+    {
+      provide: AI_ASSISTANT_ADAPTER,
+      inject: [CONFIG, MockAiAssistantDriver],
+      useFactory: (config: AppConfig, mock: MockAiAssistantDriver) => {
+        switch (config.drivers.aiAssistant) {
+          case 'mock':
+            return mock;
+        }
+      },
+    },
   ],
-  exports: [NOTIFICATION_ADAPTER, MAIL_ADAPTER, PAYMENT_ADAPTER],
+  exports: [NOTIFICATION_ADAPTER, MAIL_ADAPTER, PAYMENT_ADAPTER, AI_ASSISTANT_ADAPTER],
 })
 export class AdaptersModule {
   constructor(@Inject(CONFIG) config: AppConfig, logger: PinoLogger) {

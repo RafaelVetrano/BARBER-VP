@@ -48,6 +48,7 @@ export interface AppConfig {
     notification: Env['NOTIFICATION_DRIVER'];
     payment: Env['PAYMENT_DRIVER'];
     mail: Env['MAIL_DRIVER'];
+    aiAssistant: Env['AI_ASSISTANT_DRIVER'];
   };
 }
 
@@ -103,6 +104,7 @@ export function buildConfig(env: Env): AppConfig {
       notification: env.NOTIFICATION_DRIVER,
       payment: env.PAYMENT_DRIVER,
       mail: env.MAIL_DRIVER,
+      aiAssistant: env.AI_ASSISTANT_DRIVER,
     },
   };
 }
