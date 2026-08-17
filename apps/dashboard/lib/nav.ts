@@ -13,8 +13,8 @@ export interface NavDef {
 
 /**
  * Os 14 itens de `NAV_DEFS` do bundle (`Dashboard.dc.html`), portados como
- * ícones em `packages/ui` desde a fase 02 — só as 5 rotas desta fase (fase
- * 06) ficam clicáveis; o resto é placeholder até a fase 07/08.
+ * ícones em `packages/ui` desde a fase 02 — as 13 rotas das fases 06+07 já
+ * ficam clicáveis; só falta o Super Admin (fase 08, fora deste app).
  *
  * `roles` implementa a visão restrita do `DashboardFuncionario`: mesmo shell,
  * mesmas rotas, só o nav muda (`SPEC.md` → "nav restrito, sem Financeiro/
@@ -66,14 +66,14 @@ export const NAV_DEFS: NavDef[] = [
     key: 'minha-pagina',
     label: 'Minha Página',
     href: '/minha-pagina',
-    ready: false,
+    ready: true,
     roles: ['OWNER', 'MANAGER'],
   },
   {
     key: 'configuracoes',
     label: 'Configurações',
     href: '/configuracoes',
-    ready: false,
+    ready: true,
     roles: ['OWNER', 'MANAGER'],
   },
 ];
