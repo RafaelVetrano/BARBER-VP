@@ -29,7 +29,7 @@ export const NAV_DEFS: NavDef[] = [
     key: 'financeiro',
     label: 'Financeiro',
     href: '/financeiro',
-    ready: false,
+    ready: true,
     roles: ['OWNER', 'MANAGER'],
   },
   {
