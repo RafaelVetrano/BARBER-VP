@@ -24,7 +24,7 @@ export const NAV_DEFS: NavDef[] = [
   { key: 'dashboard', label: 'Dashboard', href: '/', ready: true },
   { key: 'agenda', label: 'Agenda', href: '/agenda', ready: true },
   { key: 'clientes', label: 'Clientes', href: '/clientes', ready: true, roles: ['OWNER', 'MANAGER'] },
-  { key: 'comandas', label: 'Comandas', href: '/comandas', ready: false },
+  { key: 'comandas', label: 'Comandas', href: '/comandas', ready: true },
   {
     key: 'financeiro',
     label: 'Financeiro',
