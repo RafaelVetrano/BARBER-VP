@@ -1,0 +1,15 @@
+{
+  "extends": "@barbervp/config/tsconfig/nest.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    // Fora de `dist`: o container do compose também escreve lá e o arquivo
+    // acabaria root-owned para o host.
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo",
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "prisma/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

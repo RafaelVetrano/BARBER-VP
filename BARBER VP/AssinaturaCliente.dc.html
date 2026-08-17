@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700&display=swap" rel="stylesheet">
+  <style>
+    @keyframes assinToastIn { from{opacity:0;transform:translate(-50%,8px);} to{opacity:1;transform:translate(-50%,0);} }
+    @keyframes successPop { from{transform:scale(0.4);opacity:0;} to{transform:scale(1);opacity:1;} }
+    @keyframes checkDraw { from{stroke-dashoffset:24;} to{stroke-dashoffset:0;} }
+  </style>
+</helmet>
+
+<div style="{{ rootStyle }}" ref="{{ setRootRef }}">
+  <div style="{{ overlayStyle }}" onClick="{{ requestClose }}"></div>
+
+  <div style="{{ sheetStyle }}">
+    <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ true }}">
+      <div style="width:36px;height:4px;border-radius:2px;background:#2A2F38;position:absolute;top:10px;left:50%;transform:translateX(-50%);"></div>
+    </sc-if>
+
+    <sc-if value="{{ showHeader }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:44px 1fr 44px;align-items:center;height:56px;padding:0 12px;border-bottom:1px solid #2A2F38;flex-shrink:0;font-family:'Inter',sans-serif;">
+        <sc-if value="{{ showBack }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ onBackClick }}" aria-label="Voltar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">←</button>
+        </sc-if>
+        <sc-if value="{{ hideBackPlaceholder }}" hint-placeholder-val="{{ true }}"><div></div></sc-if>
+        <span style="font-size:16px;font-weight:600;color:#F2F3F5;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ headerTitle }}</span>
+        <button onClick="{{ requestClose }}" aria-label="Fechar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">✕</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDetalhe }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;font-family:'Inter',sans-serif;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <span style="font-family:'Sora',sans-serif;font-size:22px;font-weight:700;color:#F2F3F5;">{{ plano.nome }}</span>
+          <sc-if value="{{ plano.destaque }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11px;padding:3px 10px;border-radius:999px;background:{{ badgeBg }};color:{{ accent }};width:fit-content;">{{ plano.badge }}</span>
+          </sc-if>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;">
+            <span style="font-size:32px;font-weight:700;color:{{ accent }};font-family:'Sora',sans-serif;">{{ plano.precoFmt }}</span>
+            <span style="font-size:14px;color:#9AA1AC;">/mês</span>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <span style="font-size:13px;font-weight:600;color:#9AA1AC;text-transform:uppercase;letter-spacing:0.3px;">Serviços incluídos</span>
+          <sc-for list="{{ plano.servicosRows }}" as="sv" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;justify-content:space-between;height:40px;border-bottom:1px solid #2A2F38;">
+              <span style="font-size:14px;color:#F2F3F5;">{{ sv.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:#1F232B;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;">
+          <span style="font-size:14px;color:#3FB68B;font-weight:600;">Economize {{ plano.economiaFmt }}/mês</span>
+          <span style="font-size:13px;color:#9AA1AC;">Cobrança todo dia {{ plano.dia }}</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <span style="font-size:15px;font-weight:600;color:#F2F3F5;">Como funciona</span>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="color:{{ accent }};flex-shrink:0;">•</span>
+              <span style="font-size:14px;color:#C7CBD1;line-height:1.4;">Os usos renovam a cada ciclo mensal</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="color:{{ accent }};flex-shrink:0;">•</span>
+              <span style="font-size:14px;color:#C7CBD1;line-height:1.4;">Agende normalmente — o serviço coberto sai por R$ 0</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="color:{{ accent }};flex-shrink:0;">•</span>
+              <span style="font-size:14px;color:#C7CBD1;line-height:1.4;">Cancele quando quiser, sem multa</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:16px 20px;border-top:1px solid #2A2F38;flex-shrink:0;">
+        <button onClick="{{ onContinuarDetalhe }}" style="width:100%;height:52px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Continuar</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPagamento }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;font-family:'Inter',sans-serif;">
+        <div style="background:#1F232B;border-radius:12px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span style="font-size:14px;font-weight:600;color:#F2F3F5;">{{ plano.nome }}</span>
+          <span style="font-size:15px;font-weight:700;color:{{ accent }};">{{ plano.precoFmt }}/mês</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <span style="font-size:13px;font-weight:600;color:#9AA1AC;text-transform:uppercase;letter-spacing:0.3px;">Forma de pagamento</span>
+          <div onClick="{{ onSelectCartao }}" style="{{ cartaoCardStyle }}">
+            <span style="font-size:14px;font-weight:600;color:#F2F3F5;flex:1;">Cartão de crédito</span>
+            <div style="{{ cartaoRadioStyle }}"></div>
+          </div>
+          <div onClick="{{ onSelectPix }}" style="{{ pixCardStyle }}">
+            <span style="font-size:14px;font-weight:600;color:#F2F3F5;flex:1;">Pix</span>
+            <div style="{{ pixRadioStyle }}"></div>
+          </div>
+        </div>
+
+        <sc-if value="{{ isCartao }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:13px;color:#9AA1AC;">Número do cartão</label>
+              <input value="{{ cardNumber }}" onChange="{{ onCardNumberChange }}" placeholder="0000 0000 0000 0000" inputMode="numeric" style="{{ inputStyle }}"></input>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="font-size:13px;color:#9AA1AC;">Validade</label>
+                <input value="{{ cardValidade }}" onChange="{{ onCardValidadeChange }}" placeholder="MM/AA" style="{{ inputStyle }}"></input>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="font-size:13px;color:#9AA1AC;">CVV</label>
+                <input value="{{ cardCvv }}" onChange="{{ onCardCvvChange }}" placeholder="123" inputMode="numeric" style="{{ inputStyle }}"></input>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:13px;color:#9AA1AC;">Nome no cartão</label>
+              <input value="{{ cardNome }}" onChange="{{ onCardNomeChange }}" placeholder="Como está no cartão" style="{{ inputStyle }}"></input>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isPix }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+            <span style="font-size:13px;color:#9AA1AC;text-align:center;line-height:1.4;">A cobrança será enviada via Pix todo ciclo, no dia {{ plano.dia }}</span>
+            <div style="width:180px;height:180px;border-radius:12px;background:repeating-linear-gradient(45deg,#1F232B,#1F232B 8px,#181B21 8px,#181B21 16px);display:flex;align-items:center;justify-content:center;">
+              <span style="font-size:12px;color:#9AA1AC;font-family:monospace;">QR CODE</span>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="padding:16px 20px;border-top:1px solid #2A2F38;flex-shrink:0;display:flex;flex-direction:column;gap:10px;">
+        <span style="font-size:13px;color:#9AA1AC;">{{ totalLine }}</span>
+        <button onClick="{{ onConfirmarAssinatura }}" disabled="{{ confirmDisabled }}" style="{{ confirmButtonStyle }}">Confirmar assinatura</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isSucesso }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:40px 20px 24px 20px;display:flex;flex-direction:column;align-items:center;font-family:'Inter',sans-serif;position:relative;">
+        <button onClick="{{ onCloseSuccess }}" aria-label="Fechar" style="position:absolute;top:12px;right:12px;width:40px;height:40px;border-radius:50%;border:none;background:transparent;color:#9AA1AC;font-size:16px;cursor:pointer;">✕</button>
+
+        <div style="width:88px;height:88px;border-radius:50%;background:{{ accent }};display:flex;align-items:center;justify-content:center;animation:successPop 0.45s cubic-bezier(.34,1.56,.64,1) both;flex-shrink:0;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" style="animation:checkDraw 0.4s 0.35s ease-out both;"></path></svg>
+        </div>
+
+        <span style="font-family:'Sora',sans-serif;font-size:24px;font-weight:700;color:#F2F3F5;margin-top:20px;text-align:center;">Assinatura ativa! 🎉</span>
+        <span style="font-size:14px;color:#9AA1AC;margin-top:6px;text-align:center;">Bem-vindo ao {{ plano.nome }}</span>
+
+        <div style="width:100%;background:#1F232B;border-radius:16px;padding:16px;margin-top:24px;display:flex;flex-direction:column;gap:10px;">
+          <sc-for list="{{ plano.servicosRows }}" as="sv" hint-placeholder-count="2">
+            <div style="display:flex;justify-content:space-between;">
+              <span style="font-size:14px;color:#F2F3F5;">{{ sv.nome }}</span>
+              <span style="font-size:14px;color:{{ accent }};font-weight:600;">{{ sv.usoLabel }}</span>
+            </div>
+          </sc-for>
+          <div style="border-top:1px dashed #2A2F38;margin-top:2px;padding-top:10px;display:flex;justify-content:space-between;">
+            <span style="font-size:13px;color:#9AA1AC;">Próxima cobrança</span>
+            <span style="font-size:13px;color:#F2F3F5;">{{ plano.proximaCobranca }}</span>
+          </div>
+        </div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:12px;margin-top:24px;">
+          <button onClick="{{ onAgendarAgora }}" style="height:52px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:16px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Agendar agora</button>
+          <button onClick="{{ onVerMinhaAssinatura }}" style="height:48px;border-radius:12px;border:1px solid #2A2F38;background:transparent;color:#F2F3F5;font-size:15px;cursor:pointer;font-family:'Inter',sans-serif;">Ver minha assinatura</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showExitConfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:220;padding:20px;">
+        <div style="width:100%;max-width:300px;background:#1F232B;border:1px solid #2A2F38;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+          <span style="font-size:14px;color:#F2F3F5;line-height:1.5;">Sair da assinatura? Os dados de pagamento preenchidos serão perdidos.</span>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button onClick="{{ onKeepGoing }}" style="height:44px;border-radius:10px;border:none;background:{{ accent }};color:#0F1115;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Continuar</button>
+            <button onClick="{{ onExitConfirmed }}" style="height:44px;border-radius:10px;border:1px solid #2A2F38;background:transparent;color:#F2F3F5;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;">Sair</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 390, &quot;height&quot;: 844},
+  &quot;open&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;},
+  &quot;planoId&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: 2, &quot;tsType&quot;: &quot;number&quot;, &quot;options&quot;: [1, 2, 3], &quot;optionLabels&quot;: [&quot;Corte Semanal&quot;, &quot;Corte + Barba Quinzenal&quot;, &quot;Clube Completo&quot;], &quot;section&quot;: &quot;Plano padrão&quot;},
+  &quot;accentColor&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#D4A84C&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#D4A84C&quot;, &quot;#5B8DEF&quot;, &quot;#3FB68B&quot;, &quot;#E0644C&quot;]},
+  &quot;currentUser&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;{firstName: string, lastName: string, phone: string, email: string} | null&quot;},
+  &quot;onClose&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onRequestAuth&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(planoId: number) =&gt; void&quot;},
+  &quot;onSubscribed&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(assinatura: object) =&gt; void&quot;},
+  &quot;onScheduleNow&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onViewSubscription&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;}
+}">
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+function fmtBRL(v) { return `R$ ${v}`; }
+
+const SERVICE_PRICES = { s1: 45, s2: 35 };
+
+const PLANOS_ASSINATURA = [
+  { id: 1, nome: 'Corte Semanal', preco: 120, dia: 5,
+    servicos: [{ serviceId: 's1', nome: 'Corte Masculino', qtd: 4 }],
+    destaque: false },
+  { id: 2, nome: 'Corte + Barba Quinzenal', preco: 150, dia: 5,
+    servicos: [{ serviceId: 's1', nome: 'Corte Masculino', qtd: 2 }, { serviceId: 's2', nome: 'Barba', qtd: 2 }],
+    destaque: true, badge: 'Mais popular' },
+  { id: 3, nome: 'Clube Completo', preco: 220, dia: 5,
+    servicos: [{ serviceId: 's1', nome: 'Corte Masculino', qtd: 4 }, { serviceId: 's2', nome: 'Barba', qtd: 4 }],
+    destaque: false },
+];
+
+function nextChargeLabel(dia) {
+  const now = new Date();
+  let month = now.getMonth(), year = now.getFullYear();
+  if (now.getDate() >= dia) { month += 1; if (month > 11) { month = 0; year += 1; } }
+  const d = new Date(year, month, dia);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+class Component extends DCLogic {
+  state = {
+    screen: 'detalhe',
+    paymentMethod: 'cartao',
+    cardNumber: '', cardValidade: '', cardCvv: '', cardNome: '',
+    showExitConfirm: false,
+    isDesktop: false,
+  };
+
+  setRootRef = (el) => {
+    this.rootEl = el;
+    if (el && this.resizeObserver) this.resizeObserver.observe(el);
+  };
+
+  componentDidMount() {
+    this.checkSize = () => {
+      const el = this.rootEl;
+      const width = el ? el.getBoundingClientRect().width : window.innerWidth;
+      const isDesktop = width >= 768;
+      if (isDesktop !== this.state.isDesktop) this.setState({ isDesktop });
+    };
+    this.resizeObserver = new ResizeObserver(this.checkSize);
+    if (this.rootEl) this.resizeObserver.observe(this.rootEl);
+    window.addEventListener('resize', this.checkSize);
+    setTimeout(this.checkSize, 0);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.checkSize);
+    if (this.resizeObserver) this.resizeObserver.disconnect();
+  }
+  componentDidUpdate(prevProps) {
+    if (this.props.open && !prevProps.open) {
+      this.setState({
+        screen: 'detalhe', paymentMethod: 'cartao',
+        cardNumber: '', cardValidade: '', cardCvv: '', cardNome: '', showExitConfirm: false,
+      });
+    }
+  }
+
+  getPlano = () => PLANOS_ASSINATURA.find((p) => p.id === this.props.planoId);
+
+  requestClose = () => {
+    if (this.state.screen === 'pagamento') this.setState({ showExitConfirm: true });
+    else if (this.props.onClose) this.props.onClose();
+  };
+  onKeepGoing = () => this.setState({ showExitConfirm: false });
+  onExitConfirmed = () => { this.setState({ showExitConfirm: false }); if (this.props.onClose) this.props.onClose(); };
+
+  onBackClick = () => { if (this.state.screen === 'pagamento') this.setState({ screen: 'detalhe' }); };
+
+  onContinuarDetalhe = () => {
+    if (!this.props.currentUser) {
+      if (this.props.onRequestAuth) this.props.onRequestAuth(this.props.planoId);
+      return;
+    }
+    this.setState({ screen: 'pagamento' });
+  };
+
+  onSelectCartao = () => this.setState({ paymentMethod: 'cartao' });
+  onSelectPix = () => this.setState({ paymentMethod: 'pix' });
+  onCardNumberChange = (e) => this.setState({ cardNumber: e.target.value });
+  onCardValidadeChange = (e) => this.setState({ cardValidade: e.target.value });
+  onCardCvvChange = (e) => this.setState({ cardCvv: e.target.value });
+  onCardNomeChange = (e) => this.setState({ cardNome: e.target.value });
+
+  onConfirmarAssinatura = () => {
+    const plano = this.getPlano();
+    if (!plano) return;
+    if (this.state.paymentMethod === 'cartao') {
+      const { cardNumber, cardValidade, cardCvv, cardNome } = this.state;
+      if (!cardNumber.trim() || !cardValidade.trim() || !cardCvv.trim() || !cardNome.trim()) return;
+    }
+    const proximaCobranca = nextChargeLabel(plano.dia);
+    const usos = plano.servicos.map((sv) => ({ serviceId: sv.serviceId, nome: sv.nome, usados: 0, total: sv.qtd }));
+    const assinatura = { planoId: plano.id, nome: plano.nome, preco: plano.preco, dia: plano.dia, usos, status: 'em_dia', proximaCobranca };
+    this.setState({ screen: 'sucesso' });
+    if (this.props.onSubscribed) this.props.onSubscribed(assinatura);
+  };
+
+  onCloseSuccess = () => { if (this.props.onClose) this.props.onClose(); };
+  onAgendarAgora = () => { if (this.props.onScheduleNow) this.props.onScheduleNow(); if (this.props.onClose) this.props.onClose(); };
+  onVerMinhaAssinatura = () => { if (this.props.onViewSubscription) this.props.onViewSubscription(); if (this.props.onClose) this.props.onClose(); };
+
+  renderVals() {
+    const s = this.state;
+    const open = this.props.open ?? false;
+    const accent = this.props.accentColor ?? '#D4A84C';
+    const badgeBg = hexToRgba(accent, 0.15);
+    const isDesktop = s.isDesktop;
+
+    const rootStyle = `position:fixed;inset:0;z-index:250;pointer-events:${open ? 'auto' : 'none'};`;
+    const overlayStyle = `position:fixed;inset:0;background:#000000;opacity:${open ? 0.6 : 0};transition:opacity 250ms ease;`;
+    const sheetStyle = isDesktop
+      ? `position:fixed;top:50%;left:50%;width:420px;max-height:90vh;background:#15171C;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.5);transform:translate(-50%,-50%) scale(${open ? 1 : 0.96});opacity:${open ? 1 : 0};transition:transform 250ms ease, opacity 250ms ease;`
+      : `position:fixed;left:0;right:0;bottom:0;margin:0 auto;width:100%;max-width:480px;height:90vh;background:#15171C;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -8px 32px rgba(0,0,0,0.5);transform:translateY(${open ? '0' : '100%'});transition:transform 300ms cubic-bezier(.32,.72,0,1);`;
+
+    const planoRaw = this.getPlano() || PLANOS_ASSINATURA[0];
+    const avulsoTotal = planoRaw.servicos.reduce((sum, sv) => sum + (SERVICE_PRICES[sv.serviceId] || 0) * sv.qtd, 0);
+    const economia = Math.max(0, avulsoTotal - planoRaw.preco);
+    const servicosRows = planoRaw.servicos.map((sv) => ({
+      label: `${sv.qtd}× ${sv.nome}`,
+      nome: sv.nome,
+      usoLabel: `0/${sv.qtd} usados`,
+    }));
+    const plano = {
+      ...planoRaw,
+      precoFmt: fmtBRL(planoRaw.preco),
+      economiaFmt: fmtBRL(economia),
+      servicosRows,
+      proximaCobranca: nextChargeLabel(planoRaw.dia),
+    };
+
+    const screen = s.screen;
+    const isDetalhe = screen === 'detalhe', isPagamento = screen === 'pagamento', isSucesso = screen === 'sucesso';
+    const showHeader = !isSucesso;
+    const showBack = isPagamento;
+    const hideBackPlaceholder = !showBack;
+    const headerTitle = isPagamento ? 'Pagamento' : plano.nome;
+
+    const isCartao = s.paymentMethod === 'cartao', isPix = s.paymentMethod === 'pix';
+    const radioStyle = (sel) => sel
+      ? `width:22px;height:22px;border-radius:50%;border:1.5px solid ${accent};flex-shrink:0;background:radial-gradient(circle, ${accent} 0 6px, transparent 7px);`
+      : `width:22px;height:22px;border-radius:50%;border:1.5px solid #2A2F38;flex-shrink:0;`;
+    const methodCardStyle = (sel) => `height:56px;padding:0 16px;border-radius:12px;border:1px solid ${sel ? accent : '#2A2F38'};background:${sel ? hexToRgba(accent, 0.1) : 'transparent'};display:flex;align-items:center;gap:12px;cursor:pointer;`;
+
+    const inputStyle = `height:48px;border-radius:10px;border:1px solid #2A2F38;background:#1A1D23;color:#F2F3F5;font-size:14px;padding:0 12px;font-family:'Inter',sans-serif;`;
+
+    const confirmDisabled = isCartao && !(s.cardNumber.trim() && s.cardValidade.trim() && s.cardCvv.trim() && s.cardNome.trim());
+    const confirmButtonStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;${confirmDisabled ? 'background:#2A2F38;color:#5B616B;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+    const totalLine = `${plano.precoFmt}/mês · primeira cobrança hoje, renova todo dia ${plano.dia}`;
+
+    return {
+      rootStyle, overlayStyle, sheetStyle, isMobile: !isDesktop, setRootRef: this.setRootRef,
+      accent, badgeBg, plano,
+      showHeader, showBack, hideBackPlaceholder, headerTitle,
+      onBackClick: this.onBackClick, requestClose: this.requestClose,
+      isDetalhe, isPagamento, isSucesso,
+      onContinuarDetalhe: this.onContinuarDetalhe,
+      isCartao, isPix, onSelectCartao: this.onSelectCartao, onSelectPix: this.onSelectPix,
+      cartaoCardStyle: methodCardStyle(isCartao), pixCardStyle: methodCardStyle(isPix),
+      cartaoRadioStyle: radioStyle(isCartao), pixRadioStyle: radioStyle(isPix),
+      cardNumber: s.cardNumber, cardValidade: s.cardValidade, cardCvv: s.cardCvv, cardNome: s.cardNome,
+      onCardNumberChange: this.onCardNumberChange, onCardValidadeChange: this.onCardValidadeChange,
+      onCardCvvChange: this.onCardCvvChange, onCardNomeChange: this.onCardNomeChange,
+      inputStyle, totalLine, confirmDisabled, confirmButtonStyle,
+      onConfirmarAssinatura: this.onConfirmarAssinatura,
+      onCloseSuccess: this.onCloseSuccess, onAgendarAgora: this.onAgendarAgora, onVerMinhaAssinatura: this.onVerMinhaAssinatura,
+      showExitConfirm: s.showExitConfirm, onKeepGoing: this.onKeepGoing, onExitConfirmed: this.onExitConfirmed,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

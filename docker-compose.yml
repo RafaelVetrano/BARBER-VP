@@ -1,0 +1,196 @@
+# Stack de desenvolvimento — `make up`.
+# Produção: `docker-compose.prod.yml` (imagens multi-stage, sem bind mount).
+
+x-dev-image: &dev-image
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+  image: barbervp/dev:latest
+
+x-dev-volumes: &dev-volumes
+  # Código do host entra por bind mount; os `node_modules`/`.next` da imagem
+  # são preservados por volumes anônimos (senão o mount os esconderia).
+  - ./:/app
+  - /app/node_modules
+  - /app/apps/api/node_modules
+  # `dist` também é volume: sem isso o build do container (root) deixaria os
+  # artefatos root-owned no host. Por ser volume, não pode ser apagado de
+  # dentro — daí `deleteOutDir: false` no nest-cli.json (use `pnpm clean`).
+  - /app/apps/api/dist
+  - /app/apps/site/node_modules
+  - /app/apps/site/.next
+  - /app/apps/booking/node_modules
+  - /app/apps/booking/.next
+  - /app/apps/dashboard/node_modules
+  - /app/apps/dashboard/.next
+  - /app/apps/admin/node_modules
+  - /app/apps/admin/.next
+  - /app/packages/config/node_modules
+  - /app/packages/types/node_modules
+  - /app/packages/ui/node_modules
+
+x-web-env: &web-env
+  NODE_ENV: development
+  NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3333/api/v1}
+  # Endereço da API visto de DENTRO da rede do compose. O `NEXT_PUBLIC_` acima é
+  # o do navegador do cliente; dentro do container, `localhost` é o próprio
+  # container do Next, e a renderização no servidor (a página `/{slug}`, que é
+  # indexada) não chegaria à API por ele.
+  API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:3333/api/v1}
+  # Cada app precisa saber a origem das outras três (navegação entre superfícies).
+  NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+  NEXT_PUBLIC_BOOKING_URL: ${NEXT_PUBLIC_BOOKING_URL:-http://localhost:3001}
+  NEXT_PUBLIC_DASHBOARD_URL: ${NEXT_PUBLIC_DASHBOARD_URL:-http://localhost:3002}
+  NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:3003}
+  # Hot reload através do bind mount (inotify não propaga em todos os hosts).
+  WATCHPACK_POLLING: 'true'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: barbervp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-barbervp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-barbervp_dev_pwd}
+      POSTGRES_DB: ${POSTGRES_DB:-barbervp}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-barbervp} -d ${POSTGRES_DB:-barbervp}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: barbervp-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    <<: *dev-image
+    container_name: barbervp-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      API_PORT: 3333
+      API_PREFIX: ${API_PREFIX:-api/v1}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-barbervp}:${POSTGRES_PASSWORD:-barbervp_dev_pwd}@db:5432/${POSTGRES_DB:-barbervp}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_me_min_32_chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_me_min_32_chars}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      CORS_ORIGIN_SITE: ${CORS_ORIGIN_SITE:-http://localhost:3000}
+      CORS_ORIGIN_BOOKING: ${CORS_ORIGIN_BOOKING:-http://localhost:3001}
+      CORS_ORIGIN_DASHBOARD: ${CORS_ORIGIN_DASHBOARD:-http://localhost:3002}
+      CORS_ORIGIN_ADMIN: ${CORS_ORIGIN_ADMIN:-http://localhost:3003}
+      PUBLIC_BOOKING_BASE_URL: ${PUBLIC_BOOKING_BASE_URL:-http://localhost:3001}
+      # Auth (fase 03) — cookie httpOnly, OTP e recuperação de senha.
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-600}
+      OTP_RESEND_COOLDOWN_SECONDS: ${OTP_RESEND_COOLDOWN_SECONDS:-59}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      OTP_MAX_RESENDS: ${OTP_MAX_RESENDS:-4}
+      OTP_MAX_PER_DESTINATION_HOUR: ${OTP_MAX_PER_DESTINATION_HOUR:-6}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-30}
+      NOTIFICATION_DRIVER: ${NOTIFICATION_DRIVER:-mock}
+      PAYMENT_DRIVER: ${PAYMENT_DRIVER:-mock}
+      MAIL_DRIVER: ${MAIL_DRIVER:-mock}
+    ports:
+      - '${API_PORT:-3333}:3333'
+    volumes: *dev-volumes
+    # Migrations aplicadas no boot: `make up` deixa o banco pronto sozinho.
+    command: >
+      sh -c "pnpm --filter @barbervp/types build
+      && pnpm --filter @barbervp/api exec prisma migrate deploy
+      && pnpm --filter @barbervp/api dev"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1:3333/api/v1/health',
+          r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  site:
+    <<: *dev-image
+    container_name: barbervp-site
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment: *web-env
+    ports:
+      - '${SITE_PORT:-3000}:3000'
+    volumes: *dev-volumes
+    command: pnpm --filter @barbervp/site dev
+
+  booking:
+    <<: *dev-image
+    container_name: barbervp-booking
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment: *web-env
+    ports:
+      - '${BOOKING_PORT:-3001}:3001'
+    volumes: *dev-volumes
+    command: pnpm --filter @barbervp/booking dev
+
+  dashboard:
+    <<: *dev-image
+    container_name: barbervp-dashboard
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment: *web-env
+    ports:
+      - '${DASHBOARD_PORT:-3002}:3002'
+    volumes: *dev-volumes
+    command: pnpm --filter @barbervp/dashboard dev
+
+  admin:
+    <<: *dev-image
+    container_name: barbervp-admin
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment: *web-env
+    ports:
+      - '${ADMIN_PORT:-3003}:3003'
+    volumes: *dev-volumes
+    command: pnpm --filter @barbervp/admin dev
+
+volumes:
+  db-data:
+    name: barbervp-db-data
+  redis-data:
+    name: barbervp-redis-data

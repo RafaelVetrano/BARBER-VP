@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700&display=swap" rel="stylesheet">
+  <style>
+    @keyframes wizToastIn { from{opacity:0;transform:translate(-50%,8px);} to{opacity:1;transform:translate(-50%,0);} }
+    @keyframes successPop { from{transform:scale(0.4);opacity:0;} to{transform:scale(1);opacity:1;} }
+    @keyframes checkDraw { from{stroke-dashoffset:24;} to{stroke-dashoffset:0;} }
+  </style>
+  <script src="./image-slot.js"></script>
+</helmet>
+
+<div style="{{ rootStyle }}">
+  <div style="{{ overlayStyle }}" onClick="{{ requestExit }}"></div>
+
+  <div style="{{ sheetStyle }}">
+    <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ true }}">
+      <div style="width:36px;height:4px;border-radius:2px;background:#2A2F38;position:absolute;top:10px;left:50%;transform:translateX(-50%);"></div>
+    </sc-if>
+
+    <sc-if value="{{ notCompleted }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:44px 1fr 44px;align-items:center;height:56px;padding:0 12px;border-bottom:1px solid #2A2F38;flex-shrink:0;font-family:'Inter',sans-serif;">
+        <button onClick="{{ onBackClick }}" aria-label="Voltar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">←</button>
+        <span style="font-size:16px;font-weight:600;color:#F2F3F5;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ stepTitle }}</span>
+        <button onClick="{{ requestExit }}" aria-label="Fechar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">✕</button>
+      </div>
+
+      <div style="padding:14px 20px 0 20px;flex-shrink:0;">
+        <div style="display:flex;gap:4px;">
+          <sc-for list="{{ stepperSegments }}" as="seg" hint-placeholder-count="4">
+            <div style="flex:1;height:4px;border-radius:2px;background:{{ seg.color }};"></div>
+          </sc-for>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#9AA1AC;font-family:'Inter',sans-serif;">{{ stepperLabel }}</div>
+      </div>
+
+      <div style="flex:1;overflow:hidden;position:relative;margin-top:12px;">
+        <div style="{{ trackStyle }}">
+
+          <div style="width:25%;flex-shrink:0;height:100%;overflow-y:auto;padding:0 20px 20px 20px;font-family:'Inter',sans-serif;">
+            <div style="display:flex;flex-direction:column;">
+              <sc-for list="{{ serviceRows }}" as="row" hint-placeholder-count="6">
+                <div style="min-height:64px;padding:8px 0;display:flex;align-items:center;gap:12px;border-bottom:{{ row.borderStyle }};cursor:pointer;" onClick="{{ row.onToggle }}">
+                  <div style="{{ row.checkboxStyle }}">
+                    <sc-if value="{{ row.checked }}" hint-placeholder-val="{{ false }}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </sc-if>
+                  </div>
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                      <span style="font-size:15px;font-weight:500;color:#F2F3F5;">{{ row.name }}</span>
+                      <sc-if value="{{ row.showBadge }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:10px;padding:2px 6px;border-radius:999px;background:{{ accentSoftBg }};color:{{ accent }};white-space:nowrap;">Incluído na assinatura</span>
+                      </sc-if>
+                    </div>
+                    <span style="font-size:13px;color:#9AA1AC;">{{ row.duration }}</span>
+                    <sc-if value="{{ row.showHint }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size:11px;color:#9AA1AC;">{{ row.hintText }}</span>
+                    </sc-if>
+                  </div>
+                  <span style="font-size:15px;font-weight:600;color:{{ row.priceColor }};flex-shrink:0;">{{ row.priceLabel }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="width:25%;flex-shrink:0;height:100%;overflow-y:auto;padding:0 20px 20px 20px;font-family:'Inter',sans-serif;">
+            <div onClick="{{ onSelectNoPreference }}" style="{{ noPreferenceCardStyle }}">
+              <span style="font-size:24px;flex-shrink:0;line-height:1;">⚡</span>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15px;font-weight:600;color:#F2F3F5;">Sem preferência</span>
+                <span style="font-size:13px;color:#9AA1AC;">Mais rápido disponível · hoje 16:30</span>
+              </div>
+              <div style="{{ noPreferenceRadioStyle }}"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;margin-top:4px;">
+              <sc-for list="{{ barberRows }}" as="b" hint-placeholder-count="4">
+                <div onClick="{{ b.onSelect }}" style="{{ b.rowStyle }}">
+                  <image-slot id="{{ b.photoId }}" shape="circle" placeholder="foto do barbeiro" style="width:48px;height:48px;border-radius:50%;flex-shrink:0;"></image-slot>
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:15px;font-weight:600;color:#F2F3F5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ b.name }}</span>
+                      <span style="font-size:13px;color:{{ accent }};flex-shrink:0;">★ {{ b.rating }}</span>
+                    </div>
+                    <span style="font-size:13px;color:#9AA1AC;">{{ b.sub }}</span>
+                  </div>
+                  <div style="{{ b.radioStyle }}"></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="width:25%;flex-shrink:0;height:100%;overflow-y:auto;padding:0 20px 20px 20px;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:20px;">
+            <div style="display:flex;gap:8px;overflow-x:auto;padding:4px 2px;">
+              <sc-for list="{{ dayPills }}" as="d" hint-placeholder-count="14">
+                <div onClick="{{ d.onClick }}" style="{{ d.pillStyle }}">
+                  <span style="{{ d.weekdayStyle }}">{{ d.weekdayAbbr }}</span>
+                  <span style="{{ d.numStyle }}">{{ d.dayNum }}</span>
+                  <span style="{{ d.bottomStyle }}">{{ d.bottomText }}</span>
+                  <sc-if value="{{ d.showDot }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:#E5484D;"></div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ slotsLoading }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:16px;">
+                <div>
+                  <div style="height:13px;width:70px;background:#1F232B;border-radius:4px;margin-bottom:10px;"></div>
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="height:13px;width:60px;background:#1F232B;border-radius:4px;margin-bottom:10px;"></div>
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                    <div style="height:44px;border-radius:10px;background:#1F232B;"></div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ showTimeGrid }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:16px;">
+                <sc-if value="{{ showUrgentBanner }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;color:#D9A441;">⚡ Últimos {{ allSlotsCount }} horários neste dia</div>
+                </sc-if>
+                <sc-for list="{{ timeGroups }}" as="g" hint-placeholder-count="3">
+                  <div>
+                    <div style="font-size:13px;font-weight:600;color:#9AA1AC;margin-bottom:10px;">{{ g.name }}</div>
+                    <sc-if value="{{ g.hasSlots }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                        <sc-for list="{{ g.slots }}" as="s" hint-placeholder-count="4">
+                          <button onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.time }}</button>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ g.noSlots }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size:13px;color:#9AA1AC;">—</div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ showEmptyDay }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:24px 8px;gap:14px;">
+                <span style="font-size:14px;color:#9AA1AC;">Sem horários neste dia</span>
+                <div style="width:100%;background:#1F232B;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;align-items:center;">
+                  <span style="font-size:13px;color:#9AA1AC;">Próximo livre: {{ nextFreeLabel }}</span>
+                  <button onClick="{{ onGoToNextFree }}" style="height:40px;padding:0 16px;border-radius:10px;border:1px solid {{ accent }};background:transparent;color:{{ accent }};font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Ir para este dia</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="width:25%;flex-shrink:0;height:100%;overflow-y:auto;padding:0 20px 20px 20px;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:16px;">
+            <div style="background:#1F232B;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+              <sc-for list="{{ summaryRows }}" as="row" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <sc-if value="{{ row.noPhoto }}" hint-placeholder-val="{{ true }}">
+                    <span style="font-size:16px;flex-shrink:0;width:16px;text-align:center;">{{ row.icon }}</span>
+                  </sc-if>
+                  <sc-if value="{{ row.photoId }}" hint-placeholder-val="{{ false }}">
+                    <image-slot id="{{ row.photoId }}" shape="circle" placeholder="foto" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;"></image-slot>
+                  </sc-if>
+                  <span style="flex:1;min-width:0;font-size:14px;color:{{ row.textColor }};font-weight:{{ row.textWeight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ row.text }}</span>
+                  <sc-if value="{{ row.showEdit }}" hint-placeholder-val="{{ true }}">
+                    <span onClick="{{ row.onEdit }}" style="font-size:13px;color:{{ accent }};cursor:pointer;flex-shrink:0;">editar</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ isAccountLoggedIn }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#1F232B;border-radius:12px;padding:14px;display:flex;align-items:center;gap:12px;">
+                <div style="width:40px;height:40px;border-radius:50%;background:{{ accentSoftBg }};color:{{ accent }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;">{{ loggedUserInitials }}</div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;">
+                  <span style="font-size:14px;font-weight:600;color:#F2F3F5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ loggedUserFullName }}</span>
+                  <span style="font-size:13px;color:#9AA1AC;display:flex;align-items:center;gap:4px;"><span style="color:#3FB68B;">✓</span> {{ loggedUserPhoneDisplay }} · verificado</span>
+                </div>
+                <span onClick="{{ onTrocarConta }}" style="font-size:13px;color:{{ accent }};cursor:pointer;flex-shrink:0;">trocar conta</span>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isAccountLoggedOut }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px solid #2A2F38;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+                <span style="font-size:14px;color:#F2F3F5;">Já é cliente? <a href="#" onClick="{{ onEntrarClick }}" style="color:{{ accent }};text-decoration:none;font-weight:600;">Entrar</a></span>
+                <button onClick="{{ onCriarContaClick }}" style="height:40px;border-radius:10px;border:1px solid #2A2F38;background:transparent;color:#F2F3F5;font-size:13px;font-family:'Inter',sans-serif;cursor:pointer;" style-hover="border-color:#5B616B;">Criar conta</button>
+              </div>
+              <div style="font-size:13px;color:#9AA1AC;font-weight:600;margin-top:4px;">Ou continue como visitante</div>
+            </sc-if>
+
+            <sc-if value="{{ isAccountLoggedOut }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="font-size:13px;color:#9AA1AC;">Nome completo *</label>
+                <input value="{{ clientName }}" onChange="{{ onNameChange }}" onBlur="{{ onNameBlur }}" placeholder="Seu nome" style="{{ nameInputStyle }}"></input>
+                <sc-if value="{{ nameError }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:12px;color:#E5484D;">{{ nameError }}</span>
+                </sc-if>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label style="font-size:13px;color:#9AA1AC;">WhatsApp *</label>
+                <input value="{{ clientPhone }}" onChange="{{ onPhoneChange }}" onBlur="{{ onPhoneBlur }}" placeholder="(16) 9 9999-9999" inputMode="numeric" style="{{ phoneInputStyle }}"></input>
+                <sc-if value="{{ phoneError }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:12px;color:#E5484D;">{{ phoneError }}</span>
+                </sc-if>
+                <sc-if value="{{ welcomeBackText }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:13px;color:#5FBF9E;">{{ welcomeBackText }}</span>
+                </sc-if>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <span style="font-size:13px;color:#F2F3F5;">Lembrar meus dados neste aparelho</span>
+                <div onClick="{{ onToggleRemember }}" style="{{ rememberToggleTrackStyle }}">
+                  <div style="{{ rememberToggleThumbStyle }}"></div>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:13px;color:#9AA1AC;">Observações (opcional)</label>
+              <textarea value="{{ notes }}" onChange="{{ onNotesChange }}" placeholder="Ex: máquina 2 na lateral" style="height:72px;border-radius:10px;border:1px solid #2A2F38;background:#1A1D23;color:#F2F3F5;font-size:14px;padding:10px 12px;font-family:'Inter',sans-serif;resize:none;"></textarea>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:8px;">
+              <span style="font-size:14px;flex-shrink:0;">💬</span>
+              <span style="font-size:13px;color:#9AA1AC;line-height:1.4;">Você receberá a confirmação e um lembrete pelo WhatsApp</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div style="padding:16px 20px;border-top:1px solid #2A2F38;flex-shrink:0;display:flex;flex-direction:column;gap:8px;font-family:'Inter',sans-serif;">
+        <div style="font-size:13px;color:#9AA1AC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ footerSummary }}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <span style="font-size:16px;font-weight:700;color:{{ accent }};">{{ footerTotal }}</span>
+          <button onClick="{{ onContinueClick }}" disabled="{{ continueDisabled }}" style="{{ continueButtonStyle }}">{{ continueLabel }}</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ completed }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:40px 20px 24px 20px;display:flex;flex-direction:column;align-items:center;font-family:'Inter',sans-serif;position:relative;">
+        <button onClick="{{ onCloseSuccess }}" aria-label="Fechar" style="position:absolute;top:12px;right:12px;width:40px;height:40px;border-radius:50%;border:none;background:transparent;color:#9AA1AC;font-size:16px;cursor:pointer;">✕</button>
+
+        <div style="width:88px;height:88px;border-radius:50%;background:{{ accent }};display:flex;align-items:center;justify-content:center;animation:successPop 0.45s cubic-bezier(.34,1.56,.64,1) both;flex-shrink:0;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" style="animation:checkDraw 0.4s 0.35s ease-out both;"></path></svg>
+        </div>
+
+        <span style="font-family:'Sora',sans-serif;font-size:24px;font-weight:700;color:#F2F3F5;margin-top:20px;text-align:center;">Agendado! 🎉</span>
+        <span style="font-size:14px;color:#9AA1AC;margin-top:6px;text-align:center;">{{ successSubtitle }}</span>
+
+        <div style="width:100%;background:#1F232B;border-radius:16px;padding:16px;margin-top:24px;display:flex;flex-direction:column;gap:10px;">
+          <sc-for list="{{ successSummaryRows }}" as="row" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <sc-if value="{{ row.noPhoto }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size:16px;flex-shrink:0;width:16px;text-align:center;">{{ row.icon }}</span>
+              </sc-if>
+              <sc-if value="{{ row.photoId }}" hint-placeholder-val="{{ false }}">
+                <image-slot id="{{ row.photoId }}" shape="circle" placeholder="foto" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;"></image-slot>
+              </sc-if>
+              <span style="flex:1;min-width:0;font-size:14px;color:{{ row.textColor }};font-weight:{{ row.textWeight }};">{{ row.text }}</span>
+            </div>
+          </sc-for>
+          <div style="border-top:1px dashed #2A2F38;margin-top:2px;padding-top:10px;display:flex;justify-content:space-between;">
+            <span style="font-size:13px;color:#9AA1AC;">Código da reserva</span>
+            <span style="font-size:13px;color:#9AA1AC;font-family:monospace;">{{ bookingId }}</span>
+          </div>
+        </div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:12px;margin-top:24px;">
+          <button onClick="{{ onAddToCalendar }}" style="height:48px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:15px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Adicionar ao calendário</button>
+          <button onClick="{{ onShare }}" style="height:48px;border-radius:12px;border:1px solid #2A2F38;background:transparent;color:#F2F3F5;font-size:15px;cursor:pointer;font-family:'Inter',sans-serif;">Compartilhar</button>
+          <button onClick="{{ onRestart }}" style="height:48px;border-radius:12px;border:none;background:transparent;color:#9AA1AC;font-size:15px;cursor:pointer;font-family:'Inter',sans-serif;">Fazer outro agendamento</button>
+        </div>
+
+        <div style="width:100%;border:1px solid #2A2F38;border-radius:12px;padding:14px;margin-top:24px;">
+          <span style="font-size:13px;color:#9AA1AC;line-height:1.6;">• Chegue 5 min antes<br></br>• Cancele até 3h antes em Meus horários<br></br>• Após 3 faltas o agendamento online é bloqueado</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:50%;bottom:96px;transform:translateX(-50%);background:#1F232B;border:1px solid #2A2F38;color:#F2F3F5;font-size:14px;padding:10px 18px;border-radius:999px;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:wizToastIn 0.2s ease-out;z-index:210;font-family:'Inter',sans-serif;">{{ toast }}</div>
+    </sc-if>
+
+    <sc-if value="{{ showExitConfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:220;padding:20px;">
+        <div style="width:100%;max-width:300px;background:#1F232B;border:1px solid #2A2F38;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+          <span style="font-size:14px;color:#F2F3F5;line-height:1.5;">Sair do agendamento? Suas escolhas serão perdidas.</span>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button onClick="{{ onKeepGoing }}" style="height:44px;border-radius:10px;border:none;background:{{ accent }};color:#0F1115;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Continuar agendando</button>
+            <button onClick="{{ onExitConfirmed }}" style="height:44px;border-radius:10px;border:1px solid #2A2F38;background:transparent;color:#F2F3F5;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;">Sair</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <dc-import name="ClienteAuth" open="{{ authOpen }}" initial-mode="{{ authMode }}" accent-color="{{ accent }}" on-close="{{ closeInlineAuth }}" on-auth-success="{{ onInlineAuthSuccess }}" hint-size="100%,100%"></dc-import>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 390, &quot;height&quot;: 844},
+  &quot;open&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;},
+  &quot;accentColor&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#D4A84C&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#D4A84C&quot;, &quot;#5FBF9E&quot;, &quot;#C97BD1&quot;, &quot;#5CA6D4&quot;]},
+  &quot;currentUser&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;object | null&quot;},
+  &quot;onClose&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onAuthSuccess&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(user: object) =&gt; void&quot;},
+  &quot;pendingServiceId&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;string | null&quot;},
+  &quot;pendingToken&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;number&quot;},
+  &quot;assinatura&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;object | null&quot;},
+  &quot;onBookingConfirmed&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(coveredServiceIds: string[]) =&gt; void&quot;}
+}">
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function formatDuration(min) {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m > 0 ? `${h}h${m}` : `${h}h`;
+}
+
+function formatPhoneBR(digits) {
+  let out = '';
+  if (digits.length > 0) out += '(' + digits.slice(0, 2);
+  if (digits.length >= 2) out += ') ';
+  if (digits.length > 2) out += digits.slice(2, 3);
+  if (digits.length > 3) out += ' ' + digits.slice(3, 7);
+  if (digits.length > 7) out += '-' + digits.slice(7, 11);
+  return out;
+}
+
+function filterByDuration(times, closingHour, totalDuration) {
+  return times.filter((t) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m + totalDuration <= closingHour * 60;
+  });
+}
+
+const SERVICES = [
+  { id: 's1', name: 'Corte Masculino', durationMin: 45, price: 45 },
+  { id: 's2', name: 'Barba', durationMin: 30, price: 35 },
+  { id: 's3', name: 'Corte + Barba', durationMin: 70, price: 70 },
+  { id: 's4', name: 'Sobrancelha', durationMin: 15, price: 20 },
+  { id: 's5', name: 'Pigmentação', durationMin: 40, price: 60 },
+  { id: 's6', name: 'Corte Infantil', durationMin: 30, price: 35 },
+  { id: 's7', name: 'Relaxamento', durationMin: 50, price: 55 },
+];
+const COMBO_ID = 's3';
+const PAIR_IDS = ['s1', 's2'];
+
+const BARBERS = [
+  { id: 'b1', name: 'Carlos Silva', rating: '4.9', photoId: 'barber-carlos', nextFree: 'hoje 17:15', doesPigmentacao: false },
+  { id: 'b2', name: 'Rafael Souza', rating: '4.8', photoId: 'barber-rafael', nextFree: 'hoje 18:00', doesPigmentacao: false },
+  { id: 'b3', name: 'Diego Alves', rating: '5.0', photoId: 'barber-diego', nextFree: 'amanhã 09:30', doesPigmentacao: true },
+  { id: 'b4', name: 'Bruno Costa', rating: '4.7', photoId: 'barber-bruno', nextFree: 'hoje 19:00', doesPigmentacao: false },
+];
+
+const STEP_TITLES = { 1: 'Serviços', 2: 'Barbeiro', 3: 'Data e horário', 4: 'Confirmação' };
+
+const WEEKDAY_ABBR = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+const WEEKDAY_FULL = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+const MONTH_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MONTH_FULL = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+const SLOT_PATTERNS = {
+  'sat-example': { manha: ['08:00', '08:45', '09:30', '10:15', '11:00'], tarde: ['13:00', '13:45', '15:00', '15:45', '16:30'], noite: [] },
+  full: { manha: ['08:00', '08:45', '09:30', '10:15', '11:00'], tarde: ['13:00', '13:45', '14:30', '15:15', '16:00', '16:45'], noite: ['18:00', '18:45'] },
+  low: { manha: [], tarde: ['14:00', '14:45', '15:30'], noite: [] },
+  booked: { manha: [], tarde: [], noite: [] },
+  closed: { manha: [], tarde: [], noite: [] },
+};
+
+const KNOWN_CLIENTS = [
+  { phone: '16999990001', name: 'João Pedro Lima' },
+  { phone: '16988887777', name: 'Maria Fernanda' },
+];
+
+class Component extends DCLogic {
+  state = {
+    step: 1,
+    selectedServiceIds: [],
+    selectedBarberId: null,
+    showExitConfirm: false,
+    isDesktop: false,
+    toast: null,
+    selectedDayIndex: 0,
+    selectedTime: null,
+    slotsLoading: false,
+    clientName: '',
+    clientPhone: '',
+    notes: '',
+    rememberMe: true,
+    nameTouched: false,
+    phoneTouched: false,
+    welcomeFirstName: null,
+    completed: false,
+    bookingId: null,
+    authOpen: false,
+    authMode: 'login',
+  };
+
+  buildDaysMeta = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const out = [];
+    let weekdayCounter = 0;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const dow = d.getDay();
+      const closed = dow === 0 || dow === 1;
+      let pattern;
+      if (closed) pattern = 'closed';
+      else if (dow === 6) pattern = 'sat-example';
+      else {
+        weekdayCounter++;
+        pattern = weekdayCounter === 2 ? 'booked' : weekdayCounter === 4 ? 'low' : 'full';
+      }
+      const closingHour = dow === 6 ? 18 : 19;
+      const src = SLOT_PATTERNS[pattern];
+      out.push({ date: d, dow, closed, closingHour, manha: src.manha, tarde: src.tarde, noite: src.noite });
+    }
+    return out;
+  };
+
+  daysMeta = this.buildDaysMeta();
+
+  componentDidMount() {
+    this.handleResize = () => {
+      const isDesktop = window.innerWidth >= 768;
+      if (isDesktop !== this.state.isDesktop) this.setState({ isDesktop });
+    };
+    window.addEventListener('resize', this.handleResize);
+    this.handleResize();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.handleResize);
+    clearTimeout(this._toastTimer);
+    clearTimeout(this._slotsTimer);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.props.pendingToken !== prevProps.pendingToken && this.props.pendingServiceId) {
+      const id = this.props.pendingServiceId;
+      this.setState((s) => {
+        const ids = new Set(s.selectedServiceIds);
+        let showComboToast = false;
+        if (!ids.has(id)) {
+          ids.add(id);
+          if (id === COMBO_ID) {
+            PAIR_IDS.forEach((p) => { if (ids.has(p)) { ids.delete(p); showComboToast = true; } });
+          } else if (PAIR_IDS.includes(id) && PAIR_IDS.every((p) => ids.has(p))) {
+            PAIR_IDS.forEach((p) => ids.delete(p));
+            ids.add(COMBO_ID);
+            showComboToast = true;
+          }
+        }
+        if (showComboToast) this.queueToast('Combo aplicado — sai mais barato 😉');
+        return { selectedServiceIds: [...ids], step: 1 };
+      });
+    }
+  }
+
+  queueToast = (msg) => {
+    clearTimeout(this._toastTimer);
+    this.setState({ toast: msg });
+    this._toastTimer = setTimeout(() => this.setState({ toast: null }), 3000);
+  };
+
+  toggleService = (id) => {
+    this.setState((s) => {
+      const ids = new Set(s.selectedServiceIds);
+      let showComboToast = false;
+      if (ids.has(id)) {
+        ids.delete(id);
+      } else {
+        ids.add(id);
+        if (id === COMBO_ID) {
+          PAIR_IDS.forEach((p) => { if (ids.has(p)) { ids.delete(p); showComboToast = true; } });
+        } else if (PAIR_IDS.includes(id) && PAIR_IDS.every((p) => ids.has(p))) {
+          PAIR_IDS.forEach((p) => ids.delete(p));
+          ids.add(COMBO_ID);
+          showComboToast = true;
+        }
+      }
+      const newIds = [...ids];
+      let selectedBarberId = s.selectedBarberId;
+      if (selectedBarberId && selectedBarberId !== 'none') {
+        const barber = BARBERS.find((b) => b.id === selectedBarberId);
+        if (newIds.includes('s5') && barber && !barber.doesPigmentacao) selectedBarberId = null;
+      }
+      if (showComboToast) this.queueToast('Combo aplicado — sai mais barato 😉');
+      return { selectedServiceIds: newIds, selectedBarberId };
+    });
+  };
+
+  selectBarber = (id) => this.setState({ selectedBarberId: id });
+  onSelectNoPreference = () => this.selectBarber('none');
+
+  selectDay = (i) => {
+    if (this.daysMeta[i].closed) return;
+    clearTimeout(this._slotsTimer);
+    this.setState({ selectedDayIndex: i, selectedTime: null, slotsLoading: true });
+    this._slotsTimer = setTimeout(() => this.setState({ slotsLoading: false }), 500);
+  };
+
+  onNameChange = (e) => this.setState({ clientName: e.target.value });
+  onNameBlur = () => this.setState({ nameTouched: true });
+  onNotesChange = (e) => this.setState({ notes: e.target.value });
+  onToggleRemember = () => this.setState((s) => ({ rememberMe: !s.rememberMe }));
+
+  onPhoneChange = (e) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 11);
+    const formatted = formatPhoneBR(raw);
+    const known = raw.length === 11 ? KNOWN_CLIENTS.find((c) => c.phone === raw) : null;
+    this.setState({
+      clientPhone: formatted,
+      ...(known ? { clientName: known.name, welcomeFirstName: known.name.split(' ')[0] } : raw.length < 11 ? { welcomeFirstName: null } : {}),
+    });
+  };
+  onPhoneBlur = () => this.setState({ phoneTouched: true });
+
+  onBackClick = () => {
+    if (this.state.step > 1) this.setState((s) => ({ step: s.step - 1 }));
+    else this.requestExit();
+  };
+
+  requestExit = () => {
+    const hasSelection = this.state.selectedServiceIds.length > 0 || !!this.state.selectedBarberId;
+    if (hasSelection) this.setState({ showExitConfirm: true });
+    else if (this.props.onClose) this.props.onClose();
+  };
+
+  openInlineAuth = (mode) => this.setState({ authOpen: true, authMode: mode });
+  closeInlineAuth = () => this.setState({ authOpen: false });
+  onInlineAuthSuccess = (user) => {
+    this.setState({ authOpen: false });
+    if (this.props.onAuthSuccess) this.props.onAuthSuccess(user);
+  };
+  onEntrarClick = (e) => { e.preventDefault(); this.openInlineAuth('login'); };
+  onCriarContaClick = () => this.openInlineAuth('registro');
+  onTrocarConta = () => this.openInlineAuth('login');
+
+  onKeepGoing = () => this.setState({ showExitConfirm: false });
+  onExitConfirmed = () => {
+    this.setState({
+      showExitConfirm: false,
+      step: 1, selectedServiceIds: [], selectedBarberId: null,
+      selectedDayIndex: 0, selectedTime: null, slotsLoading: false,
+      clientName: '', clientPhone: '', notes: '', rememberMe: true,
+      nameTouched: false, phoneTouched: false, welcomeFirstName: null,
+    });
+    if (this.props.onClose) this.props.onClose();
+  };
+
+  submitBooking = () => {
+    const coveredIds = this.getCoveredServiceIds();
+    if (this.props.onBookingConfirmed && coveredIds.length > 0) this.props.onBookingConfirmed(coveredIds);
+    if (this.props.currentUser) {
+      const bookingId = `AG-${1000 + Math.floor(Math.random() * 9000)}`;
+      this.setState({ completed: true, bookingId });
+      return;
+    }
+    this.setState({ nameTouched: true, phoneTouched: true });
+    const digitsOnly = (this.state.clientPhone || '').replace(/\D/g, '');
+    const valid = this.state.clientName.trim().length > 0 && digitsOnly.length === 11;
+    if (!valid) return;
+    const bookingId = `AG-${1000 + Math.floor(Math.random() * 9000)}`;
+    this.setState({ completed: true, bookingId });
+  };
+
+  onContinueClick = () => {
+    const { step } = this.state;
+    if (step === 1 && this.state.selectedServiceIds.length > 0) this.setState({ step: 2 });
+    else if (step === 2 && this.state.selectedBarberId) this.setState({ step: 3 });
+    else if (step === 3 && this.state.selectedTime) this.setState({ step: 4 });
+    else if (step === 4) this.submitBooking();
+  };
+
+  onAddToCalendar = () => this.queueToast('Adicionado ao calendário ✅');
+  onShare = () => this.queueToast('Link copiado!');
+
+  onRestart = () => this.setState({
+    step: 1, selectedServiceIds: [], selectedBarberId: null,
+    selectedDayIndex: 0, selectedTime: null, slotsLoading: false,
+    clientName: '', clientPhone: '', notes: '', rememberMe: true,
+    nameTouched: false, phoneTouched: false, welcomeFirstName: null,
+    completed: false, bookingId: null,
+  });
+
+  onCloseSuccess = () => {
+    this.onRestart();
+    if (this.props.onClose) this.props.onClose();
+  };
+
+  getCoverageMap = () => {
+    const assinatura = this.props.assinatura;
+    const map = {};
+    if (assinatura) assinatura.usos.forEach((u) => { map[u.serviceId] = { hasUsosLeft: u.usados < u.total, proximaCobranca: assinatura.proximaCobranca }; });
+    return map;
+  };
+  getCoveredServiceIds = () => {
+    const coverage = this.getCoverageMap();
+    return this.state.selectedServiceIds.filter((id) => coverage[id] && coverage[id].hasUsosLeft);
+  };
+
+  buildSummaryRows = (accent) => {
+    const state = this.state;
+    const selectedServices = SERVICES.filter((s) => state.selectedServiceIds.includes(s.id));
+    const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMin, 0);
+    const coverage = this.getCoverageMap();
+    const coveredIds = state.selectedServiceIds.filter((id) => coverage[id] && coverage[id].hasUsosLeft);
+    const totalPrice = selectedServices.reduce((sum, s) => sum + (coveredIds.includes(s.id) ? 0 : s.price), 0);
+    const servicesText = selectedServices.length
+      ? `${selectedServices.map((s) => s.name).join(' + ')} · ${formatDuration(totalDuration)}`
+      : '—';
+    const barber = BARBERS.find((b) => b.id === state.selectedBarberId);
+    const barberText = state.selectedBarberId === 'none' ? 'Sem preferência' : (barber ? barber.name : '—');
+    const barberPhotoId = (state.selectedBarberId && state.selectedBarberId !== 'none' && barber) ? barber.photoId : null;
+    const activeDay = this.daysMeta[state.selectedDayIndex ?? 0];
+    const dateText = (activeDay && state.selectedTime)
+      ? `${WEEKDAY_FULL[activeDay.dow]}, ${activeDay.date.getDate()} de ${MONTH_FULL[activeDay.date.getMonth()]} · ${state.selectedTime}`
+      : '—';
+    const anyCovered = coveredIds.length > 0;
+    const moneyText = anyCovered
+      ? (totalPrice === 0 ? `R$ 0 · coberto pela assinatura` : `R$ ${totalPrice} · parte coberta pela assinatura`)
+      : `R$ ${totalPrice}`;
+    return [
+      { icon: '✂️', text: servicesText, photoId: null, noPhoto: true, textColor: '#F2F3F5', textWeight: 400, step: 1, showEdit: true },
+      { icon: '👤', text: barberText, photoId: barberPhotoId, noPhoto: !barberPhotoId, textColor: '#F2F3F5', textWeight: 400, step: 2, showEdit: true },
+      { icon: '📅', text: dateText, photoId: null, noPhoto: true, textColor: '#F2F3F5', textWeight: 400, step: 3, showEdit: true },
+      { icon: '💰', text: moneyText, photoId: null, noPhoto: true, textColor: accent, textWeight: 600, step: 1, showEdit: false },
+    ];
+  };
+
+  renderVals() {
+    const state = this.state;
+    const { step, selectedServiceIds, selectedBarberId, showExitConfirm, isDesktop, toast, completed } = state;
+    const open = this.props.open ?? true;
+    const accent = this.props.accentColor ?? '#D4A84C';
+    const accentSoft = hexToRgba(accent, 0.5);
+
+    const rootStyle = `position:fixed;inset:0;z-index:100;pointer-events:${open ? 'auto' : 'none'};`;
+    const overlayStyle = `position:fixed;inset:0;background:#000000;opacity:${open ? 0.6 : 0};transition:opacity 250ms ease;`;
+
+    const sheetStyle = isDesktop
+      ? `position:fixed;top:50%;left:50%;width:480px;height:720px;max-height:90vh;background:#15171C;border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.5);transform:translate(-50%,-50%) scale(${open ? 1 : 0.96});opacity:${open ? 1 : 0};transition:transform 250ms ease, opacity 250ms ease;`
+      : `position:fixed;left:0;right:0;bottom:0;margin:0 auto;width:100%;max-width:480px;height:92vh;background:#15171C;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -8px 32px rgba(0,0,0,0.5);transform:translateY(${open ? '0' : '100%'});transition:transform 300ms cubic-bezier(.32,.72,0,1);`;
+
+    const trackStyle = `display:flex;height:100%;width:400%;transform:translateX(-${(step - 1) * 25}%);transition:transform 200ms ease;`;
+
+    const stepTitle = STEP_TITLES[step];
+    const stepperSegments = [1, 2, 3, 4].map((i) => ({
+      color: i < step ? accent : i === step ? accentSoft : '#2A2F38',
+    }));
+    const stepperLabel = `Etapa ${step} de 4 · ${stepTitle}`;
+
+    const coverageMap = this.getCoverageMap();
+    const serviceRows = SERVICES.map((s, i) => {
+      const checked = selectedServiceIds.includes(s.id);
+      const cov = coverageMap[s.id];
+      const showBadge = !!cov && cov.hasUsosLeft;
+      const showHint = !!cov && !cov.hasUsosLeft;
+      return {
+        name: s.name,
+        duration: formatDuration(s.durationMin),
+        price: `R$ ${s.price}`,
+        priceLabel: showBadge ? 'Incluído' : `R$ ${s.price}`,
+        priceColor: showBadge ? accent : '#F2F3F5',
+        showBadge, showHint,
+        hintText: showHint ? `Usos do ciclo esgotados · renova em ${cov.proximaCobranca}` : '',
+        checked,
+        onToggle: () => this.toggleService(s.id),
+        checkboxStyle: checked
+          ? `width:24px;height:24px;border-radius:6px;background:${accent};display:flex;align-items:center;justify-content:center;flex-shrink:0;`
+          : `width:24px;height:24px;border-radius:6px;border:1.5px solid #2A2F38;flex-shrink:0;`,
+        borderStyle: i === SERVICES.length - 1 ? 'none' : '1px solid #2A2F38',
+      };
+    });
+
+    const barberRows = BARBERS.map((b, i) => {
+      const incompatible = selectedServiceIds.includes('s5') && !b.doesPigmentacao;
+      const selected = selectedBarberId === b.id;
+      const radioStyle = selected
+        ? `width:24px;height:24px;border-radius:50%;border:1.5px solid ${accent};flex-shrink:0;background:radial-gradient(circle, ${accent} 0 7px, transparent 8px);`
+        : `width:24px;height:24px;border-radius:50%;border:1.5px solid #2A2F38;flex-shrink:0;`;
+      return {
+        name: b.name,
+        rating: b.rating,
+        photoId: b.photoId,
+        sub: incompatible ? 'não realiza Pigmentação' : `Próximo livre: ${b.nextFree}`,
+        onSelect: incompatible ? undefined : () => this.selectBarber(b.id),
+        rowStyle: `height:76px;display:flex;align-items:center;gap:12px;border-bottom:${i === BARBERS.length - 1 ? 'none' : '1px solid #2A2F38'};cursor:${incompatible ? 'default' : 'pointer'};opacity:${incompatible ? 0.4 : 1};`,
+        radioStyle,
+      };
+    });
+
+    const noPrefSelected = selectedBarberId === 'none';
+    const noPreferenceCardStyle = `border:1px solid ${accent};border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;background:${noPrefSelected ? hexToRgba(accent, 0.1) : 'transparent'};`;
+    const noPreferenceRadioStyle = noPrefSelected
+      ? `width:24px;height:24px;border-radius:50%;border:1.5px solid ${accent};flex-shrink:0;background:radial-gradient(circle, ${accent} 0 7px, transparent 8px);`
+      : `width:24px;height:24px;border-radius:50%;border:1.5px solid #2A2F38;flex-shrink:0;`;
+
+    const selectedServices = SERVICES.filter((s) => selectedServiceIds.includes(s.id));
+    const totalDuration = selectedServices.reduce((sum, s) => sum + s.durationMin, 0);
+    const coveredIdsFooter = this.getCoveredServiceIds();
+    const totalPrice = selectedServices.reduce((sum, s) => sum + (coveredIdsFooter.includes(s.id) ? 0 : s.price), 0);
+    const footerSummary = selectedServices.length
+      ? `${selectedServices.map((s) => s.name).join(' + ')} · ${formatDuration(totalDuration)}`
+      : 'Nenhum serviço selecionado';
+    const footerTotal = `R$ ${totalPrice}`;
+
+    // Step 3 — date & time
+    const selectedDayIndex = state.selectedDayIndex ?? 0;
+    const dayPills = this.daysMeta.map((day, i) => {
+      const selected = i === selectedDayIndex;
+      const baselineTotal = day.manha.length + day.tarde.length + day.noite.length;
+      const noVagas = !day.closed && baselineTotal === 0;
+      const textColor = selected ? '#0F1115' : '#F2F3F5';
+      const secondaryColor = selected ? '#0F1115' : '#9AA1AC';
+      return {
+        weekdayAbbr: WEEKDAY_ABBR[day.dow],
+        dayNum: day.date.getDate(),
+        bottomText: day.closed ? 'Fechado' : MONTH_ABBR[day.date.getMonth()],
+        showDot: noVagas,
+        onClick: day.closed ? undefined : () => this.selectDay(i),
+        pillStyle: `position:relative;flex-shrink:0;width:56px;height:72px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:${day.closed ? 'default' : 'pointer'};opacity:${day.closed ? 0.4 : 1};background:${selected ? accent : '#1F232B'};border:1px solid ${selected ? accent : '#2A2F38'};`,
+        weekdayStyle: `font-size:11px;text-transform:uppercase;font-weight:600;color:${secondaryColor};`,
+        numStyle: `font-size:18px;font-weight:700;color:${textColor};`,
+        bottomStyle: `font-size:${day.closed ? '10px' : '11px'};color:${secondaryColor};`,
+      };
+    });
+
+    const activeDay = this.daysMeta[selectedDayIndex];
+    const manhaSlots = filterByDuration(activeDay.manha, activeDay.closingHour, totalDuration);
+    const tardeSlots = filterByDuration(activeDay.tarde, activeDay.closingHour, totalDuration);
+    const noiteSlots = filterByDuration(activeDay.noite, activeDay.closingHour, totalDuration);
+    const allSlotsCount = manhaSlots.length + tardeSlots.length + noiteSlots.length;
+    const dayEmpty = allSlotsCount === 0;
+    const showUrgentBanner = allSlotsCount > 0 && allSlotsCount <= 3;
+    const slotsLoading = !!state.slotsLoading;
+    const showTimeGrid = !slotsLoading && !dayEmpty;
+    const showEmptyDay = !slotsLoading && dayEmpty;
+
+    const selectedTime = state.selectedTime;
+    const makeGroup = (name, slots) => ({
+      name,
+      hasSlots: slots.length > 0,
+      noSlots: slots.length === 0,
+      slots: slots.map((t) => {
+        const sel = selectedTime === t;
+        return {
+          time: t,
+          onClick: () => this.setState({ selectedTime: t }),
+          style: `height:44px;border-radius:10px;border:1px solid ${sel ? accent : '#2A2F38'};background:${sel ? accent : 'transparent'};color:${sel ? '#0F1115' : '#F2F3F5'};font-size:14px;font-variant-numeric:tabular-nums;cursor:pointer;font-family:'Inter',sans-serif;`,
+        };
+      }),
+    });
+    const timeGroups = [makeGroup('MANHÃ', manhaSlots), makeGroup('TARDE', tardeSlots), makeGroup('NOITE', noiteSlots)];
+
+    let nextFreeLabel = 'em breve';
+    let nextFreeIndex = null;
+    for (let i = selectedDayIndex + 1; i < this.daysMeta.length; i++) {
+      const dm = this.daysMeta[i];
+      if (dm.closed) continue;
+      const m = filterByDuration(dm.manha, dm.closingHour, totalDuration);
+      const t = filterByDuration(dm.tarde, dm.closingHour, totalDuration);
+      const n = filterByDuration(dm.noite, dm.closingHour, totalDuration);
+      const all = [...m, ...t, ...n];
+      if (all.length > 0) {
+        nextFreeLabel = `${WEEKDAY_ABBR[dm.dow]} ${dm.date.getDate()} · ${all[0]}`;
+        nextFreeIndex = i;
+        break;
+      }
+    }
+    const onGoToNextFree = nextFreeIndex != null ? () => this.selectDay(nextFreeIndex) : undefined;
+
+    // Step 4 — client data
+    const baseSummaryRows = this.buildSummaryRows(accent);
+    const summaryRows = baseSummaryRows.map((r) => ({ ...r, onEdit: () => this.setState({ step: r.step }) }));
+    const successSummaryRows = baseSummaryRows;
+
+    const digitsOnly = (state.clientPhone || '').replace(/\D/g, '');
+    const nameError = state.nameTouched && !state.clientName.trim() ? 'Informe seu nome' : null;
+    const phoneError = state.phoneTouched && digitsOnly.length < 11 ? 'Número incompleto' : null;
+    const inputBase = `height:48px;border-radius:10px;background:#1A1D23;color:#F2F3F5;font-size:14px;padding:0 12px;font-family:'Inter',sans-serif;`;
+    const nameInputStyle = `${inputBase}border:1px solid ${nameError ? '#E5484D' : '#2A2F38'};`;
+    const phoneInputStyle = `${inputBase}border:1px solid ${phoneError ? '#E5484D' : '#2A2F38'};`;
+    const welcomeBackText = state.welcomeFirstName ? `👋 Bem-vindo de volta, ${state.welcomeFirstName}!` : null;
+    const isFormValid = state.clientName.trim().length > 0 && digitsOnly.length === 11;
+
+    const currentUser = this.props.currentUser ?? null;
+    const isAccountLoggedIn = !!currentUser;
+    const isAccountLoggedOut = !currentUser;
+    const loggedUserFullName = currentUser ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : '';
+    const loggedUserInitials = currentUser ? `${currentUser.firstName[0]}${(currentUser.lastName || '')[0] || ''}`.toUpperCase() : '';
+    const loggedUserPhoneDisplay = currentUser ? formatPhoneBR((currentUser.phone || '').replace(/\D/g, '')) : '';
+
+    const rememberToggleTrackStyle = `width:44px;height:24px;border-radius:12px;background:${state.rememberMe ? accent : '#2A2F38'};position:relative;cursor:pointer;transition:background 150ms ease;flex-shrink:0;`;
+    const rememberToggleThumbStyle = `width:18px;height:18px;border-radius:50%;background:#ffffff;position:absolute;top:3px;left:${state.rememberMe ? '23px' : '3px'};transition:left 150ms ease;`;
+
+    let continueDisabled;
+    if (step === 1) continueDisabled = selectedServiceIds.length === 0;
+    else if (step === 2) continueDisabled = !selectedBarberId;
+    else if (step === 3) continueDisabled = !selectedTime;
+    else continueDisabled = !this.props.currentUser && !isFormValid;
+    const continueLabel = step === 4 ? 'Confirmar agendamento' : 'Continuar';
+    const continueButtonStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;flex:0 0 60%;${continueDisabled ? 'background:#2A2F38;color:#5B616B;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+
+    const successSubtitle = (activeDay && selectedTime)
+      ? `Te esperamos ${WEEKDAY_FULL[activeDay.dow].toLowerCase()} às ${selectedTime}`
+      : '';
+
+    return {
+      rootStyle,
+      overlayStyle,
+      sheetStyle,
+      trackStyle,
+      isMobile: !isDesktop,
+      accent,
+      stepTitle,
+      stepperSegments,
+      stepperLabel,
+      serviceRows,
+      barberRows,
+      onSelectNoPreference: this.onSelectNoPreference,
+      noPreferenceCardStyle,
+      noPreferenceRadioStyle,
+      footerSummary,
+      footerTotal,
+      continueDisabled,
+      continueLabel,
+      continueButtonStyle,
+      onContinueClick: this.onContinueClick,
+      onBackClick: this.onBackClick,
+      requestExit: this.requestExit,
+      showExitConfirm,
+      onKeepGoing: this.onKeepGoing,
+      onExitConfirmed: this.onExitConfirmed,
+      toast,
+      notCompleted: !completed,
+      completed,
+      dayPills,
+      slotsLoading,
+      showTimeGrid,
+      showEmptyDay,
+      showUrgentBanner,
+      allSlotsCount,
+      timeGroups,
+      nextFreeLabel,
+      onGoToNextFree,
+      summaryRows,
+      successSummaryRows,
+      clientName: state.clientName,
+      clientPhone: state.clientPhone,
+      notes: state.notes,
+      onNameChange: this.onNameChange,
+      onNameBlur: this.onNameBlur,
+      onPhoneChange: this.onPhoneChange,
+      onPhoneBlur: this.onPhoneBlur,
+      onNotesChange: this.onNotesChange,
+      nameError,
+      phoneError,
+      welcomeBackText,
+      nameInputStyle,
+      phoneInputStyle,
+      onToggleRemember: this.onToggleRemember,
+      rememberToggleTrackStyle,
+      rememberToggleThumbStyle,
+      bookingId: state.bookingId,
+      successSubtitle,
+      onAddToCalendar: this.onAddToCalendar,
+      onShare: this.onShare,
+      onRestart: this.onRestart,
+      onCloseSuccess: this.onCloseSuccess,
+      isAccountLoggedIn,
+      isAccountLoggedOut,
+      loggedUserFullName,
+      loggedUserInitials,
+      loggedUserPhoneDisplay,
+      accentSoftBg: hexToRgba(accent, 0.15),
+      onTrocarConta: this.onTrocarConta,
+      onEntrarClick: this.onEntrarClick,
+      onCriarContaClick: this.onCriarContaClick,
+      authOpen: state.authOpen,
+      authMode: state.authMode,
+      closeInlineAuth: this.closeInlineAuth,
+      onInlineAuthSuccess: this.onInlineAuthSuccess,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

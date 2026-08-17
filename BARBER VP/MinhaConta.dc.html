@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700&display=swap" rel="stylesheet">
+  <style>
+    @keyframes contaToastIn { from{opacity:0;transform:translate(-50%,8px);} to{opacity:1;transform:translate(-50%,0);} }
+  </style>
+  <script src="./image-slot.js"></script>
+</helmet>
+
+<div style="{{ rootStyle }}">
+  <div style="{{ overlayStyle }}" onClick="{{ onOverlayClick }}"></div>
+
+  <div style="{{ sheetStyle }}">
+    <div style="display:grid;grid-template-columns:44px 1fr 44px;align-items:center;height:56px;padding:0 12px;border-bottom:1px solid #2A2F38;flex-shrink:0;font-family:'Inter',sans-serif;">
+      <button onClick="{{ onCloseClick }}" aria-label="Voltar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">←</button>
+      <span style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:#F2F3F5;text-align:center;">{{ headerTitle }}</span>
+      <div></div>
+    </div>
+
+    <div style="display:flex;border-bottom:1px solid #2A2F38;flex-shrink:0;">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+        <button onClick="{{ onSelectTabAgendamentos }}" style="{{ tabAgendamentosStyle }}">Agendamentos</button>
+        <div style="{{ indicatorAgendamentosStyle }}"></div>
+      </div>
+      <sc-if value="{{ showAssinaturaTab }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+          <button onClick="{{ onSelectTabAssinatura }}" style="{{ tabAssinaturaStyle }}">Assinatura</button>
+          <div style="{{ indicatorAssinaturaStyle }}"></div>
+        </div>
+      </sc-if>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+        <button onClick="{{ onSelectTabDados }}" style="{{ tabDadosStyle }}">Meus dados</button>
+        <div style="{{ indicatorDadosStyle }}"></div>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;font-family:'Inter',sans-serif;">
+
+      <sc-if value="{{ isTabAgendamentos }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:16px 20px 0 20px;">
+          <div style="display:flex;background:#1F232B;border-radius:10px;padding:4px;gap:4px;">
+            <button onClick="{{ onSelectSubProximos }}" style="{{ subProximosStyle }}">Próximos</button>
+            <button onClick="{{ onSelectSubHistorico }}" style="{{ subHistoricoStyle }}">Histórico</button>
+          </div>
+        </div>
+
+        <sc-if value="{{ isSubProximos }}" hint-placeholder-val="{{ true }}">
+          <sc-if value="{{ showEmptyProximos }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:56px 32px 32px 32px;gap:18px;">
+              <svg width="100" height="100" viewBox="0 0 120 120" fill="none">
+                <circle cx="60" cy="28" r="16" stroke="#2A2F38" stroke-width="3"></circle>
+                <rect x="30" y="55" width="60" height="30" rx="6" stroke="#2A2F38" stroke-width="3"></rect>
+                <line x1="60" y1="85" x2="60" y2="105" stroke="#2A2F38" stroke-width="3"></line>
+                <line x1="35" y1="105" x2="85" y2="105" stroke="#2A2F38" stroke-width="3"></line>
+              </svg>
+              <span style="font-size:15px;color:#9AA1AC;line-height:1.4;">Você ainda não tem horários marcados</span>
+              <button onClick="{{ onNovoClick }}" style="height:48px;padding:0 24px;border-radius:999px;border:none;background:{{ accent }};color:#0F1115;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Agendar horário</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showUpcomingList }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:16px 20px 24px 20px;display:flex;flex-direction:column;gap:12px;">
+              <sc-for list="{{ upcomingRows }}" as="row" hint-placeholder-count="2">
+                <div style="background:#1F232B;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                      <span style="font-size:16px;font-weight:600;color:#F2F3F5;">{{ row.dateLabel }}</span>
+                      <span style="font-size:14px;color:#9AA1AC;">{{ row.time }}</span>
+                    </div>
+                    <span style="{{ row.badgeStyle }}">{{ row.statusLabel }}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                    <span style="font-size:14px;color:#F2F3F5;">{{ row.serviceLabel }}</span>
+                    <span style="font-size:15px;font-weight:600;color:{{ accent }};flex-shrink:0;">{{ row.priceLabel }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <image-slot id="{{ row.barberPhotoId }}" shape="circle" placeholder="foto" style="width:28px;height:28px;border-radius:50%;flex-shrink:0;"></image-slot>
+                    <span style="font-size:13px;color:#9AA1AC;">{{ row.barberName }}</span>
+                  </div>
+                  <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button onClick="{{ row.onReschedule }}" style="height:44px;flex:1;border-radius:999px;border:1px solid {{ accent }};background:transparent;color:{{ accent }};font-size:14px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Remarcar</button>
+                    <button onClick="{{ row.onCancel }}" style="height:44px;flex:1;border-radius:999px;border:none;background:transparent;color:#E5484D;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;">Cancelar</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ isSubHistorico }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:16px 20px 24px 20px;display:flex;flex-direction:column;gap:10px;">
+            <sc-for list="{{ historyRows }}" as="row" hint-placeholder-count="3">
+              <div style="background:#1F232B;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                  <span style="font-size:14px;font-weight:600;color:#F2F3F5;min-width:0;">{{ row.title }}</span>
+                  <span style="{{ row.badgeStyle }}">{{ row.statusLabel }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                  <span style="font-size:13px;color:#9AA1AC;">{{ row.barberName }}</span>
+                  <span style="font-size:14px;font-weight:600;color:{{ accent }};flex-shrink:0;">{{ row.priceLabel }}</span>
+                </div>
+                <sc-if value="{{ row.showAgendarNovo }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ row.onAgendarNovo }}" style="height:40px;border-radius:999px;border:1px solid {{ accent }};background:transparent;color:{{ accent }};font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;margin-top:2px;">Agendar de novo</button>
+                </sc-if>
+                <sc-if value="{{ row.showRating }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+                    <span style="font-size:13px;color:#9AA1AC;">Avaliar atendimento</span>
+                    <div style="display:flex;gap:2px;">
+                      <sc-for list="{{ row.stars }}" as="star" hint-placeholder-count="5">
+                        <span onClick="{{ star.onClick }}" style="cursor:pointer;font-size:16px;color:{{ star.color }};">★</span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ row.showRatedStars }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:2px;margin-top:2px;">
+                    <sc-for list="{{ row.stars }}" as="star" hint-placeholder-count="5">
+                      <span style="font-size:14px;color:{{ star.color }};">★</span>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ isTabAssinatura }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ hasAssinatura }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:16px 20px 24px 20px;display:flex;flex-direction:column;gap:16px;">
+            <div style="background:#1F232B;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <span style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:#F2F3F5;">{{ assinaturaInfo.nome }}</span>
+                  <span style="font-size:14px;color:{{ accent }};font-weight:600;">{{ assinaturaInfo.precoLabel }}</span>
+                </div>
+                <span style="{{ assinaturaInfo.statusBadgeStyle }}">{{ assinaturaInfo.statusLabel }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <sc-for list="{{ assinaturaInfo.usos }}" as="u" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span style="font-size:13px;color:#F2F3F5;">{{ u.label }}</span>
+                    <div style="width:100%;height:6px;border-radius:3px;background:#2A2F38;overflow:hidden;">
+                      <div style="height:100%;background:{{ accent }};width:{{ u.pct }}%;"></div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="border-top:1px dashed #2A2F38;padding-top:10px;font-size:13px;color:#9AA1AC;">{{ assinaturaInfo.proximaLabel }}</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#F2F3F5;">Histórico de cobranças</span>
+              <sc-for list="{{ historicoCobranca }}" as="h" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:13px;color:#F2F3F5;">{{ h.data }}</span>
+                  <span style="font-size:13px;color:#9AA1AC;">{{ h.valorLabel }}</span>
+                  <span style="font-size:12px;color:#3FB68B;">{{ h.status }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;">
+              <sc-if value="{{ assinaturaInfo.isPausada }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onReativarAssinatura }}" style="height:44px;padding:0 16px;border-radius:10px;border:none;background:{{ accent }};color:#0F1115;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Reativar assinatura</button>
+              </sc-if>
+              <sc-if value="{{ assinaturaInfo.notPausada }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ onPausarAssinaturaClick }}" style="height:40px;padding:0;border:none;background:transparent;color:#F2F3F5;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;">Pausar assinatura</button>
+              </sc-if>
+              <button onClick="{{ onCancelarAssinaturaClick }}" style="height:40px;padding:0;border:none;background:transparent;color:#E5484D;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;">Cancelar assinatura</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hasAssinatura }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:56px 32px 32px 32px;gap:18px;">
+            <svg width="100" height="100" viewBox="0 0 120 120" fill="none">
+              <circle cx="60" cy="45" r="22" stroke="#2A2F38" stroke-width="3"></circle>
+              <path d="M30 100c4-20 18-30 30-30s26 10 30 30" stroke="#2A2F38" stroke-width="3"></path>
+            </svg>
+            <span style="font-size:15px;color:#9AA1AC;line-height:1.4;">Você ainda não é assinante</span>
+            <button onClick="{{ onConhecerPlanosClick }}" style="height:48px;padding:0 24px;border-radius:999px;border:none;background:{{ accent }};color:#0F1115;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Conhecer planos</button>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ isTabDados }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:20px;display:flex;flex-direction:column;gap:28px;">
+
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#F2F3F5;">Dados pessoais</span>
+              <sc-if value="{{ showEditButton }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ onEditClick }}" style="height:32px;padding:0 12px;border-radius:999px;border:1px solid #2A2F38;background:transparent;color:{{ accent }};font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Editar</button>
+              </sc-if>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+                <label style="font-size:13px;color:#9AA1AC;">Nome</label>
+                <div style="position:relative;">
+                  <input value="{{ firstName }}" onChange="{{ onFirstNameChange }}" onBlur="{{ onFirstNameBlur }}" disabled="{{ fieldsDisabled }}" style="{{ firstNameInputStyle }}">
+                  <sc-if value="{{ firstNameValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+                </div>
+                <sc-if value="{{ firstNameError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ firstNameError }}</span></sc-if>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+                <label style="font-size:13px;color:#9AA1AC;">Sobrenome</label>
+                <div style="position:relative;">
+                  <input value="{{ lastName }}" onChange="{{ onLastNameChange }}" onBlur="{{ onLastNameBlur }}" disabled="{{ fieldsDisabled }}" style="{{ lastNameInputStyle }}">
+                  <sc-if value="{{ lastNameValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+                </div>
+                <sc-if value="{{ lastNameError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ lastNameError }}</span></sc-if>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:13px;color:#9AA1AC;">Celular</label>
+              <div style="position:relative;">
+                <input value="{{ phone }}" onChange="{{ onPhoneChange }}" onBlur="{{ onPhoneBlur }}" disabled="{{ fieldsDisabled }}" inputMode="numeric" style="{{ phoneInputStyle }}">
+                <sc-if value="{{ phoneValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+              </div>
+              <sc-if value="{{ phoneError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ phoneError }}</span></sc-if>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:13px;color:#9AA1AC;">E-mail</label>
+              <div style="position:relative;">
+                <input type="email" value="{{ email }}" onChange="{{ onEmailChange }}" onBlur="{{ onEmailBlur }}" disabled="{{ fieldsDisabled }}" style="{{ emailInputStyle }}">
+                <sc-if value="{{ emailValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+              </div>
+              <sc-if value="{{ emailError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ emailError }}</span></sc-if>
+            </div>
+
+            <sc-if value="{{ editMode }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:10px;margin-top:4px;">
+                <button onClick="{{ onSaveClick }}" style="{{ saveButtonStyle }}">Salvar alterações</button>
+                <button onClick="{{ onCancelEditClick }}" style="height:48px;flex:1;border-radius:999px;border:none;background:transparent;color:#9AA1AC;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;">Cancelar</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="height:1px;background:#2A2F38;"></div>
+
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#F2F3F5;">Segurança</span>
+            <div onClick="{{ onToggleSecurity }}" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+              <span style="font-size:14px;color:#F2F3F5;">Alterar senha</span>
+              <span style="font-size:14px;color:#9AA1AC;">{{ securityChevron }}</span>
+            </div>
+
+            <sc-if value="{{ securityExpanded }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:14px;">
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <label style="font-size:13px;color:#9AA1AC;">Senha atual</label>
+                  <input type="password" value="{{ currentPassword }}" onChange="{{ onCurrentPasswordChange }}" placeholder="Sua senha atual" style="{{ currentPasswordInputStyle }}">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <label style="font-size:13px;color:#9AA1AC;">Nova senha</label>
+                  <input type="password" value="{{ newPassword }}" onChange="{{ onNewPasswordChange }}" onBlur="{{ onNewPasswordBlur }}" placeholder="mínimo 8 caracteres" style="{{ newPasswordInputStyle }}">
+                  <sc-if value="{{ newPasswordError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ newPasswordError }}</span></sc-if>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <label style="font-size:13px;color:#9AA1AC;">Confirmar nova senha</label>
+                  <input type="password" value="{{ confirmNewPassword }}" onChange="{{ onConfirmNewPasswordChange }}" onBlur="{{ onConfirmNewPasswordBlur }}" placeholder="repita a senha" style="{{ confirmNewPasswordInputStyle }}">
+                  <sc-if value="{{ confirmNewPasswordError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ confirmNewPasswordError }}</span></sc-if>
+                </div>
+                <button onClick="{{ onAtualizarSenhaClick }}" disabled="{{ senhaSubmitDisabled }}" style="{{ senhaSubmitStyle }}">Atualizar senha</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="height:1px;background:#2A2F38;"></div>
+
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:#F2F3F5;">Notificações</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <span style="font-size:14px;color:#F2F3F5;">Lembrete por WhatsApp</span>
+              <div onClick="{{ onToggleWhatsapp }}" style="{{ whatsappTrackStyle }}"><div style="{{ whatsappThumbStyle }}"></div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <span style="font-size:14px;color:#F2F3F5;">Lembrete por e-mail</span>
+              <div onClick="{{ onToggleEmail }}" style="{{ emailTrackStyle }}"><div style="{{ emailThumbStyle }}"></div></div>
+            </div>
+            <span style="font-size:12px;color:#9AA1AC;line-height:1.4;">Enviamos lembretes 24h e 2h antes do seu horário</span>
+          </div>
+
+          <div style="height:1px;background:#2A2F38;"></div>
+
+          <div style="display:flex;flex-direction:column;gap:14px;align-items:flex-start;">
+            <button onClick="{{ onLogoutClick }}" style="height:44px;padding:0;border:none;background:transparent;color:#E5484D;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Sair</button>
+            <span onClick="{{ onDeleteAccountClick }}" style="font-size:13px;color:#9AA1AC;cursor:pointer;">Excluir minha conta</span>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+
+    <sc-if value="{{ showCancelSheet }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:flex-end;justify-content:center;z-index:220;">
+        <div style="width:100%;max-width:480px;background:#1F232B;border-radius:20px 20px 0 0;padding:24px 20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+          <span style="font-family:'Sora',sans-serif;font-size:18px;font-weight:700;color:#F2F3F5;">Cancelar agendamento?</span>
+          <span style="font-size:14px;color:#F2F3F5;">{{ cancelSummary }}</span>
+          <span style="font-size:13px;color:#9AA1AC;line-height:1.4;">Cancelamentos com menos de 2h de antecedência podem estar sujeitos à política da barbearia.</span>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+            <button onClick="{{ onKeepAppointment }}" style="height:48px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Manter agendamento</button>
+            <button onClick="{{ onConfirmCancel }}" style="height:48px;border-radius:12px;border:1px solid #E5484D;background:transparent;color:#E5484D;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Sim, cancelar</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showDeleteSheet }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:flex-end;justify-content:center;z-index:220;">
+        <div style="width:100%;max-width:480px;background:#1F232B;border-radius:20px 20px 0 0;padding:24px 20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+          <span style="font-family:'Sora',sans-serif;font-size:18px;font-weight:700;color:#F2F3F5;">Excluir sua conta?</span>
+          <span style="font-size:13px;color:#9AA1AC;line-height:1.4;">Essa ação é irreversível. Você perderá o acesso ao seu histórico de agendamentos e dados salvos.</span>
+          <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onClick="{{ onToggleDeleteConfirm }}">
+            <div style="{{ deleteCheckboxStyle }}">
+              <sc-if value="{{ deleteConfirmChecked }}" hint-placeholder-val="{{ false }}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </sc-if>
+            </div>
+            <span style="font-size:13px;color:#C7CBD1;line-height:1.4;">Entendo que essa ação é irreversível</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+            <button onClick="{{ onConfirmDelete }}" disabled="{{ deleteConfirmDisabled }}" style="{{ deleteConfirmButtonStyle }}">Excluir minha conta</button>
+            <button onClick="{{ onCancelDelete }}" style="height:48px;border-radius:12px;border:none;background:transparent;color:#9AA1AC;font-size:15px;font-family:'Inter',sans-serif;cursor:pointer;">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showPauseConfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:flex-end;justify-content:center;z-index:220;">
+        <div style="width:100%;max-width:480px;background:#1F232B;border-radius:20px 20px 0 0;padding:24px 20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+          <span style="font-family:'Sora',sans-serif;font-size:18px;font-weight:700;color:#F2F3F5;">Pausar assinatura?</span>
+          <span style="font-size:13px;color:#9AA1AC;line-height:1.4;">Sua cobrança e os usos ficam suspensos até você reativar.</span>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+            <button onClick="{{ onConfirmPause }}" style="height:48px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Pausar assinatura</button>
+            <button onClick="{{ onCancelPauseConfirm }}" style="height:48px;border-radius:12px;border:none;background:transparent;color:#9AA1AC;font-size:15px;font-family:'Inter',sans-serif;cursor:pointer;">Voltar</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showCancelAssinaturaConfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:flex-end;justify-content:center;z-index:220;">
+        <div style="width:100%;max-width:480px;background:#1F232B;border-radius:20px 20px 0 0;padding:24px 20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+          <span style="font-family:'Sora',sans-serif;font-size:18px;font-weight:700;color:#F2F3F5;">Cancelar assinatura?</span>
+          <span style="font-size:13px;color:#9AA1AC;line-height:1.4;">Você perde os usos restantes do ciclo atual e não será mais cobrado.</span>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+            <button onClick="{{ onKeepAssinatura }}" style="height:48px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Manter assinatura</button>
+            <button onClick="{{ onConfirmCancelAssinatura }}" style="height:48px;border-radius:12px;border:1px solid #E5484D;background:transparent;color:#E5484D;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Sim, cancelar</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:#1F232B;border:1px solid #2A2F38;color:#F2F3F5;font-size:14px;padding:10px 18px;border-radius:999px;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:contaToastIn 0.2s ease-out;z-index:310;font-family:'Inter',sans-serif;">{{ toast }}</div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 390, &quot;height&quot;: 844},
+  &quot;open&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;},
+  &quot;initialTab&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;agendamentos&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;agendamentos&quot;, &quot;assinatura&quot;, &quot;dados&quot;]},
+  &quot;accentColor&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#D4A84C&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#D4A84C&quot;, &quot;#5FBF9E&quot;, &quot;#C97BD1&quot;, &quot;#5CA6D4&quot;]},
+  &quot;currentUser&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;{firstName: string, lastName: string, phone: string, email: string} | null&quot;},
+  &quot;assinaturasAtivas&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;},
+  &quot;assinatura&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;object | null&quot;},
+  &quot;onClose&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onLogout&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onUpdateUser&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(user: {firstName: string, lastName: string, phone: string, email: string}) =&gt; void&quot;},
+  &quot;onNovoAgendamento&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(serviceId: string | null) =&gt; void&quot;},
+  &quot;onVerPlanos&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onUpdateAssinatura&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(patch: object | null) =&gt; void&quot;}
+}">
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+function formatPhoneBR(digits) {
+  let out = '';
+  if (digits.length > 0) out += '(' + digits.slice(0, 2);
+  if (digits.length >= 2) out += ') ';
+  if (digits.length > 2) out += digits.slice(2, 3);
+  if (digits.length > 3) out += ' ' + digits.slice(3, 7);
+  if (digits.length > 7) out += '-' + digits.slice(7, 11);
+  return out;
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function pwValid(pw) { return pw.length >= 8 && /[A-Za-z]/.test(pw) && /\d/.test(pw); }
+
+const UPCOMING_INIT = [
+  { id: 'u1', dateLabel: 'Qui, 30 de julho', time: '14:30', service: 'Corte + Barba', duration: '70 min', price: 70, barberName: 'Diego Alves', barberPhotoId: 'barber-diego', status: 'confirmado', serviceId: 's3' },
+  { id: 'u2', dateLabel: 'Sáb, 08 de agosto', time: '10:00', service: 'Barba', duration: '30 min', price: 35, barberName: 'Rafael Souza', barberPhotoId: 'barber-rafael', status: 'aguardando', serviceId: 's2' },
+];
+const HISTORY_INIT = [
+  { id: 'h1', dateLabel: '12/07', service: 'Corte Masculino', price: 45, barberName: 'Carlos Silva', status: 'concluido', rated: true, rating: 5, serviceId: 's1' },
+  { id: 'h2', dateLabel: '20/06', service: 'Corte + Barba', price: 70, barberName: 'Diego Alves', status: 'concluido', rated: false, rating: 0, serviceId: 's3' },
+  { id: 'h3', dateLabel: '02/06', service: 'Sobrancelha', price: 20, barberName: 'Bruno Costa', status: 'cancelado', rated: false, rating: 0, serviceId: 's4' },
+];
+
+const HISTORICO_COBRANCA = [
+  { data: '05/07', valor: 150, status: 'Pago' },
+  { data: '05/06', valor: 150, status: 'Pago' },
+  { data: '05/05', valor: 150, status: 'Pago' },
+];
+
+class Component extends DCLogic {
+  state = {
+    activeTab: this.props.initialTab || 'agendamentos',
+    subTab: 'proximos',
+    upcoming: UPCOMING_INIT,
+    history: HISTORY_INIT,
+    cancelTargetId: null,
+    toast: null,
+    firstName: '', lastName: '', phone: '', email: '',
+    firstNameTouched: false, lastNameTouched: false, phoneTouched: false, emailTouched: false,
+    editMode: false,
+    securityExpanded: false,
+    currentPassword: '', newPassword: '', confirmNewPassword: '',
+    newPasswordTouched: false, confirmNewPasswordTouched: false,
+    notifWhatsapp: true, notifEmail: false,
+    showDeleteSheet: false, deleteConfirmChecked: false,
+    showPauseConfirm: false, showCancelAssinaturaConfirm: false,
+  };
+
+  seedFromUser = (u) => {
+    if (!u) return;
+    this.setState({
+      firstName: u.firstName || '', lastName: u.lastName || '',
+      phone: formatPhoneBR((u.phone || '').replace(/\D/g, '')), email: u.email || '',
+    });
+  };
+
+  componentDidMount() {
+    this.seedFromUser(this.props.currentUser);
+  }
+
+  componentWillUnmount() {
+    clearTimeout(this._toastTimer);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.props.open && !prevProps.open) {
+      this.setState({
+        activeTab: this.props.initialTab || 'agendamentos', subTab: 'proximos', cancelTargetId: null, toast: null,
+        editMode: false, firstNameTouched: false, lastNameTouched: false, phoneTouched: false, emailTouched: false,
+        securityExpanded: false, currentPassword: '', newPassword: '', confirmNewPassword: '',
+        newPasswordTouched: false, confirmNewPasswordTouched: false, showDeleteSheet: false, deleteConfirmChecked: false,
+        showPauseConfirm: false, showCancelAssinaturaConfirm: false,
+      });
+      this.seedFromUser(this.props.currentUser);
+    }
+  }
+
+  queueToast = (msg) => {
+    clearTimeout(this._toastTimer);
+    this.setState({ toast: msg });
+    this._toastTimer = setTimeout(() => this.setState({ toast: null }), 3000);
+  };
+
+  onCloseClick = () => { if (this.props.onClose) this.props.onClose(); };
+  onOverlayClick = () => this.onCloseClick();
+  onSelectTabAgendamentos = () => this.setState({ activeTab: 'agendamentos' });
+  onSelectTabAssinatura = () => this.setState({ activeTab: 'assinatura' });
+  onSelectTabDados = () => this.setState({ activeTab: 'dados' });
+  onSelectSubProximos = () => this.setState({ subTab: 'proximos' });
+  onSelectSubHistorico = () => this.setState({ subTab: 'historico' });
+
+  onNovoClick = () => { if (this.props.onNovoAgendamento) this.props.onNovoAgendamento(null); };
+
+  onRescheduleClick = () => this.queueToast('Remarcação em breve');
+  onCancelClick = (id) => this.setState({ cancelTargetId: id });
+  onKeepAppointment = () => this.setState({ cancelTargetId: null });
+  onConfirmCancel = () => {
+    this.setState((s) => ({ upcoming: s.upcoming.filter((u) => u.id !== s.cancelTargetId), cancelTargetId: null }));
+    this.queueToast('Agendamento cancelado');
+  };
+
+  onAgendarNovoClick = (serviceId) => { if (this.props.onNovoAgendamento) this.props.onNovoAgendamento(serviceId); };
+  onRateClick = (id, rating) => {
+    this.setState((s) => ({ history: s.history.map((h) => (h.id === id ? { ...h, rated: true, rating } : h)) }));
+    this.queueToast('Obrigado pela avaliação!');
+  };
+
+  onFirstNameChange = (e) => this.setState({ firstName: e.target.value });
+  onFirstNameBlur = () => this.setState({ firstNameTouched: true });
+  onLastNameChange = (e) => this.setState({ lastName: e.target.value });
+  onLastNameBlur = () => this.setState({ lastNameTouched: true });
+  onPhoneChange = (e) => { const raw = e.target.value.replace(/\D/g, '').slice(0, 11); this.setState({ phone: formatPhoneBR(raw) }); };
+  onPhoneBlur = () => this.setState({ phoneTouched: true });
+  onEmailChange = (e) => this.setState({ email: e.target.value });
+  onEmailBlur = () => this.setState({ emailTouched: true });
+
+  onEditClick = () => { this.seedFromUser(this.props.currentUser); this.setState({ editMode: true, firstNameTouched: false, lastNameTouched: false, phoneTouched: false, emailTouched: false }); };
+  onCancelEditClick = () => { this.seedFromUser(this.props.currentUser); this.setState({ editMode: false, firstNameTouched: false, lastNameTouched: false, phoneTouched: false, emailTouched: false }); };
+  onSaveClick = () => {
+    const s = this.state;
+    this.setState({ firstNameTouched: true, lastNameTouched: true, phoneTouched: true, emailTouched: true });
+    const digits = (s.phone || '').replace(/\D/g, '');
+    const valid = s.firstName.trim().length >= 2 && s.lastName.trim().length >= 2 && digits.length === 11 && EMAIL_RE.test(s.email);
+    if (!valid) return;
+    if (this.props.onUpdateUser) this.props.onUpdateUser({ firstName: s.firstName.trim(), lastName: s.lastName.trim(), phone: digits, email: s.email.trim() });
+    this.setState({ editMode: false });
+    this.queueToast('Dados atualizados');
+  };
+
+  onToggleSecurity = () => this.setState((s) => ({ securityExpanded: !s.securityExpanded }));
+  onCurrentPasswordChange = (e) => this.setState({ currentPassword: e.target.value });
+  onNewPasswordChange = (e) => this.setState({ newPassword: e.target.value });
+  onNewPasswordBlur = () => this.setState({ newPasswordTouched: true });
+  onConfirmNewPasswordChange = (e) => this.setState({ confirmNewPassword: e.target.value });
+  onConfirmNewPasswordBlur = () => this.setState({ confirmNewPasswordTouched: true });
+  onAtualizarSenhaClick = () => {
+    const s = this.state;
+    this.setState({ newPasswordTouched: true, confirmNewPasswordTouched: true });
+    const valid = s.currentPassword.length > 0 && pwValid(s.newPassword) && s.confirmNewPassword === s.newPassword;
+    if (!valid) return;
+    this.setState({ currentPassword: '', newPassword: '', confirmNewPassword: '', newPasswordTouched: false, confirmNewPasswordTouched: false, securityExpanded: false });
+    this.queueToast('Senha atualizada com sucesso');
+  };
+
+  onToggleWhatsapp = () => this.setState((s) => ({ notifWhatsapp: !s.notifWhatsapp }));
+  onToggleEmail = () => this.setState((s) => ({ notifEmail: !s.notifEmail }));
+
+  onLogoutClick = () => { if (this.props.onLogout) this.props.onLogout(); };
+  onDeleteAccountClick = () => this.setState({ showDeleteSheet: true, deleteConfirmChecked: false });
+  onToggleDeleteConfirm = () => this.setState((s) => ({ deleteConfirmChecked: !s.deleteConfirmChecked }));
+  onCancelDelete = () => this.setState({ showDeleteSheet: false });
+  onConfirmDelete = () => { this.setState({ showDeleteSheet: false }); this.queueToast('Solicitação enviada'); };
+
+  onConhecerPlanosClick = () => { if (this.props.onVerPlanos) this.props.onVerPlanos(); };
+  onPausarAssinaturaClick = () => this.setState({ showPauseConfirm: true });
+  onCancelPauseConfirm = () => this.setState({ showPauseConfirm: false });
+  onConfirmPause = () => {
+    this.setState({ showPauseConfirm: false });
+    if (this.props.onUpdateAssinatura) this.props.onUpdateAssinatura({ status: 'pausada' });
+    this.queueToast('Assinatura pausada');
+  };
+  onReativarAssinatura = () => {
+    if (this.props.onUpdateAssinatura) this.props.onUpdateAssinatura({ status: 'em_dia' });
+    this.queueToast('Assinatura reativada');
+  };
+  onCancelarAssinaturaClick = () => this.setState({ showCancelAssinaturaConfirm: true });
+  onKeepAssinatura = () => this.setState({ showCancelAssinaturaConfirm: false });
+  onConfirmCancelAssinatura = () => {
+    this.setState({ showCancelAssinaturaConfirm: false });
+    if (this.props.onUpdateAssinatura) this.props.onUpdateAssinatura(null);
+    this.queueToast('Assinatura cancelada');
+  };
+
+  renderVals() {
+    const s = this.state;
+    const open = this.props.open ?? false;
+    const accent = this.props.accentColor ?? '#D4A84C';
+
+    const rootStyle = `position:fixed;inset:0;z-index:200;pointer-events:${open ? 'auto' : 'none'};`;
+    const overlayStyle = `position:fixed;inset:0;background:#000000;opacity:${open ? 0.6 : 0};transition:opacity 250ms ease;`;
+    const sheetStyle = `position:fixed;inset:0;margin:0 auto;width:100%;max-width:480px;height:100%;background:#0F1115;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 48px rgba(0,0,0,0.5);transform:translateY(${open ? '0' : '100%'});transition:transform 300ms cubic-bezier(.32,.72,0,1);`;
+
+    const isTabAgendamentos = s.activeTab === 'agendamentos';
+    const isTabDados = s.activeTab === 'dados';
+    const assinaturasAtivas = this.props.assinaturasAtivas ?? true;
+    const isTabAssinatura = s.activeTab === 'assinatura' && assinaturasAtivas;
+    const headerTitle = isTabAgendamentos ? 'Agendamentos' : isTabAssinatura ? 'Assinatura' : 'Meus dados';
+
+    const tabStyle = (active) => `flex:1;height:48px;border:none;background:transparent;color:${active ? '#F2F3F5' : '#9AA1AC'};font-size:14px;font-weight:${active ? '600' : '500'};font-family:'Inter',sans-serif;cursor:pointer;`;
+    const indicatorStyle = (active) => `height:2px;width:100%;background:${active ? accent : 'transparent'};`;
+
+    const badge = (label, color) => `display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:${hexToRgba(color, 0.15)};color:${color};flex-shrink:0;`;
+
+    const assinatura = this.props.assinatura ?? null;
+    const hasAssinatura = !!assinatura;
+    const STATUS_ASSIN = { em_dia: { label: 'Cobrança em dia', color: '#3FB68B' }, pendente: { label: 'Pagamento pendente', color: '#E8A13C' }, pausada: { label: 'Pausada', color: '#9AA1AC' } };
+    const assinaturaInfo = assinatura ? {
+      nome: assinatura.nome,
+      precoLabel: `R$ ${assinatura.preco}/mês`,
+      statusLabel: (STATUS_ASSIN[assinatura.status] || STATUS_ASSIN.em_dia).label,
+      statusBadgeStyle: badge('', (STATUS_ASSIN[assinatura.status] || STATUS_ASSIN.em_dia).color),
+      usos: assinatura.usos.map((u) => ({ label: `${u.nome} — ${u.usados}/${u.total} usados`, pct: Math.round((u.usados / u.total) * 100) })),
+      proximaLabel: `Renova em ${assinatura.proximaCobranca} · R$ ${assinatura.preco}`,
+      isPausada: assinatura.status === 'pausada',
+      notPausada: assinatura.status !== 'pausada',
+    } : null;
+    const historicoCobranca = HISTORICO_COBRANCA.map((h) => ({ data: h.data, valorLabel: `R$ ${h.valor}`, status: h.status }));
+
+    const isSubProximos = s.subTab === 'proximos';
+    const isSubHistorico = s.subTab === 'historico';
+    const subTabStyle = (active) => `flex:1;height:36px;border-radius:8px;border:none;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;background:${active ? accent : 'transparent'};color:${active ? '#0F1115' : '#9AA1AC'};`;
+
+    const showEmptyProximos = s.upcoming.length === 0;
+    const showUpcomingList = s.upcoming.length > 0;
+
+    const upcomingRows = s.upcoming.map((u) => ({
+      dateLabel: u.dateLabel,
+      time: u.time,
+      serviceLabel: `${u.service} · ${u.duration}`,
+      priceLabel: `R$ ${u.price}`,
+      barberName: u.barberName,
+      barberPhotoId: u.barberPhotoId,
+      statusLabel: u.status === 'confirmado' ? 'Confirmado' : 'Aguardando confirmação',
+      badgeStyle: badge(u.status === 'confirmado' ? 'Confirmado' : 'Aguardando', u.status === 'confirmado' ? '#3FB68B' : accent),
+      onReschedule: this.onRescheduleClick,
+      onCancel: () => this.onCancelClick(u.id),
+    }));
+
+    const makeStars = (rating, onClick) => [0, 1, 2, 3, 4].map((i) => ({
+      color: i < rating ? accent : '#2A2F38',
+      onClick: onClick ? () => onClick(i + 1) : undefined,
+    }));
+
+    const historyRows = s.history.map((h) => ({
+      title: `${h.dateLabel} · ${h.service}`,
+      barberName: h.barberName,
+      priceLabel: `R$ ${h.price}`,
+      statusLabel: h.status === 'concluido' ? 'Concluído' : 'Cancelado',
+      badgeStyle: badge('', h.status === 'concluido' ? '#9AA1AC' : '#E5484D'),
+      showAgendarNovo: h.status === 'concluido',
+      onAgendarNovo: () => this.onAgendarNovoClick(h.serviceId),
+      showRating: h.status === 'concluido' && !h.rated,
+      showRatedStars: h.status === 'concluido' && h.rated,
+      stars: h.status === 'concluido' && !h.rated ? makeStars(0, (r) => this.onRateClick(h.id, r)) : makeStars(h.rating, null),
+    }));
+
+    const cancelTarget = s.upcoming.find((u) => u.id === s.cancelTargetId);
+    const cancelSummary = cancelTarget ? `${cancelTarget.dateLabel} às ${cancelTarget.time} · ${cancelTarget.service}` : '';
+
+    const inputBase = `height:48px;border-radius:10px;background:#1A1D23;color:#F2F3F5;font-size:14px;padding:0 12px;font-family:'Inter',sans-serif;width:100%;`;
+    const border = (err) => `border:1px solid ${err ? '#E5484D' : '#2A2F38'};`;
+    const fieldsDisabled = !s.editMode;
+    const disabledStyle = (err) => `${inputBase}${border(err)}${fieldsDisabled ? 'opacity:0.55;cursor:not-allowed;' : ''}padding-right:36px;`;
+
+    const firstNameValidRaw = s.firstName.trim().length >= 2;
+    const lastNameValidRaw = s.lastName.trim().length >= 2;
+    const phoneDigits = (s.phone || '').replace(/\D/g, '');
+    const phoneValidRaw = phoneDigits.length === 11;
+    const emailValidRaw = EMAIL_RE.test(s.email);
+
+    const showEditButton = !s.editMode;
+
+    const newPasswordValid = pwValid(s.newPassword);
+    const confirmNewPasswordValid = newPasswordValid && s.confirmNewPassword === s.newPassword && s.confirmNewPassword.length > 0;
+    const senhaSubmitDisabled = !(s.currentPassword.length > 0 && newPasswordValid && confirmNewPasswordValid);
+    const senhaSubmitStyle = `height:48px;border-radius:12px;border:none;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;${senhaSubmitDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.5;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+
+    const saveDisabled = !(s.editMode && firstNameValidRaw && lastNameValidRaw && phoneValidRaw && emailValidRaw);
+    const saveButtonStyle = `height:48px;flex:1;border-radius:999px;border:none;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;${saveDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.5;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+
+    const toggleTrack = (on) => `width:44px;height:24px;border-radius:12px;background:${on ? accent : '#2A2F38'};position:relative;cursor:pointer;transition:background 150ms ease;flex-shrink:0;`;
+    const toggleThumb = (on) => `width:18px;height:18px;border-radius:50%;background:#ffffff;position:absolute;top:3px;left:${on ? '23px' : '3px'};transition:left 150ms ease;`;
+
+    const deleteConfirmDisabled = !s.deleteConfirmChecked;
+    const deleteConfirmButtonStyle = `height:48px;border-radius:12px;border:none;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;${deleteConfirmDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.5;cursor:not-allowed;' : 'background:#E5484D;color:#F2F3F5;cursor:pointer;'}`;
+    const deleteCheckboxStyle = `width:20px;height:20px;border-radius:5px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;${s.deleteConfirmChecked ? 'background:#E5484D;' : 'border:1.5px solid #2A2F38;'}`;
+
+    return {
+      rootStyle, overlayStyle, sheetStyle, accent,
+      onCloseClick: this.onCloseClick, onOverlayClick: this.onOverlayClick, headerTitle,
+      isTabAgendamentos, isTabDados,
+      onSelectTabAgendamentos: this.onSelectTabAgendamentos, onSelectTabDados: this.onSelectTabDados,
+      tabAgendamentosStyle: tabStyle(isTabAgendamentos), tabDadosStyle: tabStyle(isTabDados),
+      indicatorAgendamentosStyle: indicatorStyle(isTabAgendamentos), indicatorDadosStyle: indicatorStyle(isTabDados),
+      showAssinaturaTab: assinaturasAtivas,
+      isTabAssinatura, onSelectTabAssinatura: this.onSelectTabAssinatura,
+      tabAssinaturaStyle: tabStyle(isTabAssinatura), indicatorAssinaturaStyle: indicatorStyle(isTabAssinatura),
+      hasAssinatura, assinaturaInfo, historicoCobranca,
+      onConhecerPlanosClick: this.onConhecerPlanosClick,
+      onPausarAssinaturaClick: this.onPausarAssinaturaClick, onReativarAssinatura: this.onReativarAssinatura,
+      onCancelarAssinaturaClick: this.onCancelarAssinaturaClick,
+      showPauseConfirm: s.showPauseConfirm, onCancelPauseConfirm: this.onCancelPauseConfirm, onConfirmPause: this.onConfirmPause,
+      showCancelAssinaturaConfirm: s.showCancelAssinaturaConfirm, onKeepAssinatura: this.onKeepAssinatura, onConfirmCancelAssinatura: this.onConfirmCancelAssinatura,
+
+      isSubProximos, isSubHistorico, onSelectSubProximos: this.onSelectSubProximos, onSelectSubHistorico: this.onSelectSubHistorico,
+      subProximosStyle: subTabStyle(isSubProximos), subHistoricoStyle: subTabStyle(isSubHistorico),
+      showEmptyProximos, showUpcomingList, onNovoClick: this.onNovoClick, upcomingRows, historyRows,
+
+      showCancelSheet: !!s.cancelTargetId, cancelSummary, onKeepAppointment: this.onKeepAppointment, onConfirmCancel: this.onConfirmCancel,
+
+      firstName: s.firstName, onFirstNameChange: this.onFirstNameChange, onFirstNameBlur: this.onFirstNameBlur,
+      firstNameValid: s.editMode && s.firstNameTouched && firstNameValidRaw, firstNameError: s.editMode && s.firstNameTouched && !firstNameValidRaw ? 'Mínimo 2 caracteres' : null,
+      firstNameInputStyle: disabledStyle(s.editMode && s.firstNameTouched && !firstNameValidRaw),
+      lastName: s.lastName, onLastNameChange: this.onLastNameChange, onLastNameBlur: this.onLastNameBlur,
+      lastNameValid: s.editMode && s.lastNameTouched && lastNameValidRaw, lastNameError: s.editMode && s.lastNameTouched && !lastNameValidRaw ? 'Mínimo 2 caracteres' : null,
+      lastNameInputStyle: disabledStyle(s.editMode && s.lastNameTouched && !lastNameValidRaw),
+      phone: s.phone, onPhoneChange: this.onPhoneChange, onPhoneBlur: this.onPhoneBlur,
+      phoneValid: s.editMode && s.phoneTouched && phoneValidRaw, phoneError: s.editMode && s.phoneTouched && !phoneValidRaw ? 'Número incompleto' : null,
+      phoneInputStyle: disabledStyle(s.editMode && s.phoneTouched && !phoneValidRaw),
+      email: s.email, onEmailChange: this.onEmailChange, onEmailBlur: this.onEmailBlur,
+      emailValid: s.editMode && s.emailTouched && emailValidRaw, emailError: s.editMode && s.emailTouched && !emailValidRaw ? 'E-mail inválido' : null,
+      emailInputStyle: disabledStyle(s.editMode && s.emailTouched && !emailValidRaw),
+      fieldsDisabled, showEditButton, editMode: s.editMode,
+      onEditClick: this.onEditClick, onCancelEditClick: this.onCancelEditClick, onSaveClick: this.onSaveClick, saveButtonStyle,
+
+      securityExpanded: s.securityExpanded, onToggleSecurity: this.onToggleSecurity, securityChevron: s.securityExpanded ? '▴' : '▾',
+      currentPassword: s.currentPassword, onCurrentPasswordChange: this.onCurrentPasswordChange, currentPasswordInputStyle: `${inputBase}${border(false)}`,
+      newPassword: s.newPassword, onNewPasswordChange: this.onNewPasswordChange, onNewPasswordBlur: this.onNewPasswordBlur,
+      newPasswordError: s.newPasswordTouched && !newPasswordValid ? 'Mínimo 8 caracteres, com letra e número' : null,
+      newPasswordInputStyle: `${inputBase}${border(s.newPasswordTouched && !newPasswordValid)}`,
+      confirmNewPassword: s.confirmNewPassword, onConfirmNewPasswordChange: this.onConfirmNewPasswordChange, onConfirmNewPasswordBlur: this.onConfirmNewPasswordBlur,
+      confirmNewPasswordError: s.confirmNewPasswordTouched && !confirmNewPasswordValid ? 'As senhas não coincidem' : null,
+      confirmNewPasswordInputStyle: `${inputBase}${border(s.confirmNewPasswordTouched && !confirmNewPasswordValid)}`,
+      onAtualizarSenhaClick: this.onAtualizarSenhaClick, senhaSubmitDisabled, senhaSubmitStyle,
+
+      whatsappTrackStyle: toggleTrack(s.notifWhatsapp), whatsappThumbStyle: toggleThumb(s.notifWhatsapp), onToggleWhatsapp: this.onToggleWhatsapp,
+      emailTrackStyle: toggleTrack(s.notifEmail), emailThumbStyle: toggleThumb(s.notifEmail), onToggleEmail: this.onToggleEmail,
+
+      onLogoutClick: this.onLogoutClick, onDeleteAccountClick: this.onDeleteAccountClick,
+      showDeleteSheet: s.showDeleteSheet, deleteConfirmChecked: s.deleteConfirmChecked, onToggleDeleteConfirm: this.onToggleDeleteConfirm,
+      deleteConfirmDisabled, deleteConfirmButtonStyle, deleteCheckboxStyle, onConfirmDelete: this.onConfirmDelete, onCancelDelete: this.onCancelDelete,
+
+      toast: s.toast,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Sora:wght@700&amp;display=swap" rel="stylesheet">
+  <style>
+    @keyframes authToastIn { from{opacity:0;transform:translate(-50%,8px);} to{opacity:1;transform:translate(-50%,0);} }
+    @keyframes successPop { from{transform:scale(0.4);opacity:0;} to{transform:scale(1);opacity:1;} }
+    @keyframes checkDraw { from{stroke-dashoffset:24;} to{stroke-dashoffset:0;} }
+    @keyframes otpShake { 0%,100%{transform:translateX(0);} 20%,60%{transform:translateX(-6px);} 40%,80%{transform:translateX(6px);} }
+  </style>
+</helmet>
+
+<div style="{{ rootStyle }}" ref="{{ setRootRef }}">
+  <div style="{{ overlayStyle }}" onClick="{{ onOverlayClick }}"></div>
+
+  <div style="{{ sheetStyle }}">
+    <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ true }}">
+      <div style="width:36px;height:4px;border-radius:2px;background:#2A2F38;position:absolute;top:10px;left:50%;transform:translateX(-50%);"></div>
+    </sc-if>
+
+    <sc-if value="{{ showHeader }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:44px 1fr 44px;align-items:center;height:56px;padding:0 12px;border-bottom:1px solid #2A2F38;flex-shrink:0;font-family:'Inter',sans-serif;">
+        <sc-if value="{{ showBack }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ onBackClick }}" aria-label="Voltar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">←</button>
+        </sc-if>
+        <sc-if value="{{ hideBackPlaceholder }}" hint-placeholder-val="{{ true }}">
+          <div></div>
+        </sc-if>
+        <span style="font-size:16px;font-weight:600;color:#F2F3F5;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ headerTitle }}</span>
+        <button onClick="{{ onCloseClick }}" aria-label="Fechar" style="width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:#F2F3F5;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#1F232B;">✕</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Telefone ou e-mail</label>
+          <input value="{{ loginId }}" onChange="{{ onLoginIdChange }}" style="{{ loginIdInputStyle }}" placeholder="Insira seu telefone ou e-mail">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Senha</label>
+          <div style="position:relative;">
+            <input type="{{ loginPasswordType }}" value="{{ loginPassword }}" onChange="{{ onLoginPasswordChange }}" placeholder="Sua senha" style="{{ loginPasswordInputStyle }}">
+            <button onClick="{{ toggleLoginPasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:48px;width:32px;border:none;background:transparent;color:#9AA1AC;cursor:pointer;display:flex;align-items:center;justify-content:center;">{{ loginEyeIcon }}</button>
+          </div>
+          <a href="#" onClick="{{ onForgotPasswordClick }}" style="align-self:flex-end;font-size:13px;color:{{ accent }};text-decoration:none;">Esqueci minha senha</a>
+        </div>
+
+        <sc-if value="{{ loginError }}" hint-placeholder-val="{{ false }}">
+          <div style="background:rgba(229,72,77,0.12);border:1px solid #E5484D;border-radius:10px;padding:10px 12px;font-size:13px;color:#F2F3F5;">{{ loginError }}</div>
+        </sc-if>
+
+        <button onClick="{{ onSubmitLogin }}" disabled="{{ loginSubmitDisabled }}" style="{{ loginSubmitStyle }}">{{ loginSubmitLabel }}</button>
+
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="flex:1;height:1px;background:#2A2F38;"></div>
+          <span style="font-size:12px;color:#9AA1AC;">ou</span>
+          <div style="flex:1;height:1px;background:#2A2F38;"></div>
+        </div>
+
+        <button onClick="{{ onGoogleClick }}" style="height:44px;border-radius:10px;border:1px solid #2A2F38;background:transparent;color:#F2F3F5;font-size:14px;font-family:'Inter',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;" style-hover="border-color:#5B616B;">
+          <span style="font-weight:700;font-size:15px;">G</span> Continuar com Google
+        </button>
+
+        <div style="text-align:center;font-size:14px;color:#9AA1AC;margin-top:4px;">Não tem conta? <a href="#" onClick="{{ onGoToRegistro }}" style="color:{{ accent }};text-decoration:none;font-weight:600;">Criar conta</a></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isRegistro }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+            <label style="font-size:13px;color:#9AA1AC;">Nome *</label>
+            <div style="position:relative;">
+              <input value="{{ firstName }}" onChange="{{ onFirstNameChange }}" onBlur="{{ onFirstNameBlur }}" placeholder="Seu nome" style="{{ firstNameInputStyle }}">
+              <sc-if value="{{ firstNameValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+            </div>
+            <sc-if value="{{ firstNameError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ firstNameError }}</span></sc-if>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+            <label style="font-size:13px;color:#9AA1AC;">Sobrenome *</label>
+            <div style="position:relative;">
+              <input value="{{ lastName }}" onChange="{{ onLastNameChange }}" onBlur="{{ onLastNameBlur }}" placeholder="Seu sobrenome" style="{{ lastNameInputStyle }}">
+              <sc-if value="{{ lastNameValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+            </div>
+            <sc-if value="{{ lastNameError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ lastNameError }}</span></sc-if>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Telefone (WhatsApp) *</label>
+          <div style="position:relative;">
+            <input value="{{ phone }}" onChange="{{ onPhoneChange }}" onBlur="{{ onPhoneBlur }}" placeholder="(16) 9 9999-9999" inputMode="numeric" style="{{ phoneInputStyle }}">
+            <sc-if value="{{ phoneValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+          </div>
+          <sc-if value="{{ phoneError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ phoneError }}</span></sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">E-mail *</label>
+          <div style="position:relative;">
+            <input type="email" value="{{ email }}" onChange="{{ onEmailChange }}" onBlur="{{ onEmailBlur }}" placeholder="voce@email.com" style="{{ emailInputStyle }}">
+            <sc-if value="{{ emailValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+          </div>
+          <sc-if value="{{ emailError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ emailError }}</span></sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Confirmar e-mail *</label>
+          <div style="position:relative;">
+            <input type="email" value="{{ confirmEmail }}" onChange="{{ onConfirmEmailChange }}" onBlur="{{ onConfirmEmailBlur }}" onPaste="{{ blockPaste }}" placeholder="repita o e-mail" style="{{ confirmEmailInputStyle }}">
+            <sc-if value="{{ confirmEmailValid }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:10px;top:14px;color:#3FB68B;">✓</span></sc-if>
+          </div>
+          <sc-if value="{{ confirmEmailError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ confirmEmailError }}</span></sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Senha *</label>
+          <div style="position:relative;">
+            <input type="{{ passwordType }}" value="{{ password }}" onChange="{{ onPasswordChange }}" onBlur="{{ onPasswordBlur }}" placeholder="mínimo 8 caracteres" style="{{ passwordInputStyle }}">
+            <button onClick="{{ togglePasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:48px;width:32px;border:none;background:transparent;color:#9AA1AC;cursor:pointer;display:flex;align-items:center;justify-content:center;">{{ passwordEyeIcon }}</button>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <sc-for list="{{ strengthSegments }}" as="seg" hint-placeholder-count="4">
+              <div style="flex:1;height:4px;border-radius:2px;background:{{ seg.color }};"></div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ passwordTouched }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:12px;color:#9AA1AC;">{{ strengthLabel }}</span>
+          </sc-if>
+          <sc-if value="{{ passwordError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ passwordError }}</span></sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Confirmar senha *</label>
+          <div style="position:relative;">
+            <input type="{{ confirmPasswordType }}" value="{{ confirmPassword }}" onChange="{{ onConfirmPasswordChange }}" onBlur="{{ onConfirmPasswordBlur }}" placeholder="repita a senha" style="{{ confirmPasswordInputStyle }}">
+            <button onClick="{{ toggleConfirmPasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:48px;width:32px;border:none;background:transparent;color:#9AA1AC;cursor:pointer;display:flex;align-items:center;justify-content:center;">{{ confirmPasswordEyeIcon }}</button>
+          </div>
+          <sc-if value="{{ confirmPasswordError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ confirmPasswordError }}</span></sc-if>
+        </div>
+
+        <sc-if value="{{ registroError }}" hint-placeholder-val="{{ false }}">
+          <div style="background:rgba(229,72,77,0.12);border:1px solid #E5484D;border-radius:10px;padding:10px 12px;font-size:13px;color:#F2F3F5;display:flex;flex-direction:column;gap:4px;">
+            <span>Este telefone já possui conta.</span>
+            <a href="#" onClick="{{ onGoToLoginPrefilled }}" style="color:{{ accent }};font-weight:600;text-decoration:none;">Entrar</a>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onClick="{{ onToggleTerms }}">
+          <div style="{{ termsCheckboxStyle }}">
+            <sc-if value="{{ acceptTerms }}" hint-placeholder-val="{{ false }}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </sc-if>
+          </div>
+          <span style="font-size:13px;color:#C7CBD1;line-height:1.4;">Li e aceito os <a href="#" onClick="{{ stopProp }}" style="color:{{ accent }};text-decoration:none;">Termos de uso</a> e a <a href="#" onClick="{{ stopProp }}" style="color:{{ accent }};text-decoration:none;">Política de privacidade</a></span>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onClick="{{ onTogglePromo }}">
+          <div style="{{ promoCheckboxStyle }}">
+            <sc-if value="{{ wantsPromo }}" hint-placeholder-val="{{ true }}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </sc-if>
+          </div>
+          <span style="font-size:13px;color:#C7CBD1;line-height:1.4;">Quero receber lembretes e promoções pelo WhatsApp</span>
+        </div>
+
+        <button onClick="{{ onSubmitRegistro }}" disabled="{{ registroSubmitDisabled }}" style="{{ registroSubmitStyle }}">{{ registroSubmitLabel }}</button>
+
+        <div style="text-align:center;font-size:14px;color:#9AA1AC;">Já tem conta? <a href="#" onClick="{{ onGoToLogin }}" style="color:{{ accent }};text-decoration:none;font-weight:600;">Entrar</a></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isOtp }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:32px 20px 20px 20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:'Inter',sans-serif;">
+        <div style="width:64px;height:64px;border-radius:50%;background:{{ accentSoftBg }};display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;">✉️</div>
+        <span style="font-family:'Sora',sans-serif;font-size:20px;font-weight:700;color:#F2F3F5;text-align:center;">Confirme seu telefone</span>
+        <span style="font-size:14px;color:#9AA1AC;text-align:center;line-height:1.4;">Enviamos um código de 6 dígitos para {{ otpPhoneDisplay }} <a href="#" onClick="{{ onAlterarClick }}" style="color:{{ accent }};text-decoration:none;">alterar</a></span>
+
+        <div style="display:flex;gap:8px;{{ otpShakeStyle }}">
+          <sc-for list="{{ otpBoxes }}" as="box" hint-placeholder-count="6">
+            <input value="{{ box.value }}" onChange="{{ box.onChange }}" onKeyDown="{{ box.onKeyDown }}" onPaste="{{ box.onPaste }}" onFocus="{{ box.onFocus }}" onBlur="{{ box.onBlurBox }}" ref="{{ box.setRef }}" inputMode="numeric" maxLength="1" style="{{ box.style }}">
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ otpError }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:13px;color:#E5484D;">Código inválido. Tente novamente.</span>
+        </sc-if>
+
+        <sc-if value="{{ canResend }}" hint-placeholder-val="{{ false }}">
+          <a href="#" onClick="{{ onResendClick }}" style="font-size:13px;color:{{ accent }};text-decoration:none;">Reenviar código</a>
+        </sc-if>
+        <sc-if value="{{ canResend }}" hint-placeholder-val="{{ true }}">
+        </sc-if>
+        <sc-if value="{{ showResendCountdown }}" hint-placeholder-val="{{ true }}">
+          <span style="font-size:13px;color:#9AA1AC;">Reenviar código em {{ resendCountdownLabel }}</span>
+        </sc-if>
+        <a href="#" onClick="{{ onReceberChamada }}" style="font-size:13px;color:#9AA1AC;text-decoration:underline;">Receber por chamada</a>
+
+        <button onClick="{{ onVerifyOtp }}" disabled="{{ otpSubmitDisabled }}" style="{{ otpSubmitStyle }}width:100%;margin-top:8px;">{{ otpSubmitLabel }}</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isRecuperarRequest }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+        <span style="font-size:14px;color:#9AA1AC;line-height:1.4;">Informe o telefone ou e-mail da sua conta para receber um código de recuperação.</span>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Telefone ou e-mail</label>
+          <input value="{{ recoverId }}" onChange="{{ onRecoverIdChange }}" placeholder="(16) 9 9999-9999 ou voce@email.com" style="{{ recoverIdInputStyle }}">
+        </div>
+        <button onClick="{{ onSubmitRecoverRequest }}" disabled="{{ recoverRequestDisabled }}" style="{{ recoverSubmitStyle }}">{{ recoverSubmitLabel }}</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isRecuperarNewpass }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;font-family:'Inter',sans-serif;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Nova senha</label>
+          <div style="position:relative;">
+            <input type="{{ newPasswordType }}" value="{{ newPassword }}" onChange="{{ onNewPasswordChange }}" onBlur="{{ onNewPasswordBlur }}" placeholder="mínimo 8 caracteres" style="{{ newPasswordInputStyle }}">
+            <button onClick="{{ toggleNewPasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:48px;width:32px;border:none;background:transparent;color:#9AA1AC;cursor:pointer;display:flex;align-items:center;justify-content:center;">{{ newPasswordEyeIcon }}</button>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <sc-for list="{{ newStrengthSegments }}" as="seg" hint-placeholder-count="4">
+              <div style="flex:1;height:4px;border-radius:2px;background:{{ seg.color }};"></div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ newPasswordError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ newPasswordError }}</span></sc-if>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="font-size:13px;color:#9AA1AC;">Confirmar nova senha</label>
+          <div style="position:relative;">
+            <input type="{{ confirmNewPasswordType }}" value="{{ confirmNewPassword }}" onChange="{{ onConfirmNewPasswordChange }}" onBlur="{{ onConfirmNewPasswordBlur }}" placeholder="repita a senha" style="{{ confirmNewPasswordInputStyle }}">
+            <button onClick="{{ toggleConfirmNewPasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:48px;width:32px;border:none;background:transparent;color:#9AA1AC;cursor:pointer;display:flex;align-items:center;justify-content:center;">{{ confirmNewPasswordEyeIcon }}</button>
+          </div>
+          <sc-if value="{{ confirmNewPasswordError }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#E5484D;">{{ confirmNewPasswordError }}</span></sc-if>
+        </div>
+        <button onClick="{{ onSubmitNewPassword }}" disabled="{{ newPassSubmitDisabled }}" style="{{ newPassSubmitStyle }}">{{ newPassSubmitLabel }}</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isSucesso }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:40px 20px 24px 20px;display:flex;flex-direction:column;align-items:center;font-family:'Inter',sans-serif;">
+        <div style="width:88px;height:88px;border-radius:50%;background:{{ accent }};display:flex;align-items:center;justify-content:center;animation:successPop 0.45s cubic-bezier(.34,1.56,.64,1) both;flex-shrink:0;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#0F1115" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" style="animation:checkDraw 0.4s 0.35s ease-out both;"></path></svg>
+        </div>
+        <span style="font-family:'Sora',sans-serif;font-size:24px;font-weight:700;color:#F2F3F5;margin-top:20px;text-align:center;">Conta criada! 🎉</span>
+        <span style="font-size:14px;color:#9AA1AC;margin-top:6px;text-align:center;">{{ successSubtitle }}</span>
+        <div style="width:100%;display:flex;flex-direction:column;gap:12px;margin-top:28px;">
+          <button onClick="{{ onSuccessScheduleClick }}" style="height:52px;border-radius:12px;border:none;background:{{ accent }};color:#0F1115;font-size:16px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Agendar horário</button>
+          <button onClick="{{ onSuccessCloseClick }}" style="height:48px;border-radius:12px;border:none;background:transparent;color:#9AA1AC;font-size:15px;cursor:pointer;font-family:'Inter',sans-serif;">Fechar</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:#1F232B;border:1px solid #2A2F38;color:#F2F3F5;font-size:14px;padding:10px 18px;border-radius:999px;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:authToastIn 0.2s ease-out;z-index:310;font-family:'Inter',sans-serif;">{{ toast }}</div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 390, &quot;height&quot;: 844},
+  &quot;open&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;},
+  &quot;accentColor&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#D4A84C&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#D4A84C&quot;, &quot;#5FBF9E&quot;, &quot;#C97BD1&quot;, &quot;#5CA6D4&quot;]},
+  &quot;initialMode&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;login&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;login&quot;, &quot;registro&quot;]},
+  &quot;onClose&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;() =&gt; void&quot;},
+  &quot;onAuthSuccess&quot;: {&quot;editor&quot;: null, &quot;tsType&quot;: &quot;(user: {firstName: string, lastName: string, phone: string, email: string}) =&gt; void&quot;}
+}">
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+function formatPhoneBR(digits) {
+  let out = '';
+  if (digits.length > 0) out += '(' + digits.slice(0, 2);
+  if (digits.length >= 2) out += ') ';
+  if (digits.length > 2) out += digits.slice(2, 3);
+  if (digits.length > 3) out += ' ' + digits.slice(3, 7);
+  if (digits.length > 7) out += '-' + digits.slice(7, 11);
+  return out;
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function pwStrength(pw) {
+  if (!pw) return 0;
+  let score = 0;
+  if (pw.length >= 8) score = 1;
+  if (pw.length >= 8 && /[A-Za-z]/.test(pw) && /\d/.test(pw)) score = 2;
+  if (score >= 2 && pw.length >= 10) score = 3;
+  if (score >= 3 && /[^A-Za-z0-9]/.test(pw)) score = 4;
+  return score;
+}
+function pwValid(pw) { return pw.length >= 8 && /[A-Za-z]/.test(pw) && /\d/.test(pw); }
+
+const MOCK_USERS = [
+  { phone: '16999990001', email: 'joao@email.com', password: 'senha123', firstName: 'João Pedro', lastName: 'Lima' },
+  { phone: '16988887777', email: 'maria@email.com', password: 'senha123', firstName: 'Maria', lastName: 'Fernanda' },
+];
+const VALID_OTP = '123456';
+
+const INITIAL_FIELDS = {
+  loginId: '', loginPassword: '', loginPasswordVisible: false, loginError: null, loginLoading: false,
+  firstName: '', lastName: '', phone: '', email: '', confirmEmail: '', password: '', confirmPassword: '',
+  passwordVisible: false, confirmPasswordVisible: false,
+  firstNameTouched: false, lastNameTouched: false, phoneTouched: false, emailTouched: false,
+  confirmEmailTouched: false, passwordTouched: false, confirmPasswordTouched: false,
+  acceptTerms: false, wantsPromo: true, registroLoading: false, registroError: false,
+  otpDigits: ['', '', '', '', '', ''], otpError: false, otpFocusIndex: null, verifying: false,
+  resendSeconds: 0, otpContext: 'registro', pendingUser: null,
+  recoverId: '', recoverLoading: false,
+  newPassword: '', confirmNewPassword: '', newPasswordVisible: false, confirmNewPasswordVisible: false,
+  newPasswordTouched: false, confirmNewPasswordTouched: false, newPassLoading: false,
+  toast: null,
+};
+
+class Component extends DCLogic {
+  state = { screen: this.props.initialMode ?? 'login', isDesktop: false, ...INITIAL_FIELDS };
+  otpRefs = [];
+
+  setRootRef = (el) => {
+    this.rootEl = el;
+    if (el && this.resizeObserver) this.resizeObserver.observe(el);
+  };
+
+  componentDidMount() {
+    this.checkSize = () => {
+      const el = this.rootEl;
+      const width = el ? el.getBoundingClientRect().width : window.innerWidth;
+      const isDesktop = width >= 768;
+      if (isDesktop !== this.state.isDesktop) this.setState({ isDesktop });
+    };
+    this.resizeObserver = new ResizeObserver(this.checkSize);
+    if (this.rootEl) this.resizeObserver.observe(this.rootEl);
+    window.addEventListener('resize', this.checkSize);
+    setTimeout(this.checkSize, 0);
+    this.checkSize();
+  }
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.checkSize);
+    if (this.resizeObserver) this.resizeObserver.disconnect();
+    clearTimeout(this._toastTimer); clearTimeout(this._loginTimer); clearTimeout(this._registroTimer);
+    clearTimeout(this._verifyTimer); clearTimeout(this._recoverTimer); clearTimeout(this._newPassTimer);
+    clearTimeout(this._successTimer); clearInterval(this._resendInterval);
+  }
+  componentDidUpdate(prevProps) {
+    if (this.props.open && !prevProps.open) {
+      clearInterval(this._resendInterval);
+      this.setState({ screen: this.props.initialMode ?? 'login', ...INITIAL_FIELDS });
+    }
+  }
+
+  queueToast = (msg) => {
+    clearTimeout(this._toastTimer);
+    this.setState({ toast: msg });
+    this._toastTimer = setTimeout(() => this.setState({ toast: null }), 3000);
+  };
+
+  startResendCountdown = () => {
+    clearInterval(this._resendInterval);
+    this.setState({ resendSeconds: 59 });
+    this._resendInterval = setInterval(() => {
+      this.setState((s) => {
+        if (s.resendSeconds <= 1) { clearInterval(this._resendInterval); return { resendSeconds: 0 }; }
+        return { resendSeconds: s.resendSeconds - 1 };
+      });
+    }, 1000);
+  };
+
+  onOverlayClick = () => this.onCloseClick();
+  onCloseClick = () => { clearInterval(this._resendInterval); if (this.props.onClose) this.props.onClose(); };
+
+  goToLogin = () => this.setState({ screen: 'login', registroError: false });
+  goToRegistro = () => this.setState({ screen: 'registro' });
+  goToRecuperarRequest = () => this.setState({ screen: 'recuperar-request' });
+
+  onGoToLogin = (e) => { e.preventDefault(); this.goToLogin(); };
+  onGoToRegistro = (e) => { e.preventDefault(); this.goToRegistro(); };
+  onGoToLoginPrefilled = (e) => { e.preventDefault(); this.setState({ loginId: this.state.phone || this.state.email, screen: 'login', registroError: false }); };
+  onForgotPasswordClick = (e) => { e.preventDefault(); this.setState({ recoverId: this.state.loginId, screen: 'recuperar-request' }); };
+
+  onBackClick = () => {
+    const { screen, otpContext } = this.state;
+    if (screen === 'registro') this.goToLogin();
+    else if (screen === 'otp') { if (otpContext === 'registro') this.goToRegistro(); else this.goToRecuperarRequest(); }
+    else if (screen === 'recuperar-request') this.goToLogin();
+    else if (screen === 'recuperar-newpass') this.goToRecuperarRequest();
+  };
+
+  onAlterarClick = (e) => { e.preventDefault(); this.onBackClick(); };
+
+  stopProp = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+  // Login
+  onLoginIdChange = (e) => this.setState({ loginId: e.target.value, loginError: null });
+  onLoginPasswordChange = (e) => this.setState({ loginPassword: e.target.value, loginError: null });
+  toggleLoginPasswordVisible = () => this.setState((s) => ({ loginPasswordVisible: !s.loginPasswordVisible }));
+  onGoogleClick = () => this.queueToast('Em breve');
+
+  onSubmitLogin = () => {
+    const { loginId, loginPassword } = this.state;
+    if (!loginId.trim() || !loginPassword) return;
+    this.setState({ loginLoading: true, loginError: null });
+    clearTimeout(this._loginTimer);
+    this._loginTimer = setTimeout(() => {
+      const idNorm = loginId.trim().toLowerCase();
+      const digits = idNorm.replace(/\D/g, '');
+      const user = MOCK_USERS.find((u) => (u.email.toLowerCase() === idNorm || u.phone === digits) && u.password === loginPassword);
+      if (user) {
+        this.setState({ loginLoading: false });
+        const result = { firstName: user.firstName, lastName: user.lastName, phone: user.phone, email: user.email };
+        if (this.props.onAuthSuccess) this.props.onAuthSuccess(result);
+        if (this.props.onClose) this.props.onClose();
+      } else {
+        this.setState({ loginLoading: false, loginError: 'Telefone/e-mail ou senha incorretos' });
+      }
+    }, 800);
+  };
+
+  // Registro
+  onFirstNameChange = (e) => this.setState({ firstName: e.target.value });
+  onFirstNameBlur = () => this.setState({ firstNameTouched: true });
+  onLastNameChange = (e) => this.setState({ lastName: e.target.value });
+  onLastNameBlur = () => this.setState({ lastNameTouched: true });
+  onPhoneChange = (e) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 11);
+    this.setState({ phone: formatPhoneBR(raw) });
+  };
+  onPhoneBlur = () => this.setState({ phoneTouched: true });
+  onEmailChange = (e) => this.setState({ email: e.target.value, registroError: false });
+  onEmailBlur = () => this.setState({ emailTouched: true });
+  onConfirmEmailChange = (e) => this.setState({ confirmEmail: e.target.value });
+  onConfirmEmailBlur = () => this.setState({ confirmEmailTouched: true });
+  blockPaste = (e) => e.preventDefault();
+  onPasswordChange = (e) => this.setState({ password: e.target.value });
+  onPasswordBlur = () => this.setState({ passwordTouched: true });
+  togglePasswordVisible = () => this.setState((s) => ({ passwordVisible: !s.passwordVisible }));
+  onConfirmPasswordChange = (e) => this.setState({ confirmPassword: e.target.value });
+  onConfirmPasswordBlur = () => this.setState({ confirmPasswordTouched: true });
+  toggleConfirmPasswordVisible = () => this.setState((s) => ({ confirmPasswordVisible: !s.confirmPasswordVisible }));
+  onToggleTerms = () => this.setState((s) => ({ acceptTerms: !s.acceptTerms }));
+  onTogglePromo = () => this.setState((s) => ({ wantsPromo: !s.wantsPromo }));
+
+  onSubmitRegistro = () => {
+    const s = this.state;
+    this.setState({ firstNameTouched: true, lastNameTouched: true, phoneTouched: true, emailTouched: true, confirmEmailTouched: true, passwordTouched: true, confirmPasswordTouched: true });
+    const digits = (s.phone || '').replace(/\D/g, '');
+    const valid = s.firstName.trim().length >= 2 && s.lastName.trim().length >= 2 && digits.length === 11 &&
+      EMAIL_RE.test(s.email) && s.confirmEmail === s.email && pwValid(s.password) && s.confirmPassword === s.password && s.acceptTerms;
+    if (!valid) return;
+    this.setState({ registroLoading: true, registroError: false });
+    clearTimeout(this._registroTimer);
+    this._registroTimer = setTimeout(() => {
+      const dup = MOCK_USERS.find((u) => u.phone === digits || u.email.toLowerCase() === s.email.trim().toLowerCase());
+      if (dup) { this.setState({ registroLoading: false, registroError: true }); return; }
+      this.setState({
+        registroLoading: false, screen: 'otp', otpContext: 'registro',
+        otpDigits: ['', '', '', '', '', ''], otpError: false,
+        pendingUser: { firstName: s.firstName.trim(), lastName: s.lastName.trim(), phone: digits, email: s.email.trim() },
+      });
+      this.startResendCountdown();
+    }, 800);
+  };
+
+  // OTP
+  setOtpRef = (i) => (el) => { this.otpRefs[i] = el; };
+  onOtpChange = (i, e) => {
+    let v = e.target.value.replace(/\D/g, '');
+    if (v.length > 1) v = v.slice(-1);
+    const otpDigits = [...this.state.otpDigits];
+    otpDigits[i] = v;
+    this.setState({ otpDigits, otpError: false });
+    if (v && i < 5 && this.otpRefs[i + 1]) this.otpRefs[i + 1].focus();
+  };
+  onOtpKeyDown = (i, e) => {
+    if (e.key === 'Backspace' && !this.state.otpDigits[i] && i > 0 && this.otpRefs[i - 1]) this.otpRefs[i - 1].focus();
+  };
+  onOtpPaste = (e) => {
+    const text = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+    if (text.length === 6) {
+      e.preventDefault();
+      this.setState({ otpDigits: text.split(''), otpError: false });
+      setTimeout(() => { if (this.otpRefs[5]) this.otpRefs[5].focus(); }, 0);
+    }
+  };
+  onResendClick = (e) => { e.preventDefault(); this.queueToast('Código reenviado'); this.startResendCountdown(); };
+  onReceberChamada = (e) => { e.preventDefault(); this.queueToast('Ligação simulada em breve'); };
+
+  onVerifyOtp = () => {
+    const code = this.state.otpDigits.join('');
+    if (code.length !== 6) return;
+    this.setState({ verifying: true });
+    clearTimeout(this._verifyTimer);
+    this._verifyTimer = setTimeout(() => {
+      if (code === VALID_OTP) {
+        this.setState({ verifying: false });
+        if (this.state.otpContext === 'registro') {
+          this.setState({ screen: 'sucesso' });
+          clearTimeout(this._successTimer);
+          this._successTimer = setTimeout(() => this.finishSuccess(), 2500);
+        } else {
+          this.setState({ screen: 'recuperar-newpass' });
+        }
+      } else {
+        this.setState({ verifying: false, otpError: true, otpDigits: ['', '', '', '', '', ''] });
+        if (this.otpRefs[0]) this.otpRefs[0].focus();
+      }
+    }, 800);
+  };
+
+  finishSuccess = () => {
+    clearTimeout(this._successTimer);
+    const u = this.state.pendingUser;
+    if (this.props.onAuthSuccess && u) this.props.onAuthSuccess(u);
+    if (this.props.onClose) this.props.onClose();
+  };
+  onSuccessScheduleClick = () => this.finishSuccess();
+  onSuccessCloseClick = () => this.finishSuccess();
+
+  // Recuperar
+  onRecoverIdChange = (e) => this.setState({ recoverId: e.target.value });
+  onSubmitRecoverRequest = () => {
+    if (!this.state.recoverId.trim()) return;
+    this.setState({ recoverLoading: true });
+    clearTimeout(this._recoverTimer);
+    this._recoverTimer = setTimeout(() => {
+      this.setState({ recoverLoading: false, screen: 'otp', otpContext: 'recuperar', otpDigits: ['', '', '', '', '', ''], otpError: false });
+      this.startResendCountdown();
+    }, 800);
+  };
+  onNewPasswordChange = (e) => this.setState({ newPassword: e.target.value });
+  onNewPasswordBlur = () => this.setState({ newPasswordTouched: true });
+  toggleNewPasswordVisible = () => this.setState((s) => ({ newPasswordVisible: !s.newPasswordVisible }));
+  onConfirmNewPasswordChange = (e) => this.setState({ confirmNewPassword: e.target.value });
+  onConfirmNewPasswordBlur = () => this.setState({ confirmNewPasswordTouched: true });
+  toggleConfirmNewPasswordVisible = () => this.setState((s) => ({ confirmNewPasswordVisible: !s.confirmNewPasswordVisible }));
+
+  onSubmitNewPassword = () => {
+    this.setState({ newPasswordTouched: true, confirmNewPasswordTouched: true });
+    const s = this.state;
+    if (!pwValid(s.newPassword) || s.confirmNewPassword !== s.newPassword) return;
+    this.setState({ newPassLoading: true });
+    clearTimeout(this._newPassTimer);
+    this._newPassTimer = setTimeout(() => {
+      this.setState({
+        newPassLoading: false, screen: 'login', loginId: this.state.recoverId || '',
+        newPassword: '', confirmNewPassword: '', newPasswordTouched: false, confirmNewPasswordTouched: false,
+      });
+      this.queueToast('Senha alterada com sucesso');
+    }, 800);
+  };
+
+  renderVals() {
+    const s = this.state;
+    const open = this.props.open ?? false;
+    const accent = this.props.accentColor ?? '#D4A84C';
+    const isDesktop = s.isDesktop;
+    const eyeOpen = '👁';
+    const eyeClosed = '🙈';
+
+    const rootStyle = `position:fixed;inset:0;z-index:300;pointer-events:${open ? 'auto' : 'none'};`;
+    const overlayStyle = `position:fixed;inset:0;background:#000000;opacity:${open ? 0.6 : 0};transition:opacity 250ms ease;`;
+    const sheetStyle = isDesktop
+      ? `position:fixed;top:50%;left:50%;width:420px;max-height:90vh;background:#15171C;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.5);transform:translate(-50%,-50%) scale(${open ? 1 : 0.96});opacity:${open ? 1 : 0};transition:transform 250ms ease, opacity 250ms ease;`
+      : `position:fixed;left:0;right:0;bottom:0;margin:0 auto;width:100%;max-width:480px;height:88vh;background:#15171C;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -8px 32px rgba(0,0,0,0.5);transform:translateY(${open ? '0' : '100%'});transition:transform 300ms cubic-bezier(.32,.72,0,1);`;
+
+    const screen = s.screen;
+    const isLogin = screen === 'login', isRegistro = screen === 'registro', isOtp = screen === 'otp';
+    const isRecuperarRequest = screen === 'recuperar-request', isRecuperarNewpass = screen === 'recuperar-newpass';
+    const isSucesso = screen === 'sucesso';
+    const showHeader = !isSucesso;
+    const showBack = screen !== 'login';
+    const hideBackPlaceholder = !showBack;
+    const titles = { login: 'Entrar', registro: 'Criar conta', otp: 'Verificar', 'recuperar-request': 'Recuperar senha', 'recuperar-newpass': 'Nova senha' };
+    const headerTitle = titles[screen] || '';
+
+    const inputBase = `height:48px;border-radius:10px;background:#1A1D23;color:#F2F3F5;font-size:14px;padding:0 12px;font-family:'Inter',sans-serif;width:100%;`;
+    const border = (err) => `border:1px solid ${err ? '#E5484D' : '#2A2F38'};`;
+
+    // Login
+    const loginSubmitDisabled = !s.loginId.trim() || !s.loginPassword || s.loginLoading;
+    const loginSubmitStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;${loginSubmitDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.4;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+
+    // Registro validations
+    const firstNameValid = s.firstName.trim().length >= 2;
+    const lastNameValid = s.lastName.trim().length >= 2;
+    const phoneDigits = (s.phone || '').replace(/\D/g, '');
+    const phoneValid = phoneDigits.length === 11;
+    const emailValid = EMAIL_RE.test(s.email);
+    const confirmEmailValid = emailValid && s.confirmEmail === s.email && s.confirmEmail.length > 0;
+    const passwordValid = pwValid(s.password);
+    const confirmPasswordValid = passwordValid && s.confirmPassword === s.password && s.confirmPassword.length > 0;
+    const strengthScore = pwStrength(s.password);
+    const strengthColor = strengthScore <= 1 ? '#E5484D' : strengthScore <= 3 ? '#D4A84C' : '#5FBF9E';
+    const strengthLabel = strengthScore === 0 ? '' : strengthScore <= 1 ? 'Fraca' : strengthScore <= 3 ? 'Média' : 'Forte';
+    const strengthSegments = [0, 1, 2, 3].map((i) => ({ color: i < strengthScore ? strengthColor : '#2A2F38' }));
+
+    const registroSubmitDisabled = !(firstNameValid && lastNameValid && phoneValid && emailValid && confirmEmailValid && passwordValid && confirmPasswordValid && s.acceptTerms) || s.registroLoading;
+    const registroSubmitStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;${registroSubmitDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.4;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+    const checkboxStyle = (checked) => `width:20px;height:20px;border-radius:5px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;${checked ? `background:${accent};` : 'border:1.5px solid #2A2F38;'}`;
+
+    // OTP
+    const otpPhoneDisplay = s.pendingUser ? formatPhoneBR(s.pendingUser.phone) : formatPhoneBR(s.recoverId.replace(/\D/g, '').slice(0, 11)) || '(16) 9 9999-9999';
+    const otpBoxes = s.otpDigits.map((v, i) => ({
+      value: v,
+      onChange: (e) => this.onOtpChange(i, e),
+      onKeyDown: (e) => this.onOtpKeyDown(i, e),
+      onPaste: this.onOtpPaste,
+      onFocus: () => this.setState({ otpFocusIndex: i }),
+      onBlurBox: () => this.setState({ otpFocusIndex: null }),
+      setRef: this.setOtpRef(i),
+      style: `width:48px;height:56px;border-radius:10px;background:#1A1D23;border:1px solid ${s.otpError ? '#E5484D' : (s.otpFocusIndex === i ? accent : '#2A2F38')};color:#F2F3F5;text-align:center;font-size:22px;font-weight:600;font-family:'Inter',sans-serif;`,
+    }));
+    const otpShakeStyle = s.otpError ? 'animation:otpShake 0.3s ease-in-out;' : '';
+    const otpComplete = s.otpDigits.every((d) => d.length === 1);
+    const otpSubmitDisabled = !otpComplete || s.verifying;
+    const otpSubmitLabel = s.verifying ? 'Verificando...' : 'Verificar';
+    const otpSubmitStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;${otpSubmitDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.4;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+    const canResend = s.resendSeconds <= 0;
+    const showResendCountdown = s.resendSeconds > 0;
+    const resendCountdownLabel = `0:${String(s.resendSeconds).padStart(2, '0')}`;
+
+    // Recuperar
+    const recoverRequestDisabled = !s.recoverId.trim() || s.recoverLoading;
+    const recoverSubmitLabel = s.recoverLoading ? 'Enviando...' : 'Enviar código de recuperação';
+    const recoverSubmitStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;${recoverRequestDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.4;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+    const newPasswordValid = pwValid(s.newPassword);
+    const confirmNewPasswordValid = newPasswordValid && s.confirmNewPassword === s.newPassword && s.confirmNewPassword.length > 0;
+    const newStrengthScore = pwStrength(s.newPassword);
+    const newStrengthColor = newStrengthScore <= 1 ? '#E5484D' : newStrengthScore <= 3 ? '#D4A84C' : '#5FBF9E';
+    const newStrengthSegments = [0, 1, 2, 3].map((i) => ({ color: i < newStrengthScore ? newStrengthColor : '#2A2F38' }));
+    const newPassSubmitDisabled = !(newPasswordValid && confirmNewPasswordValid) || s.newPassLoading;
+    const newPassSubmitLabel = s.newPassLoading ? 'Salvando...' : 'Salvar nova senha';
+    const newPassSubmitStyle = `height:52px;border-radius:12px;border:none;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;${newPassSubmitDisabled ? 'background:#2A2F38;color:#5B616B;opacity:0.4;cursor:not-allowed;' : `background:${accent};color:#0F1115;cursor:pointer;`}`;
+
+    const successSubtitle = s.pendingUser ? `Bem-vindo, ${s.pendingUser.firstName}. Agora é só escolher seu horário.` : '';
+
+    return {
+      rootStyle, overlayStyle, sheetStyle, isMobile: !isDesktop, accent, accentSoftBg: hexToRgba(accent, 0.15), setRootRef: this.setRootRef,
+      showHeader, showBack, hideBackPlaceholder, headerTitle, onBackClick: this.onBackClick, onCloseClick: this.onCloseClick, onOverlayClick: this.onOverlayClick,
+      isLogin, isRegistro, isOtp, isRecuperarRequest, isRecuperarNewpass, isSucesso,
+
+      loginId: s.loginId, onLoginIdChange: this.onLoginIdChange, loginIdInputStyle: `${inputBase}${border(false)}`,
+      loginPassword: s.loginPassword, onLoginPasswordChange: this.onLoginPasswordChange,
+      loginPasswordType: s.loginPasswordVisible ? 'text' : 'password',
+      loginPasswordInputStyle: `${inputBase}${border(!!s.loginError)}padding-right:44px;`,
+      toggleLoginPasswordVisible: this.toggleLoginPasswordVisible, loginEyeIcon: s.loginPasswordVisible ? eyeClosed : eyeOpen,
+      onForgotPasswordClick: this.onForgotPasswordClick, loginError: s.loginError,
+      onSubmitLogin: this.onSubmitLogin, loginSubmitDisabled, loginSubmitStyle, loginSubmitLabel: s.loginLoading ? 'Entrando...' : 'Entrar',
+      onGoogleClick: this.onGoogleClick, onGoToRegistro: this.onGoToRegistro,
+
+      firstName: s.firstName, onFirstNameChange: this.onFirstNameChange, onFirstNameBlur: this.onFirstNameBlur,
+      firstNameValid: s.firstNameTouched && firstNameValid, firstNameError: s.firstNameTouched && !firstNameValid ? 'Mínimo 2 caracteres' : null,
+      firstNameInputStyle: `${inputBase}${border(s.firstNameTouched && !firstNameValid)}`,
+      lastName: s.lastName, onLastNameChange: this.onLastNameChange, onLastNameBlur: this.onLastNameBlur,
+      lastNameValid: s.lastNameTouched && lastNameValid, lastNameError: s.lastNameTouched && !lastNameValid ? 'Mínimo 2 caracteres' : null,
+      lastNameInputStyle: `${inputBase}${border(s.lastNameTouched && !lastNameValid)}`,
+      phone: s.phone, onPhoneChange: this.onPhoneChange, onPhoneBlur: this.onPhoneBlur,
+      phoneValid: s.phoneTouched && phoneValid, phoneError: s.phoneTouched && !phoneValid ? 'Número incompleto' : null,
+      phoneInputStyle: `${inputBase}${border(s.phoneTouched && !phoneValid)}padding-right:36px;`,
+      email: s.email, onEmailChange: this.onEmailChange, onEmailBlur: this.onEmailBlur,
+      emailValid: s.emailTouched && emailValid, emailError: s.emailTouched && !emailValid ? 'E-mail inválido' : null,
+      emailInputStyle: `${inputBase}${border(s.emailTouched && !emailValid)}padding-right:36px;`,
+      confirmEmail: s.confirmEmail, onConfirmEmailChange: this.onConfirmEmailChange, onConfirmEmailBlur: this.onConfirmEmailBlur, blockPaste: this.blockPaste,
+      confirmEmailValid: s.confirmEmailTouched && confirmEmailValid, confirmEmailError: s.confirmEmailTouched && !confirmEmailValid ? 'Os e-mails não coincidem' : null,
+      confirmEmailInputStyle: `${inputBase}${border(s.confirmEmailTouched && !confirmEmailValid)}padding-right:36px;`,
+      password: s.password, onPasswordChange: this.onPasswordChange, onPasswordBlur: this.onPasswordBlur,
+      passwordType: s.passwordVisible ? 'text' : 'password', passwordTouched: s.passwordTouched,
+      passwordEyeIcon: s.passwordVisible ? eyeClosed : eyeOpen, togglePasswordVisible: this.togglePasswordVisible,
+      passwordError: s.passwordTouched && !passwordValid ? 'Mínimo 8 caracteres, com letra e número' : null,
+      passwordInputStyle: `${inputBase}${border(s.passwordTouched && !passwordValid)}padding-right:44px;`,
+      strengthSegments, strengthLabel,
+      confirmPassword: s.confirmPassword, onConfirmPasswordChange: this.onConfirmPasswordChange, onConfirmPasswordBlur: this.onConfirmPasswordBlur,
+      confirmPasswordType: s.confirmPasswordVisible ? 'text' : 'password',
+      confirmPasswordEyeIcon: s.confirmPasswordVisible ? eyeClosed : eyeOpen, toggleConfirmPasswordVisible: this.toggleConfirmPasswordVisible,
+      confirmPasswordError: s.confirmPasswordTouched && !confirmPasswordValid ? 'As senhas não coincidem' : null,
+      confirmPasswordInputStyle: `${inputBase}${border(s.confirmPasswordTouched && !confirmPasswordValid)}padding-right:44px;`,
+      registroError: s.registroError, onGoToLoginPrefilled: this.onGoToLoginPrefilled,
+      acceptTerms: s.acceptTerms, onToggleTerms: this.onToggleTerms, termsCheckboxStyle: checkboxStyle(s.acceptTerms), stopProp: this.stopProp,
+      wantsPromo: s.wantsPromo, onTogglePromo: this.onTogglePromo, promoCheckboxStyle: checkboxStyle(s.wantsPromo),
+      onSubmitRegistro: this.onSubmitRegistro, registroSubmitDisabled, registroSubmitStyle,
+      registroSubmitLabel: s.registroLoading ? 'Criando conta...' : 'Criar conta', onGoToLogin: this.onGoToLogin,
+
+      otpPhoneDisplay, onAlterarClick: this.onAlterarClick, otpBoxes, otpShakeStyle, otpError: s.otpError,
+      canResend, showResendCountdown, resendCountdownLabel, onResendClick: this.onResendClick, onReceberChamada: this.onReceberChamada,
+      onVerifyOtp: this.onVerifyOtp, otpSubmitDisabled, otpSubmitLabel, otpSubmitStyle,
+
+      recoverId: s.recoverId, onRecoverIdChange: this.onRecoverIdChange, recoverIdInputStyle: `${inputBase}${border(false)}`,
+      onSubmitRecoverRequest: this.onSubmitRecoverRequest, recoverRequestDisabled, recoverSubmitLabel, recoverSubmitStyle,
+
+      newPassword: s.newPassword, onNewPasswordChange: this.onNewPasswordChange, onNewPasswordBlur: this.onNewPasswordBlur,
+      newPasswordType: s.newPasswordVisible ? 'text' : 'password', newPasswordEyeIcon: s.newPasswordVisible ? eyeClosed : eyeOpen,
+      toggleNewPasswordVisible: this.toggleNewPasswordVisible,
+      newPasswordError: s.newPasswordTouched && !newPasswordValid ? 'Mínimo 8 caracteres, com letra e número' : null,
+      newPasswordInputStyle: `${inputBase}${border(s.newPasswordTouched && !newPasswordValid)}padding-right:44px;`,
+      newStrengthSegments,
+      confirmNewPassword: s.confirmNewPassword, onConfirmNewPasswordChange: this.onConfirmNewPasswordChange, onConfirmNewPasswordBlur: this.onConfirmNewPasswordBlur,
+      confirmNewPasswordType: s.confirmNewPasswordVisible ? 'text' : 'password', confirmNewPasswordEyeIcon: s.confirmNewPasswordVisible ? eyeClosed : eyeOpen,
+      toggleConfirmNewPasswordVisible: this.toggleConfirmNewPasswordVisible,
+      confirmNewPasswordError: s.confirmNewPasswordTouched && !confirmNewPasswordValid ? 'As senhas não coincidem' : null,
+      confirmNewPasswordInputStyle: `${inputBase}${border(s.confirmNewPasswordTouched && !confirmNewPasswordValid)}padding-right:44px;`,
+      onSubmitNewPassword: this.onSubmitNewPassword, newPassSubmitDisabled, newPassSubmitLabel, newPassSubmitStyle,
+
+      successSubtitle, onSuccessScheduleClick: this.onSuccessScheduleClick, onSuccessCloseClick: this.onSuccessCloseClick,
+      toast: s.toast,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

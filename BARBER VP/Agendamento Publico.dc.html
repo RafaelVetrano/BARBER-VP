@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: #0F1115; }
+    * { box-sizing: border-box; }
+    *::-webkit-scrollbar { display: none; }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translate(-50%, 8px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+  </style>
+  <script src="./image-slot.js"></script>
+</helmet>
+
+<div style="min-height:100vh; background:#0F1115; display:flex; justify-content:center; font-family:'Inter',sans-serif; color:#F2F3F5;">
+  <div style="width:100%; max-width:480px; position:relative; padding-bottom:{{ contentPaddingBottom }};">
+
+    <div style="position:relative;">
+      <div style="height:300px; overflow:hidden; position:relative;">
+        <image-slot id="hero-cover" shape="rect" placeholder="foto atmosférica e escura da barbearia" style="width:100%;height:100%;"></image-slot>
+        <div style="position:absolute; left:0; right:0; bottom:0; height:120px; background:linear-gradient(to bottom, rgba(15,17,21,0) 0%, #0F1115 100%); pointer-events:none;"></div>
+        <sc-if value="{{ isLoggedIn }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; top:16px; right:16px;">
+            <button onClick="{{ onAvatarClick }}" aria-label="Menu da conta" style="width:36px; height:36px; border-radius:50%; border:none; background:{{ avatarBg }}; color:{{ accent }}; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center;">{{ userInitials }}</button>
+            <sc-if value="{{ userMenuOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute; top:44px; right:0; width:200px; background:#1F232B; border:1px solid #2A2F38; border-radius:12px; padding:6px; display:flex; flex-direction:column; z-index:25; box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+                <button onClick="{{ onMeusAgendamentosClick }}" style="height:40px; padding:0 12px; border:none; background:transparent; color:#F2F3F5; font-family:'Inter',sans-serif; font-size:14px; text-align:left; border-radius:8px; cursor:pointer;" style-hover="background:#2A2F38;">Meus agendamentos</button>
+                <button onClick="{{ onMeusDadosClick }}" style="height:40px; padding:0 12px; border:none; background:transparent; color:#F2F3F5; font-family:'Inter',sans-serif; font-size:14px; text-align:left; border-radius:8px; cursor:pointer;" style-hover="background:#2A2F38;">Meus dados</button>
+                <button onClick="{{ onSairClick }}" style="height:40px; padding:0 12px; border:none; background:transparent; color:#E5484D; font-family:'Inter',sans-serif; font-size:14px; text-align:left; border-radius:8px; cursor:pointer;" style-hover="background:#2A2F38;">Sair</button>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isLoggedOut }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ onMeusHorariosClick }}" style="position:absolute; top:16px; right:16px; height:36px; padding:0 16px; border-radius:999px; border:none; background:rgba(240,180,20,0.92); color:#141414; font-family:'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer;" style-hover="background:rgba(240,180,20,1);">Entrar</button>
+        </sc-if>
+      </div>
+      <image-slot id="logo" shape="circle" placeholder="logo" style="position:absolute; bottom:-44px; left:20px; width:88px; height:88px; border-radius:50%; border:3px solid #0F1115;"></image-slot>
+    </div>
+
+    <div style="padding:52px 20px 0 20px;">
+      <div style="font-family:'Sora',sans-serif; font-weight:700; font-size:24px; color:#F2F3F5;">Barbearia Central</div>
+
+      <div style="margin-top:6px; font-size:14px; color:#9AA1AC; display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+        <span style="color:{{ accent }};">★</span>
+        <span>4.9</span>
+        <span>(127 avaliações)</span>
+        <span>· Ribeirão Preto/SP</span>
+      </div>
+
+      <div style="margin-top:8px; display:flex; align-items:center; gap:8px; position:relative;">
+        <span style="width:8px; height:8px; border-radius:50%; background:{{ statusDotColor }}; flex-shrink:0;"></span>
+        <span style="font-size:14px; color:#F2F3F5;">{{ statusText }}</span>
+      </div>
+
+      <div style="margin-top:16px; display:flex; gap:12px;">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+          <button onClick="{{ onWhatsappClick }}" aria-label="WhatsApp" style="width:44px; height:44px; border-radius:50%; border:1px solid #2A2F38; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer;" style-hover="border-color:#5B616B;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F2F3F5" stroke-width="1.6"><path d="M4 20l1.2-4.2A8 8 0 1 1 8.6 19L4 20z"/><circle cx="9.5" cy="11.5" r="0.9" fill="#F2F3F5" stroke="none"/><circle cx="14.5" cy="11.5" r="0.9" fill="#F2F3F5" stroke="none"/></svg>
+          </button>
+          <span style="font-size:12px; color:#9AA1AC;">WhatsApp</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+          <button onClick="{{ onInstagramClick }}" aria-label="Instagram" style="width:44px; height:44px; border-radius:50%; border:1px solid #2A2F38; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer;" style-hover="border-color:#5B616B;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F2F3F5" stroke-width="1.6"><path d="M5 8.5 L9 7.5 L9 15 a3 3 0 1 1 -2 -2.8"/><circle cx="16.5" cy="8" r="3.2"/></svg>
+          </button>
+          <span style="font-size:12px; color:#9AA1AC;">Instagram</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+          <button onClick="{{ onRotaClick }}" aria-label="Rota" style="width:44px; height:44px; border-radius:50%; border:1px solid #2A2F38; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer;" style-hover="border-color:#5B616B;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F2F3F5" stroke-width="1.6"><path d="M12 21s-6.5-5.4-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.6-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.2"/></svg>
+          </button>
+          <span style="font-size:12px; color:#9AA1AC;">Rota</span>
+        </div>
+      </div>
+
+      <sc-if value="{{ showCtaInline }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ onCtaClick }}" style="margin-top:20px; width:100%; height:52px; border:none; border-radius:12px; background:{{ accent }}; color:#0F1115; font-size:16px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer;" style-hover="background:{{ accentHover }};">Agendar horário</button>
+      </sc-if>
+    </div>
+
+    <div style="padding:0 20px; margin-top:32px;">
+      <div style="display:flex; align-items:baseline; gap:6px;">
+        <span style="font-size:18px; font-weight:600; color:#F2F3F5;">Serviços e preços</span>
+        <span style="font-size:14px; color:#9AA1AC;">({{ serviceCount }})</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        <sc-for list="{{ visibleServices }}" as="service" hint-placeholder-count="5">
+          <div style="height:72px; padding:16px; border:1px solid #2A2F38; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <div style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:16px; font-weight:500; color:#F2F3F5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ service.name }}</span>
+                <sc-if value="{{ service.badge }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px; padding:2px 8px; border-radius:999px; background:{{ badgeBg }}; color:{{ accent }}; white-space:nowrap; flex-shrink:0;">{{ service.badge }}</span>
+                </sc-if>
+              </div>
+              <span style="font-size:13px; color:#9AA1AC;">{{ service.duration }}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
+              <span style="font-size:16px; font-weight:600; color:{{ accent }};">{{ service.price }}</span>
+              <button onClick="{{ service.onAgendar }}" style="height:32px; padding:0 16px; border-radius:999px; border:1px solid {{ accent }}; background:transparent; color:{{ accent }}; font-size:13px; font-family:'Inter',sans-serif; cursor:pointer;" style-hover="background:{{ badgeBg }};">Agendar</button>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ hasMoreServices }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ toggleShowAllServices }}" style="background:transparent; border:none; color:#9AA1AC; font-size:14px; font-family:'Inter',sans-serif; padding:8px 0 0 0; text-align:left; cursor:pointer;">{{ toggleServicesLabel }}</button>
+        </sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{ showPlanosSection }}" hint-placeholder-val="{{ true }}">
+    <div ref="{{ setPlansRef }}" style="padding:0 20px; margin-top:32px;">
+      <sc-if value="{{ hasActiveSubscription }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; align-items:baseline; gap:6px;">
+          <span style="font-size:18px; font-weight:600; color:#F2F3F5;">Sua assinatura</span>
+        </div>
+        <div style="margin-top:12px; border:1px solid {{ accent }}; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px;">
+          <span style="font-family:'Sora',sans-serif; font-size:16px; font-weight:700; color:#F2F3F5;">{{ subscriptionStatus.nome }}</span>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <sc-for list="{{ subscriptionStatus.usos }}" as="u" hint-placeholder-count="2">
+              <span style="font-size:13px; color:#9AA1AC;">{{ u.label }}</span>
+            </sc-for>
+          </div>
+          <button onClick="{{ onVerMinhaAssinaturaClick }}" style="margin-top:4px; height:44px; border-radius:10px; border:none; background:{{ accent }}; color:#0F1115; font-size:14px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer;">Ver minha assinatura</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ noActiveSubscription }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; align-items:baseline; gap:6px;">
+          <span style="font-size:18px; font-weight:600; color:#F2F3F5;">Planos para membros</span>
+          <span style="font-size:14px; color:#9AA1AC;">({{ planosCount }})</span>
+        </div>
+        <div style="font-size:14px; color:#9AA1AC; margin-top:4px;">Assine e economize todo mês</div>
+        <div style="display:flex; gap:12px; overflow-x:auto; overscroll-behavior-x:contain; -webkit-overflow-scrolling:touch; scrollbar-width:none; scroll-snap-type:x mandatory; padding:12px 20px 4px 20px; margin:4px -20px 0 -20px;">
+          <sc-for list="{{ planoCards }}" as="plano" hint-placeholder-count="3">
+            <div style="width:240px; flex-shrink:0; scroll-snap-align:start; border:1px solid {{ plano.borderColor }}; border-radius:12px; padding:18px; display:flex; flex-direction:column; gap:10px;">
+              <sc-if value="{{ plano.badge }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px; padding:3px 10px; border-radius:999px; background:{{ badgeBg }}; color:{{ accent }}; width:fit-content;">{{ plano.badge }}</span>
+              </sc-if>
+              <span style="font-family:'Sora',sans-serif; font-size:16px; font-weight:700; color:#F2F3F5;">{{ plano.nome }}</span>
+              <div style="display:flex; align-items:baseline; gap:4px;">
+                <span style="font-size:22px; font-weight:700; color:{{ accent }}; font-family:'Sora',sans-serif;">{{ plano.precoFmt }}</span>
+                <span style="font-size:13px; color:#9AA1AC;">/mês</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <sc-for list="{{ plano.servicosRows }}" as="sv" hint-placeholder-count="2">
+                  <span style="font-size:13px; color:#C7CBD1;">{{ sv.label }}</span>
+                </sc-for>
+              </div>
+              <span style="font-size:13px; color:#3FB68B; font-weight:600;">Economize {{ plano.economiaFmt }}/mês</span>
+              <button onClick="{{ plano.onAssinar }}" style="margin-top:4px; height:40px; border-radius:999px; border:1px solid {{ accent }}; background:transparent; color:{{ accent }}; font-size:14px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer;" style-hover="background:{{ badgeBg }};">Assinar</button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <div style="margin-top:32px;">
+      <div style="padding:0 20px; font-size:18px; font-weight:600; color:#F2F3F5;">Nossos barbeiros</div>
+      <div style="display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; padding:12px 20px 4px 20px; margin-top:4px;">
+        <sc-for list="{{ barbers }}" as="barber" hint-placeholder-count="4">
+          <div style="width:140px; height:180px; flex-shrink:0; scroll-snap-align:start; border:1px solid #2A2F38; border-radius:12px; padding:16px 12px; display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center;">
+            <image-slot id="{{ barber.photoId }}" shape="circle" placeholder="foto do barbeiro" style="width:72px; height:72px; border-radius:50%; flex-shrink:0;"></image-slot>
+            <span style="font-size:14px; font-weight:600; color:#F2F3F5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">{{ barber.name }}</span>
+            <span style="font-size:12px; color:#9AA1AC;">{{ barber.specialty }}</span>
+            <span style="font-size:12px; color:{{ accent }};">★ {{ barber.rating }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="padding:0 20px; margin-top:32px;">
+      <div style="display:flex; align-items:baseline; justify-content:space-between;">
+        <span style="font-size:18px; font-weight:600; color:#F2F3F5;">Avaliações</span>
+        <span style="font-size:14px; color:#9AA1AC;"><span style="color:{{ accent }};">★</span> 4.9 · 127</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+        <sc-for list="{{ reviews }}" as="review" hint-placeholder-count="3">
+          <div style="padding:16px; border:1px solid #2A2F38; border-radius:12px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                <image-slot id="{{ review.photoId }}" shape="circle" placeholder="avatar" style="width:32px; height:32px; border-radius:50%; flex-shrink:0;"></image-slot>
+                <span style="font-size:14px; font-weight:500; color:#F2F3F5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ review.name }}</span>
+              </div>
+              <span style="font-size:12px; color:#9AA1AC; flex-shrink:0;">{{ review.date }}</span>
+            </div>
+            <div style="font-size:14px; color:{{ accent }}; letter-spacing:1px;">★★★★★</div>
+            <div style="font-size:14px; color:#C7CBD1; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{ review.comment }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <a href="#" onClick="{{ onVerAvaliacoesClick }}" style="display:block; text-align:center; margin-top:16px; font-size:14px; color:{{ accent }};" style-hover="color:{{ accentHover }};">Ver todas as avaliações</a>
+    </div>
+
+    <div style="padding:0 20px; margin-top:32px;">
+      <div style="font-size:18px; font-weight:600; color:#F2F3F5;">Onde estamos</div>
+      <div style="margin-top:12px; width:100%; height:160px; border-radius:16px; overflow:hidden; position:relative;">
+        <image-slot id="map-static" shape="rect" placeholder="mapa estático da localização" style="width:100%; height:100%;"></image-slot>
+        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-100%); width:28px; height:28px;">
+          <div style="width:100%; height:100%; border-radius:50% 50% 50% 0; background:{{ accent }}; box-shadow:0 4px 12px rgba(0,0,0,0.4); transform:rotate(-45deg);"></div>
+        </div>
+      </div>
+      <div style="margin-top:12px; font-size:14px; color:#F2F3F5;">{{ address }}</div>
+      <button onClick="{{ onRotaClick }}" style="margin-top:12px; width:100%; height:44px; border-radius:12px; border:1px solid #2A2F38; background:transparent; color:#F2F3F5; font-size:14px; font-family:'Inter',sans-serif; cursor:pointer;" style-hover="border-color:#5B616B;">Traçar rota</button>
+      <div style="margin-top:16px;">
+        <sc-for list="{{ businessHours }}" as="row" hint-placeholder-count="7">
+          <div style="height:40px; display:flex; align-items:center; justify-content:space-between; border-bottom:{{ row.borderStyle }};">
+            <span style="font-size:14px; color:{{ row.color }}; font-weight:{{ row.weight }};">{{ row.day }}</span>
+            <span style="font-size:14px; color:{{ row.color }}; font-weight:{{ row.weight }};">{{ row.hours }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="text-align:center; padding:24px 0; font-size:12px; color:#9AA1AC;">Feito com ⚡ Barber VP · <a href="#" style="color:#9AA1AC;" style-hover="color:#F2F3F5;">Privacidade</a> · <a href="#" style="color:#9AA1AC;" style-hover="color:#F2F3F5;">Termos</a></div>
+  </div>
+
+  <sc-if value="{{ showCtaSticky }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; z-index:20;">
+      <div style="width:100%; max-width:480px; padding:12px 20px; background:rgba(15,17,21,0.85); backdrop-filter:blur(12px); border-top:1px solid #2A2F38;">
+        <button onClick="{{ onCtaClick }}" style="width:100%; height:52px; border:none; border-radius:12px; background:{{ accent }}; color:#0F1115; font-size:16px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer;" style-hover="background:{{ accentHover }};" style-active="background:{{ accentActive }};">Agendar horário</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; left:50%; bottom:{{ toastBottom }}; transform:translateX(-50%); background:#1F232B; border:1px solid #2A2F38; color:#F2F3F5; font-size:14px; padding:10px 18px; border-radius:999px; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,0.4); animation:toastIn 0.2s ease-out; z-index:30;">{{ toast }}</div>
+  </sc-if>
+
+  <dc-import name="AgendamentoWizard" open="{{ wizardOpen }}" pending-service-id="{{ pendingServiceId }}" pending-token="{{ pendingToken }}" accent-color="{{ accent }}" on-close="{{ closeWizard }}" current-user="{{ currentUser }}" on-auth-success="{{ onAuthSuccess }}" assinatura="{{ assinaturaAtual }}" on-booking-confirmed="{{ onBookingConfirmedByWizard }}" hint-size="100%,100%"></dc-import>
+  <dc-import name="ClienteAuth" open="{{ authOpen }}" initial-mode="{{ authMode }}" accent-color="{{ accent }}" on-close="{{ closeAuth }}" on-auth-success="{{ onAuthSuccess }}" hint-size="100%,100%"></dc-import>
+  <dc-import name="MinhaConta" open="{{ minhaContaOpen }}" initial-tab="{{ minhaContaTab }}" accent-color="{{ accent }}" current-user="{{ currentUser }}" on-close="{{ closeMinhaConta }}" on-logout="{{ onMinhaContaLogout }}" on-update-user="{{ onUpdateUser }}" on-novo-agendamento="{{ onNovoAgendamentoFromConta }}" assinaturas-ativas="{{ assinaturasAtivasFlag }}" assinatura="{{ assinaturaAtual }}" on-ver-planos="{{ onVerPlanosFromConta }}" on-update-assinatura="{{ onUpdateAssinatura }}" hint-size="100%,100%"></dc-import>
+  <dc-import name="AssinaturaCliente" open="{{ assinaturaOpen }}" plano-id="{{ assinaturaPlanoId }}" accent-color="{{ accent }}" current-user="{{ currentUser }}" on-close="{{ closeAssinatura }}" on-request-auth="{{ onAssinaturaRequestAuth }}" on-subscribed="{{ onSubscribed }}" on-schedule-now="{{ onScheduleNowFromAssinatura }}" on-view-subscription="{{ onViewSubscriptionFromAssinatura }}" hint-size="100%,100%"></dc-import>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;estabelecimentoAberto&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;},&quot;assinaturasAtivas&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#D4A84C&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#D4A84C&quot;,&quot;#5FBF9E&quot;,&quot;#C97BD1&quot;,&quot;#5CA6D4&quot;],&quot;section&quot;:&quot;Tema&quot;}}">
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+const MOCK_SERVICES = [
+  { id: 's1', name: 'Corte Masculino', duration: '45 min', price: 'R$ 45' },
+  { id: 's2', name: 'Barba', duration: '30 min', price: 'R$ 35' },
+  { id: 's3', name: 'Corte + Barba', duration: '70 min', price: 'R$ 70', badge: 'Mais pedido' },
+  { id: 's4', name: 'Sobrancelha', duration: '15 min', price: 'R$ 20' },
+  { id: 's5', name: 'Pigmentação', duration: '40 min', price: 'R$ 60' },
+  { id: 's6', name: 'Corte Infantil', duration: '30 min', price: 'R$ 35' },
+  { id: 's7', name: 'Relaxamento', duration: '50 min', price: 'R$ 55' },
+];
+
+const MOCK_REVIEWS = [
+  { id: 'r1', photoId: 'review-joao', name: 'João P.', date: 'há 3 dias', comment: 'Melhor degradê da cidade, agendei em 30 segundos pelo link.' },
+  { id: 'r2', photoId: 'review-lucas', name: 'Lucas F.', date: 'há 1 semana', comment: 'Nunca mais esqueci horário, o lembrete no WhatsApp salva.' },
+  { id: 'r3', photoId: 'review-andre', name: 'André S.', date: 'há 2 semanas', comment: 'Ambiente top e o Diego é um artista.' },
+];
+
+const ADDRESS = 'Rua Barão do Amazonas, 245 - Centro, Ribeirão Preto/SP';
+
+const MOCK_HOURS = [
+  { day: 'Segunda', hours: '09:00 - 20:00', dow: 1 },
+  { day: 'Terça', hours: '09:00 - 20:00', dow: 2 },
+  { day: 'Quarta', hours: '09:00 - 20:00', dow: 3 },
+  { day: 'Quinta', hours: '09:00 - 20:00', dow: 4 },
+  { day: 'Sexta', hours: '09:00 - 20:00', dow: 5 },
+  { day: 'Sábado', hours: '09:00 - 18:00', dow: 6 },
+  { day: 'Domingo', hours: 'Fechado', dow: 0 },
+];
+
+const MOCK_BARBERS = [
+  { id: 'b1', photoId: 'barber-carlos', name: 'Carlos Silva', specialty: 'Fade', rating: '4.9' },
+  { id: 'b2', photoId: 'barber-rafael', name: 'Rafael Souza', specialty: 'Barba clássica', rating: '4.8' },
+  { id: 'b3', photoId: 'barber-diego', name: 'Diego Alves', specialty: 'Cortes modernos', rating: '5.0' },
+  { id: 'b4', photoId: 'barber-bruno', name: 'Bruno Costa', specialty: 'Navalha', rating: '4.7' },
+];
+
+const SERVICE_PRICES = { s1: 45, s2: 35 };
+
+const PLANOS_ASSINATURA = [
+  { id: 1, nome: 'Corte Semanal', preco: 120, dia: 5,
+    servicos: [{ serviceId: 's1', nome: 'Corte Masculino', qtd: 4 }],
+    destaque: false },
+  { id: 2, nome: 'Corte + Barba Quinzenal', preco: 150, dia: 5,
+    servicos: [{ serviceId: 's1', nome: 'Corte Masculino', qtd: 2 }, { serviceId: 's2', nome: 'Barba', qtd: 2 }],
+    destaque: true, badge: 'Mais popular' },
+  { id: 3, nome: 'Clube Completo', preco: 220, dia: 5,
+    servicos: [{ serviceId: 's1', nome: 'Corte Masculino', qtd: 4 }, { serviceId: 's2', nome: 'Barba', qtd: 4 }],
+    destaque: false },
+];
+function planoEconomia(plano) {
+  const avulso = plano.servicos.reduce((sum, sv) => sum + (SERVICE_PRICES[sv.serviceId] || 0) * sv.qtd, 0);
+  return Math.max(0, avulso - plano.preco);
+}
+
+function shade(hex, percent) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const t = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent);
+  const mix = (c) => Math.round(c + (t - c) * p);
+  return '#' + [mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+class Component extends DCLogic {
+  state = {
+    isOpen: this.props.estabelecimentoAberto ?? true,
+    scrolled: false,
+    isDesktop: false,
+    toast: null,
+    showAllServices: false,
+    wizardOpen: false,
+    pendingServiceId: null,
+    pendingToken: 0,
+    currentUser: null,
+    authOpen: false,
+    authMode: 'login',
+    userMenuOpen: false,
+    minhaContaOpen: false,
+    minhaContaTab: 'agendamentos',
+    assinaturaOpen: false,
+    assinaturaPlanoId: null,
+    assinaturaAtual: null,
+    pendingAssinaturaPlanoId: null,
+  };
+
+  componentDidMount() {
+    this.handleScroll = () => {
+      const scrolled = window.scrollY > 100;
+      if (scrolled !== this.state.scrolled) this.setState({ scrolled });
+    };
+    this.handleResize = () => {
+      const isDesktop = window.innerWidth >= 768;
+      if (isDesktop !== this.state.isDesktop) this.setState({ isDesktop });
+    };
+    window.addEventListener('scroll', this.handleScroll, { passive: true });
+    window.addEventListener('resize', this.handleResize);
+    this.handleResize();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('scroll', this.handleScroll);
+    window.removeEventListener('resize', this.handleResize);
+    clearTimeout(this._toastTimer);
+  }
+
+  toggleOpen = () => this.setState((s) => ({ isOpen: !s.isOpen }));
+
+  toggleShowAllServices = () => this.setState((s) => ({ showAllServices: !s.showAllServices }));
+
+  openWizard = (serviceId) => {
+    this.setState((s) => ({
+      wizardOpen: true,
+      ...(serviceId ? { pendingServiceId: serviceId, pendingToken: s.pendingToken + 1 } : {}),
+    }));
+  };
+
+  closeWizard = () => this.setState({ wizardOpen: false });
+
+  openAuth = (mode) => this.setState({ authOpen: true, authMode: mode, userMenuOpen: false });
+  closeAuth = () => this.setState({ authOpen: false });
+  onAuthSuccess = (user) => {
+    this.setState({ currentUser: user, authOpen: false, userMenuOpen: false });
+    this.showToast(`Bem-vindo, ${user.firstName}!`);
+    if (this.state.pendingAssinaturaPlanoId != null) {
+      const planoId = this.state.pendingAssinaturaPlanoId;
+      this.setState({ pendingAssinaturaPlanoId: null, assinaturaPlanoId: planoId, assinaturaOpen: true });
+    }
+  };
+  onAvatarClick = () => this.setState((s) => ({ userMenuOpen: !s.userMenuOpen }));
+  onSairClick = () => this.setState({ currentUser: null, userMenuOpen: false });
+
+  openMinhaConta = (tab) => this.setState({ minhaContaOpen: true, minhaContaTab: tab, userMenuOpen: false });
+  closeMinhaConta = () => this.setState({ minhaContaOpen: false });
+  onMinhaContaLogout = () => {
+    this.setState({ currentUser: null, minhaContaOpen: false });
+    this.showToast('Você saiu da sua conta');
+  };
+  onUpdateUser = (user) => this.setState((s) => ({ currentUser: { ...s.currentUser, ...user } }));
+  onNovoAgendamentoFromConta = (serviceId) => {
+    this.setState({ minhaContaOpen: false });
+    this.openWizard(serviceId);
+  };
+
+  openAssinatura = (planoId) => this.setState({ assinaturaOpen: true, assinaturaPlanoId: planoId });
+  closeAssinatura = () => this.setState({ assinaturaOpen: false });
+  onAssinaturaRequestAuth = (planoId) => {
+    this.setState({ assinaturaOpen: false, pendingAssinaturaPlanoId: planoId, authOpen: true, authMode: 'login' });
+  };
+  onSubscribed = (assinatura) => {
+    this.setState({ assinaturaAtual: assinatura });
+  };
+  onScheduleNowFromAssinatura = () => this.openWizard(null);
+  onViewSubscriptionFromAssinatura = () => this.openMinhaConta('assinatura');
+  onBookingConfirmedByWizard = (serviceIds) => {
+    this.setState((s) => {
+      if (!s.assinaturaAtual) return null;
+      const usos = s.assinaturaAtual.usos.map((u) => {
+        if (serviceIds.includes(u.serviceId) && u.usados < u.total) return { ...u, usados: u.usados + 1 };
+        return u;
+      });
+      return { assinaturaAtual: { ...s.assinaturaAtual, usos } };
+    });
+  };
+  scrollToPlanos = () => {
+    if (this.plansSectionEl) {
+      const top = this.plansSectionEl.getBoundingClientRect().top + window.scrollY - 12;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  };
+  setPlansRef = (el) => { this.plansSectionEl = el; };
+  onVerPlanosFromConta = () => {
+    this.setState({ minhaContaOpen: false });
+    setTimeout(() => this.scrollToPlanos(), 50);
+  };
+  onUpdateAssinatura = (patch) => {
+    this.setState((s) => {
+      if (patch === null) return { assinaturaAtual: null };
+      if (!s.assinaturaAtual) return null;
+      return { assinaturaAtual: { ...s.assinaturaAtual, ...patch } };
+    });
+  };
+
+  showToast = (msg) => {
+    clearTimeout(this._toastTimer);
+    this.setState({ toast: msg });
+    this._toastTimer = setTimeout(() => this.setState({ toast: null }), 4000);
+  };
+
+  renderVals() {
+    const { isOpen, scrolled, isDesktop, toast, showAllServices, wizardOpen, pendingServiceId, pendingToken } = this.state;
+    const accent = this.props.accentColor ?? '#D4A84C';
+    const showCtaSticky = scrolled && !isDesktop;
+    const badgeBg = hexToRgba(accent, 0.15);
+
+    const allServices = MOCK_SERVICES.map((s) => ({
+      ...s,
+      onAgendar: () => this.openWizard(s.id),
+    }));
+    const hasMoreServices = MOCK_SERVICES.length > 5;
+    const visibleServices = showAllServices ? allServices : allServices.slice(0, 5);
+
+    const today = new Date().getDay();
+    const businessHours = MOCK_HOURS.map((h, i) => {
+      const isToday = h.dow === today;
+      return {
+        ...h,
+        color: isToday ? accent : '#F2F3F5',
+        weight: isToday ? '600' : '400',
+        borderStyle: i === MOCK_HOURS.length - 1 ? 'none' : '1px solid #2A2F38',
+      };
+    });
+
+    return {
+      serviceCount: MOCK_SERVICES.length,
+      reviews: MOCK_REVIEWS,
+      onVerAvaliacoesClick: (e) => { e.preventDefault(); this.showToast('Todas as avaliações em breve'); },
+      address: ADDRESS,
+      businessHours,
+      visibleServices,
+      hasMoreServices,
+      toggleShowAllServices: this.toggleShowAllServices,
+      toggleServicesLabel: showAllServices ? 'Ver menos ▴' : 'Ver todos os serviços ▾',
+      badgeBg,
+      barbers: MOCK_BARBERS,
+      accent,
+      accentHover: shade(accent, 0.18),
+      accentActive: shade(accent, -0.08),
+      statusDotColor: isOpen ? '#3FB68B' : '#E05B5B',
+      statusText: isOpen ? 'Aberto agora · fecha às 20h' : 'Fechado · abre ter às 8h',
+      toggleOpen: this.toggleOpen,
+      showCtaSticky,
+      showCtaInline: isDesktop,
+      contentPaddingBottom: showCtaSticky ? '84px' : '0px',
+      toast,
+      toastBottom: showCtaSticky ? '80px' : '20px',
+      onCtaClick: () => this.openWizard(null),
+      wizardOpen,
+      pendingServiceId,
+      pendingToken,
+      closeWizard: this.closeWizard,
+      isLoggedOut: !this.state.currentUser,
+      isLoggedIn: !!this.state.currentUser,
+      onMeusHorariosClick: () => this.openAuth('login'),
+      authOpen: this.state.authOpen,
+      authMode: this.state.authMode,
+      closeAuth: this.closeAuth,
+      onAuthSuccess: this.onAuthSuccess,
+      currentUser: this.state.currentUser,
+      userMenuOpen: this.state.userMenuOpen,
+      onAvatarClick: this.onAvatarClick,
+      onSairClick: this.onSairClick,
+      onMeusAgendamentosClick: () => this.openMinhaConta('agendamentos'),
+      onMeusDadosClick: () => this.openMinhaConta('dados'),
+      minhaContaOpen: this.state.minhaContaOpen,
+      minhaContaTab: this.state.minhaContaTab,
+      closeMinhaConta: this.closeMinhaConta,
+      onMinhaContaLogout: this.onMinhaContaLogout,
+      onUpdateUser: this.onUpdateUser,
+      onNovoAgendamentoFromConta: this.onNovoAgendamentoFromConta,
+      avatarBg: badgeBg,
+      userInitials: this.state.currentUser ? `${this.state.currentUser.firstName[0]}${(this.state.currentUser.lastName || '')[0] || ''}`.toUpperCase() : '',
+      onWhatsappClick: () => this.showToast('WhatsApp em breve'),
+      onInstagramClick: () => this.showToast('Instagram em breve'),
+      onRotaClick: () => this.showToast('Rota em breve'),
+      showPlanosSection: this.props.assinaturasAtivas ?? true,
+      assinaturasAtivasFlag: this.props.assinaturasAtivas ?? true,
+      hasActiveSubscription: !!this.state.assinaturaAtual,
+      noActiveSubscription: !this.state.assinaturaAtual,
+      planosCount: PLANOS_ASSINATURA.length,
+      subscriptionStatus: this.state.assinaturaAtual ? {
+        nome: this.state.assinaturaAtual.nome,
+        usos: this.state.assinaturaAtual.usos.map((u) => ({ label: `${u.nome} — ${u.usados}/${u.total} usados` })),
+      } : null,
+      onVerMinhaAssinaturaClick: () => this.openMinhaConta('assinatura'),
+      planoCards: PLANOS_ASSINATURA.map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        precoFmt: `R$ ${p.preco}`,
+        badge: p.badge || null,
+        borderColor: p.destaque ? accent : '#2A2F38',
+        servicosRows: p.servicos.map((sv) => ({ label: `${sv.qtd}× ${sv.nome}` })),
+        economiaFmt: `R$ ${planoEconomia(p)}`,
+        onAssinar: () => this.openAssinatura(p.id),
+      })),
+      assinaturaOpen: this.state.assinaturaOpen,
+      assinaturaPlanoId: this.state.assinaturaPlanoId,
+      closeAssinatura: this.closeAssinatura,
+      onAssinaturaRequestAuth: this.onAssinaturaRequestAuth,
+      onSubscribed: this.onSubscribed,
+      onScheduleNowFromAssinatura: this.onScheduleNowFromAssinatura,
+      onViewSubscriptionFromAssinatura: this.onViewSubscriptionFromAssinatura,
+      assinaturaAtual: this.state.assinaturaAtual,
+      onBookingConfirmedByWizard: this.onBookingConfirmedByWizard,
+      onVerPlanosFromConta: this.onVerPlanosFromConta,
+      onUpdateAssinatura: this.onUpdateAssinatura,
+      setPlansRef: this.setPlansRef,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

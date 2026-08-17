@@ -1,0 +1,31 @@
+{
+  "name": "@barbervp/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "files": [
+    "tailwind-preset.js",
+    "tokens.js",
+    "tokens.d.ts",
+    "tsconfig",
+    "index.js"
+  ],
+  "exports": {
+    "./tailwind-preset": "./tailwind-preset.js",
+    "./tokens": {
+      "types": "./tokens.d.ts",
+      "default": "./tokens.js"
+    },
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/nest.json": "./tsconfig/nest.json",
+    "./tsconfig/next.json": "./tsconfig/next.json",
+    "./tsconfig/react-lib.json": "./tsconfig/react-lib.json"
+  },
+  "scripts": {
+    "lint": "echo \"@barbervp/config: nada a lintar\"",
+    "typecheck": "echo \"@barbervp/config: sem TS\""
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.14"
+  }
+}

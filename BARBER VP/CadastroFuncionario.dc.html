@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#0E1013;-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(212,162,74,.32);color:#fff}
+  input::placeholder{color:#5a626d}
+  @keyframes bvpInLeft{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
+  @keyframes bvpRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes bvpFadeBg{from{opacity:0;transform:scale(1.05)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="--bg-r:#0E1013;--gold:#D4A24A;--gold-2:#ECC46B;--ink:#1a1408;--surface:#15181D;--line:#222831;--txt:#E8ECF1;--txt-2:#9BA6B4;--txt-3:#69727F;--green:#5FB389;--red:#E0796B;--red-line:rgba(224,121,107,.55);font-family:'Inter',system-ui,sans-serif;background:var(--bg-r);color:var(--txt);min-height:100vh;display:flex;flex-direction:column">
+
+  <div style="flex:1;display:flex;width:100%" class="bvp-shell">
+
+    <!-- ============ LEFT — CONTEXTO DO CONVITE ============ -->
+    <div style="flex:0 0 45%;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:46px 48px;min-height:100vh" class="bvp-left">
+      <div style="position:absolute;inset:0;z-index:0;animation:bvpFadeBg .8s ease both;background:linear-gradient(135deg,#0E1013 0%,#13171D 46%,#1B1F26 100%)"></div>
+      <div style="position:absolute;inset:0;z-index:0;opacity:.5;background:repeating-linear-gradient(128deg,rgba(212,162,74,.045) 0 1px,transparent 1px 15px)"></div>
+      <div style="position:absolute;left:-160px;top:-120px;width:420px;height:420px;border-radius:50%;z-index:0;background:radial-gradient(circle,rgba(212,162,74,.12),transparent 68%);filter:blur(8px)"></div>
+
+      <div style="position:relative;z-index:2;max-width:430px;animation:bvpRise .7s ease both">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:34px">
+          <span style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:var(--ink);font:800 15px 'Inter'">B</span>
+          <span style="font:800 16px 'Inter';letter-spacing:-.3px;color:#E8ECF1">Barber<span style="color:var(--gold)">VP</span></span>
+        </div>
+
+        <h1 style="font:600 clamp(28px,3vw,38px)/1.22 'Playfair Display',serif;letter-spacing:-.4px;margin:0;color:#E8ECF1;text-wrap:balance">{{ convidadoPor }} convidou voc\u00ea para a equipe da <span style="font-style:italic;color:var(--gold)">{{ barbeariaNome }}.</span></h1>
+
+        <div style="margin-top:32px;padding:22px;border-radius:16px;background:var(--surface);border:1px solid var(--line)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+            <span style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;font:800 15px 'Inter';color:var(--ink);flex:none">{{ funcionarioIniciais }}</span>
+            <div style="min-width:0">
+              <div style="font:700 15px 'Inter';color:var(--txt)">{{ funcionarioNome }}</div>
+              <div style="font:500 12px 'Inter';color:var(--txt-3)">{{ funcionarioEmail }}</div>
+            </div>
+          </div>
+
+          <div style="font:600 11px 'Inter';color:var(--txt-3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:9px">Servi\u00e7os que voc\u00ea vai atender</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">
+            <sc-for list="{{ servicoChips }}" as="s" hint-placeholder-count="2">
+              <span style="padding:6px 12px;border-radius:20px;background:#1B1F26;border:1px solid var(--line);font:500 12px 'Inter';color:var(--txt)">{{ s.label }}</span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid var(--line)">
+            <span style="font:400 12.5px 'Inter';color:var(--txt-2)">Dias de trabalho</span>
+            <span style="font:700 13px 'Inter';color:var(--gold)">{{ diasTrabalho }}</span>
+          </div>
+        </div>
+
+        <p style="font:400 14px/1.6 'Inter';color:var(--txt-3);margin:22px 0 0;max-width:380px">Crie sua conta ao lado para acessar sua agenda, seus atendimentos e sua comiss\u00e3o direto no painel do funcion\u00e1rio.</p>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT — FORM ============ -->
+    <div style="flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 32px 56px;min-height:100vh" class="bvp-right">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,transparent 0%,rgba(212,162,74,.05) 14%,var(--gold) 50%,rgba(212,162,74,.05) 86%,transparent 100%)" class="bvp-razor"></div>
+
+      <div style="width:100%;max-width:420px;animation:bvpInLeft .55s cubic-bezier(.2,.7,.3,1) both">
+        <h2 style="font:600 30px 'Playfair Display',serif;letter-spacing:-.4px;margin:0 0 9px;color:#E8ECF1">Crie sua conta de acesso</h2>
+        <p style="font:400 15px 'Inter';color:var(--txt-2);margin:0 0 30px">Voc\u00ea usar\u00e1 este email e senha para entrar no seu painel.</p>
+
+        <!-- email travado -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Email</label>
+        <div style="position:relative;margin-bottom:8px">
+          <input value="{{ funcionarioEmail }}" readonly="true" type="email" style="width:100%;height:52px;padding:0 42px 0 15px;background:#0D0F13;border:1px solid var(--line);border-radius:12px;color:var(--txt-2);font:500 15px 'Inter';outline:none;cursor:default">
+          <span style="position:absolute;right:15px;top:50%;transform:translateY(-50%);color:var(--txt-3);pointer-events:none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 11V7a6 6 0 0 1 12 0v4M5 11h14v10H5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          </span>
+        </div>
+        <div style="font:400 12px 'Inter';color:var(--txt-3);margin:0 0 20px">Email definido pelo convite.</div>
+
+        <!-- senha -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Senha</label>
+        <div style="position:relative;margin-bottom:6px">
+          <input type="{{ passwordType }}" value="{{ password }}" onChange="{{ onPasswordChange }}" onBlur="{{ onPasswordBlur }}" placeholder="m\u00ednimo 8 caracteres" style="{{ passwordStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)">
+          <button onClick="{{ togglePasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:52px;width:34px;border:none;background:transparent;color:var(--txt-3);cursor:pointer;font:400 12px 'Inter'">{{ passwordToggleLabel }}</button>
+        </div>
+        <div style="font:500 12px 'Inter';color:var(--red);margin:0 0 17px;min-height:14px;opacity:{{ passwordErrOpacity }}">Senha precisa ter no m\u00ednimo 8 caracteres.</div>
+
+        <!-- confirmar senha -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Confirmar senha</label>
+        <div style="position:relative;margin-bottom:6px">
+          <input type="{{ confirmPasswordType }}" value="{{ confirmPassword }}" onChange="{{ onConfirmPasswordChange }}" onBlur="{{ onConfirmPasswordBlur }}" placeholder="repita a senha" style="{{ confirmPasswordStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)">
+          <button onClick="{{ toggleConfirmPasswordVisible }}" aria-label="Mostrar senha" style="position:absolute;right:8px;top:0;height:52px;width:34px;border:none;background:transparent;color:var(--txt-3);cursor:pointer;font:400 12px 'Inter'">{{ confirmPasswordToggleLabel }}</button>
+        </div>
+        <div style="font:500 12px 'Inter';color:var(--red);margin:0 0 24px;min-height:14px;opacity:{{ confirmPasswordErrOpacity }}">As senhas n\u00e3o coincidem.</div>
+
+        <button onClick="{{ onSubmit }}" style="height:54px;width:100%;background:{{ btnBg }};border:none;border-radius:12px;color:var(--ink);font:700 15.5px 'Inter';cursor:{{ btnCursor }};letter-spacing:.2px;opacity:{{ btnOpacity }};transition:background .14s,transform .1s" style-hover="{{ btnHover }}" style-active="{{ btnActive }}">{{ btnLabel }}</button>
+
+        <p style="font:400 12px/1.6 'Inter';color:var(--txt-3);text-align:center;margin:20px 0 0">Ao continuar, voc\u00ea concorda com os <a href="#" onClick="{{ noop }}" style="color:var(--gold);text-decoration:none" style-hover="text-decoration:underline">termos de uso</a> do Barber VP.</p>
+      </div>
+    </div>
+  </div>
+
+  <helmet><style>
+    @media(max-width:860px){
+      .bvp-shell{flex-direction:column}
+      .bvp-left{flex:none !important;min-height:auto !important;padding:32px 24px !important}
+      .bvp-right{min-height:auto !important;padding:48px 22px 44px !important}
+      .bvp-razor{left:0;top:0;right:0;bottom:auto;width:auto !important;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent) !important}
+    }
+  </style></helmet>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:760},&quot;conviteMock&quot;:{&quot;editor&quot;:null,&quot;default&quot;:{&quot;funcionarioNome&quot;:&quot;Bruno Costa&quot;,&quot;funcionarioEmail&quot;:&quot;bruno.costa@email.com&quot;,&quot;barbeariaNome&quot;:&quot;Barbearia Central&quot;,&quot;convidadoPor&quot;:&quot;Rafael Carvalho&quot;,&quot;servicos&quot;:[&quot;Corte degradê&quot;,&quot;Barba&quot;],&quot;diasTrabalho&quot;:&quot;Ter–Sáb&quot;},&quot;tsType&quot;:&quot;{funcionarioNome:string;funcionarioEmail:string;barbeariaNome:string;convidadoPor:string;servicos:string[];diasTrabalho:string}&quot;}}">
+class Component extends DCLogic {
+  state = { password: '', confirmPassword: '', passwordVisible: false, confirmPasswordVisible: false, passwordTouched: false, confirmPasswordTouched: false, submitting: false };
+
+  initialsOf(name) {
+    return (name || '').split(' ').filter(w => w[0] === w[0].toUpperCase()).slice(0,2).map(w => w[0]).join('').slice(0,2) || (name || '').slice(0,2).toUpperCase();
+  }
+
+  onPasswordChange = (e) => this.setState({ password: e.target.value });
+  onPasswordBlur = () => this.setState({ passwordTouched: true });
+  togglePasswordVisible = () => this.setState(s => ({ passwordVisible: !s.passwordVisible }));
+  onConfirmPasswordChange = (e) => this.setState({ confirmPassword: e.target.value });
+  onConfirmPasswordBlur = () => this.setState({ confirmPasswordTouched: true });
+  toggleConfirmPasswordVisible = () => this.setState(s => ({ confirmPasswordVisible: !s.confirmPasswordVisible }));
+  noop = (e) => e.preventDefault();
+
+  inputBase(borderColor) {
+    return `width:100%;height:52px;padding:0 46px 0 15px;background:var(--surface);border:1px solid ${borderColor};border-radius:12px;color:var(--txt);font:500 15px 'Inter';outline:none;transition:border-color .14s,box-shadow .14s`;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const conviteMock = this.props.conviteMock || {
+      funcionarioNome: 'Bruno Costa', funcionarioEmail: 'bruno.costa@email.com', barbeariaNome: 'Barbearia Central',
+      convidadoPor: 'Rafael Carvalho', servicos: ['Corte degrad\u00ea', 'Barba'], diasTrabalho: 'Ter\u2013S\u00e1b',
+    };
+
+    const passwordValid = s.password.length >= 8;
+    const confirmValid = s.confirmPassword.length > 0 && s.confirmPassword === s.password;
+    const canSubmit = passwordValid && confirmValid && !s.submitting;
+
+    const passwordShowErr = s.passwordTouched && !passwordValid;
+    const confirmShowErr = s.confirmPasswordTouched && s.confirmPassword.length > 0 && !confirmValid;
+
+    const okBorder = 'var(--line)';
+    const validBorder = 'rgba(111,191,149,.5)';
+    const errBorder = 'var(--red-line)';
+
+    return {
+      convidadoPor: conviteMock.convidadoPor,
+      barbeariaNome: conviteMock.barbeariaNome,
+      funcionarioNome: conviteMock.funcionarioNome,
+      funcionarioEmail: conviteMock.funcionarioEmail,
+      funcionarioIniciais: this.initialsOf(conviteMock.funcionarioNome),
+      diasTrabalho: conviteMock.diasTrabalho,
+      servicoChips: (conviteMock.servicos || []).map((sv, i) => ({ key: i, label: sv })),
+
+      password: s.password,
+      onPasswordChange: this.onPasswordChange,
+      onPasswordBlur: this.onPasswordBlur,
+      passwordType: s.passwordVisible ? 'text' : 'password',
+      passwordToggleLabel: s.passwordVisible ? 'ocultar' : 'ver',
+      togglePasswordVisible: this.togglePasswordVisible,
+      passwordStyle: this.inputBase(passwordShowErr ? errBorder : (passwordValid ? validBorder : okBorder)),
+      passwordErrOpacity: passwordShowErr ? 1 : 0,
+
+      confirmPassword: s.confirmPassword,
+      onConfirmPasswordChange: this.onConfirmPasswordChange,
+      onConfirmPasswordBlur: this.onConfirmPasswordBlur,
+      confirmPasswordType: s.confirmPasswordVisible ? 'text' : 'password',
+      confirmPasswordToggleLabel: s.confirmPasswordVisible ? 'ocultar' : 'ver',
+      toggleConfirmPasswordVisible: this.toggleConfirmPasswordVisible,
+      confirmPasswordStyle: this.inputBase(confirmShowErr ? errBorder : (confirmValid ? validBorder : okBorder)),
+      confirmPasswordErrOpacity: confirmShowErr ? 1 : 0,
+
+      noop: this.noop,
+      btnLabel: s.submitting ? 'Criando conta...' : 'Criar conta e acessar meu painel',
+      btnBg: canSubmit ? 'var(--gold)' : 'rgba(212,162,74,.34)',
+      btnCursor: canSubmit ? 'pointer' : 'not-allowed',
+      btnOpacity: s.submitting ? .7 : (canSubmit ? 1 : .85),
+      btnHover: canSubmit ? 'background:#C2966A' : '',
+      btnActive: canSubmit ? 'transform:translateY(1px)' : '',
+      onSubmit: () => {
+        this.setState({ passwordTouched: true, confirmPasswordTouched: true });
+        if (!passwordValid || !confirmValid || s.submitting) return;
+        this.setState({ submitting: true });
+        setTimeout(() => { window.location.href = 'DashboardFuncionario.dc.html'; }, 800);
+      },
+    };
+  }
+}
+
+</script>
+</body>
+</html>

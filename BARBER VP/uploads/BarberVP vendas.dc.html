@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#14110D;-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(212,162,74,.32);color:#fff}
+  input::placeholder{color:#6f6451}
+  ::-webkit-scrollbar{height:8px;width:8px}
+  ::-webkit-scrollbar-thumb{background:#3a3225;border-radius:8px}
+  @keyframes bvpFade{from{opacity:0}to{opacity:1}}
+  @keyframes bvpUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes bvpPop{0%{transform:scale(.7);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+</style>
+</helmet>
+
+<div style="{{ paletteVars }}font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden">
+
+  <!-- NAV -->
+  <header style="position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:var(--header);border-bottom:1px solid var(--line)">
+    <div style="max-width:1180px;margin:0 auto;padding:0 24px;height:66px;display:flex;align-items:center;gap:24px">
+      <a href="BarberVP Vendas.dc.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0">
+        <span style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:#1a1408;font:800 16px 'Inter';box-shadow:0 2px 12px rgba(212,162,74,.4)">B</span>
+        <span style="font:800 18px 'Inter';letter-spacing:-.4px;color:var(--txt)">Barber<span style="color:var(--gold)">VP</span></span>
+        <span style="font:600 10px 'Inter';color:var(--txt-3);border:1px solid var(--line-2);border-radius:5px;padding:2px 6px;letter-spacing:.5px;margin-left:2px">PARA DONOS</span>
+      </a>
+      <nav style="flex:1;display:flex;gap:26px;justify-content:center;flex-wrap:wrap">
+        <span onClick="{{ onNavFeatures }}" style="font:500 14px 'Inter';color:var(--txt-2);cursor:pointer" style-hover="color:var(--txt)">Funcionalidades</span>
+        <span onClick="{{ onNavHow }}" style="font:500 14px 'Inter';color:var(--txt-2);cursor:pointer" style-hover="color:var(--txt)">Como funciona</span>
+        <span onClick="{{ onNavPlans }}" style="font:500 14px 'Inter';color:var(--txt-2);cursor:pointer" style-hover="color:var(--txt)">Planos</span>
+        <span onClick="{{ onNavFaq }}" style="font:500 14px 'Inter';color:var(--txt-2);cursor:pointer" style-hover="color:var(--txt)">Dúvidas</span>
+      </nav>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <a href="BarberVP Login Estabelecimento.dc.html" style="font:600 14px 'Inter';color:var(--txt-2);text-decoration:none;padding:0 6px" style-hover="color:var(--txt)">Entrar</a>
+        <button onClick="{{ onHeroCta }}" style="height:40px;padding:0 16px;background:var(--gold);border:none;border-radius:10px;color:#1a1408;font:600 13.5px 'Inter';cursor:pointer" style-hover="background:var(--gold-2)" style-active="transform:translateY(1px)">Teste grátis</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section style="position:relative;overflow:hidden">
+    <div style="position:absolute;inset:0;background:radial-gradient(80% 120% at 80% -10%,rgba(212,162,74,.18),transparent 55%),linear-gradient(180deg,var(--hero-1),var(--hero-2))"></div>
+    <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(118deg,rgba(255,255,255,.018) 0 1px,transparent 1px 24px)"></div>
+    <div style="position:relative;max-width:1180px;margin:0 auto;padding:clamp(50px,7vw,84px) 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:48px;align-items:center">
+      <div>
+        <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border:1px solid var(--line-2);border-radius:999px;font:600 12px 'Inter';color:var(--gold);letter-spacing:.3px;margin-bottom:22px">+180 barbearias já crescem com o BarberVP</div>
+        <h1 style="font:800 clamp(32px,4.8vw,54px)/1.05 'Inter';letter-spacing:-1.5px;margin:0 0 18px;text-wrap:balance">Sua barbearia lotada, <span style="color:var(--gold)">sem você tocar no telefone</span></h1>
+        <p style="font:400 clamp(15px,1.6vw,18px)/1.55 'Inter';color:var(--txt-2);max-width:520px;margin:0 0 28px">Agendamento online 24h, financeiro, comissões automáticas e clube de assinaturas — tudo num painel feito para barbearias.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <button onClick="{{ onHeroCta }}" style="height:54px;padding:0 28px;background:var(--gold);border:none;border-radius:12px;color:#1a1408;font:700 16px 'Inter';cursor:pointer;letter-spacing:.2px" style-hover="background:var(--gold-2)" style-active="transform:translateY(1px)">Comece grátis por 7 dias</button>
+          <button onClick="{{ onNavPlans }}" style="height:54px;padding:0 24px;background:transparent;border:1px solid var(--line-2);border-radius:12px;color:var(--txt);font:600 15px 'Inter';cursor:pointer" style-hover="border-color:var(--gold);color:var(--gold)">Ver planos</button>
+        </div>
+        <div style="font:500 12.5px 'Inter';color:var(--txt-3);margin-top:16px">Sem cartão de crédito · cancele quando quiser</div>
+      </div>
+      <!-- dashboard mock -->
+      <div style="background:var(--surface);border:1px solid var(--line-2);border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.4)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font:600 12px 'Inter';color:var(--txt-3);text-transform:uppercase;letter-spacing:.5px">Faturamento · hoje</span><span style="font:600 11px 'Inter';color:var(--green);background:rgba(127,178,135,.12);padding:3px 8px;border-radius:6px">+12%</span></div>
+        <div style="font:800 38px 'Inter';color:var(--gold);letter-spacing:-1px;margin-bottom:4px">R$ 3.240</div>
+        <div style="font:500 12px 'Inter';color:var(--txt-3);margin-bottom:20px">vs. R$ 2.890 na semana passada</div>
+        <div style="display:flex;align-items:flex-end;gap:7px;height:88px;padding-top:8px;border-top:1px solid var(--line)">
+          <sc-for list="{{ mockBars }}" as="b" hint-placeholder-count="7"><div style="{{ b.style }}"></div></sc-for>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:14px;gap:10px">
+          <div style="flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px"><div style="font:700 17px 'Inter'">94%</div><div style="font:500 11px 'Inter';color:var(--txt-3)">ocupação</div></div>
+          <div style="flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px"><div style="font:700 17px 'Inter'">R$ 58</div><div style="font:500 11px 'Inter';color:var(--txt-3)">ticket médio</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg2)">
+    <div style="max-width:1180px;margin:0 auto;padding:44px 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:28px">
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+        <div>
+          <div style="font:800 clamp(30px,4vw,40px) 'Inter';color:var(--gold);letter-spacing:-1px;margin-bottom:8px">{{ s.big }}</div>
+          <div style="font:400 13.5px/1.5 'Inter';color:var(--txt-2)">{{ s.txt }}</div>
+          <sc-if value="{{ s.src }}"><div style="font:500 11px 'Inter';color:var(--txt-3);margin-top:6px">Fonte: {{ s.src }}</div></sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="bvp-features" style="max-width:1180px;margin:0 auto;padding:clamp(56px,7vw,88px) 24px">
+    <div style="text-align:center;max-width:620px;margin:0 auto 44px">
+      <div style="font:600 12px 'Inter';color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Tudo num só lugar</div>
+      <h2 style="font:800 clamp(26px,3.4vw,38px)/1.1 'Inter';letter-spacing:-.8px;margin:0">Pare de gerenciar sua barbearia no caderninho</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px">
+      <sc-for list="{{ features }}" as="f" hint-placeholder-count="6">
+        <div style="padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface)" style-hover="border-color:var(--line-2)">
+          <div style="width:46px;height:46px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--line-2);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--accent);margin-bottom:16px">{{ f.icon }}</div>
+          <div style="font:700 16px 'Inter';margin-bottom:8px">{{ f.t }}</div>
+          <div style="font:400 13.5px/1.55 'Inter';color:var(--txt-2)">{{ f.d }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="bvp-how" style="border-top:1px solid var(--line);background:var(--bg2)">
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,7vw,88px) 24px">
+      <div style="text-align:center;margin-bottom:44px"><div style="font:600 12px 'Inter';color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Simples de começar</div><h2 style="font:800 clamp(26px,3.4vw,38px)/1.1 'Inter';letter-spacing:-.8px;margin:0">Da inscrição ao primeiro agendamento</h2></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px">
+        <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+          <div style="padding:22px;border:1px solid var(--line);border-radius:16px;background:var(--surface)">
+            <div style="width:38px;height:38px;border-radius:10px;background:var(--gold);color:#1a1408;display:flex;align-items:center;justify-content:center;font:800 16px 'Inter';margin-bottom:16px">{{ st.n }}</div>
+            <div style="font:700 15.5px 'Inter';margin-bottom:7px">{{ st.t }}</div>
+            <div style="font:400 13px/1.5 'Inter';color:var(--txt-2)">{{ st.d }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="bvp-plans" style="max-width:1180px;margin:0 auto;padding:clamp(56px,7vw,88px) 24px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font:600 12px 'Inter';color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Planos</div>
+      <h2 style="font:800 clamp(26px,3.4vw,38px)/1.1 'Inter';letter-spacing:-.8px;margin:0 0 10px">Um plano para cada fase da sua barbearia</h2>
+      <p style="font:400 14.5px 'Inter';color:var(--txt-2);margin:0">Comece no Essencial e evolua quando precisar. Sem fidelidade.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;align-items:stretch">
+      <sc-for list="{{ plans }}" as="p" hint-placeholder-count="3">
+        <div style="{{ p.cardStyle }}">
+          <sc-if value="{{ p.highlight }}"><div style="position:absolute;top:0;left:50%;transform:translate(-50%,-50%);background:var(--gold);color:#1a1408;font:800 11px 'Inter';letter-spacing:.5px;padding:5px 14px;border-radius:999px">★ MAIS POPULAR</div></sc-if>
+          <div style="font:700 18px 'Inter';margin-bottom:14px">{{ p.nome }}</div>
+          <div style="display:flex;align-items:baseline;gap:4px"><span style="font:800 36px 'Inter';letter-spacing:-1px;color:{{ p.priceColor }}">R$ {{ p.preco }}</span><span style="font:500 14px 'Inter';color:var(--txt-3)">/mês</span></div>
+          <sc-if value="{{ p.baseLabel }}"><div style="font:600 13px 'Inter';color:var(--gold);margin-top:16px">{{ p.baseLabel }}</div></sc-if>
+          <div style="display:flex;flex-direction:column;gap:9px;margin-top:16px;margin-bottom:20px;flex:1">
+            <sc-for list="{{ p.features }}" as="ft" hint-placeholder-count="6">
+              <div style="display:flex;gap:9px;align-items:flex-start;font:500 13.5px/1.4 'Inter';color:var(--txt-2)"><span style="color:var(--gold);flex-shrink:0">✓</span> {{ ft }}</div>
+            </sc-for>
+          </div>
+          <button onClick="{{ p.onChoose }}" style="{{ p.ctaStyle }}">Comece grátis por 7 dias</button>
+        </div>
+      </sc-for>
+    </div>
+    <div style="text-align:center;font:500 12.5px 'Inter';color:var(--txt-3);margin-top:26px">Todos os planos incluem 7 dias grátis · sem cartão · cancele quando quiser</div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section style="border-top:1px solid var(--line);background:var(--bg2)">
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,7vw,80px) 24px">
+      <h2 style="font:800 clamp(24px,3vw,34px) 'Inter';letter-spacing:-.6px;margin:0 0 36px;text-align:center">Resultados de quem já usa</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px">
+        <sc-for list="{{ testimonials }}" as="t" hint-placeholder-count="3">
+          <div style="padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface)">
+            <div style="font:800 26px 'Inter';color:var(--gold);letter-spacing:-.5px;margin-bottom:12px">{{ t.metric }}</div>
+            <p style="font:400 14.5px/1.55 'Inter';color:var(--txt);margin:0 0 18px">“{{ t.quote }}”</p>
+            <div style="display:flex;align-items:center;gap:11px">
+              <div style="width:38px;height:38px;border-radius:50%;{{ t.avatarStyle }}"></div>
+              <div><div style="font:600 13.5px 'Inter'">{{ t.name }}</div><div style="font:500 12px 'Inter';color:var(--txt-3)">{{ t.shop }}</div></div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="bvp-faq" style="max-width:780px;margin:0 auto;padding:clamp(56px,7vw,88px) 24px">
+    <h2 style="font:800 clamp(24px,3vw,34px) 'Inter';letter-spacing:-.6px;margin:0 0 32px;text-align:center">Perguntas frequentes</h2>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      {{ faqsEl }}
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section style="border-top:1px solid var(--line)">
+    <div style="max-width:1180px;margin:0 auto;padding:clamp(56px,7vw,90px) 24px;text-align:center">
+      <div style="max-width:600px;margin:0 auto">
+        <h2 style="font:800 clamp(28px,4vw,44px)/1.1 'Inter';letter-spacing:-1px;margin:0 0 16px;text-wrap:balance">Comece hoje. Sua agenda agradece.</h2>
+        <p style="font:400 16px/1.5 'Inter';color:var(--txt-2);margin:0 0 28px">7 dias para testar tudo, sem cartão. Monte sua barbearia em minutos.</p>
+        <button onClick="{{ onHeroCta }}" style="height:56px;padding:0 32px;background:var(--gold);border:none;border-radius:12px;color:#1a1408;font:700 16px 'Inter';cursor:pointer" style-hover="background:var(--gold-2)" style-active="transform:translateY(1px)">Comece grátis por 7 dias</button>
+        <div style="font:500 12.5px 'Inter';color:var(--txt-3);margin-top:14px">7 dias grátis · sem cartão de crédito</div>
+      </div>
+    </div>
+  </section>
+
+  <footer style="border-top:1px solid var(--line);background:var(--bg2);padding:28px 24px;text-align:center">
+    <div style="font:500 12px 'Inter';color:var(--txt-3)">© 2026 BarberVP · <a href="BarberVP.dc.html" style="color:var(--gold);text-decoration:none">Ver o marketplace</a></div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;palette&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Light SaaS&quot;,&quot;options&quot;:[&quot;Light SaaS&quot;,&quot;Creme + Dourado&quot;,&quot;Dark Leve&quot;,&quot;Branco + Acento&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tema&quot;,&quot;label&quot;:&quot;Paleta de cores&quot;}}">
+class Component extends DCLogic {
+  state = {
+    palette:null,
+    faqOpen:0
+  };
+
+  PLANS = [
+    { id:'essencial', nome:'Essencial', preco:49.00, destaque:false, baseLabel:null,
+      features:['Agenda inteligente','Até 2 barbeiros','Agendamentos ilimitados','Controle de clientes','Financeiro básico (caixa)','Relatórios essenciais','Link de agendamento','Notificações','WhatsApp básico','IA (50 msgs/mês)'] },
+    { id:'profissional', nome:'Profissional', preco:89.00, destaque:true, badge:'★ MAIS POPULAR', baseLabel:'Tudo do Essencial, mais:',
+      features:['Até 4 barbeiros','WhatsApp completo','Comissões automáticas','Contas a pagar/receber','Programa de fidelidade','Sorteio automático','Relatórios avançados','IA (200 msgs/mês)'] },
+    { id:'avancado', nome:'Avançado', preco:139.00, destaque:false, baseLabel:'Tudo do Profissional, mais:',
+      features:['Barbeiros ilimitados','Múltiplas unidades','Assinaturas de clientes','Calculadora de preço inteligente','Suporte prioritário','IA ilimitada'] }
+  ];
+  STATS = [
+    {big:'74%', txt:'dos brasileiros preferem agendar serviços pelo celular — barbearias com agendamento online reportam até 30% mais clientes', src:'Sebrae'},
+    {big:'−70%', txt:'de faltas com lembretes automáticos enviados via WhatsApp', src:'média de mercado'},
+    {big:'+83%', txt:'é quanto barbeiros com clientes assinantes faturam a mais (R$4.805 vs R$2.625/mês)', src:''},
+    {big:'2,5×', txt:'é quanto o cliente assinante gasta a mais por ano (R$900 vs R$360)', src:''}
+  ];
+  FEATURES = [
+    {icon:'◷', t:'Agendamento online 24h', d:'Seus clientes reservam a qualquer hora, sem ligações nem WhatsApp travado.'},
+    {icon:'▦', t:'Dashboard financeiro completo', d:'Entradas, saídas, formas de pagamento e fechamento de caixa num só lugar.'},
+    {icon:'٪', t:'Comissões automáticas', d:'Cada serviço gera a comissão do barbeiro automaticamente. Zero planilha.'},
+    {icon:'✦', t:'Página pública profissional', d:'Uma vitrine bonita com serviços, equipe e avaliações — pronta em minutos.'},
+    {icon:'★', t:'Clube de assinaturas', d:'Receita recorrente com assinaturas de clientes — exclusivo do plano Avançado.'},
+    {icon:'◳', t:'Relatórios e métricas', d:'Ocupação, ticket médio, retorno de clientes e no-show sempre à mão.'},
+    {icon:'✺', t:'Assistente IA', d:'Um assistente de IA para atendimento e organização, incluído em todos os planos.'}
+  ];
+  STEPS = [
+    {n:'1', t:'Cadastre sua barbearia', d:'Crie sua conta grátis em 1 minuto, sem cartão.'},
+    {n:'2', t:'Personalize sua página', d:'Adicione logo, fotos, serviços, preços e sua equipe.'},
+    {n:'3', t:'Receba agendamentos', d:'Compartilhe seu link. Os clientes agendam sozinhos, 24h por dia.'},
+    {n:'4', t:'Acompanhe no dashboard', d:'Faturamento, agenda, comissões e métricas em tempo real.'}
+  ];
+  TESTIMONIALS = [
+    {metric:'+118% de faturamento', quote:'Dobrei meu faturamento em 3 meses. Parei de perder cliente por não atender o telefone.', name:'Anderson Reis', shop:'Barba & Cia · Curitiba', hue:30},
+    {metric:'−65% de faltas', quote:'O lembrete automático no WhatsApp acabou com os furos na agenda. Mudou meu mês.', name:'Tiago Moura', shop:'Studio TM · Recife', hue:24},
+    {metric:'R$ 6.200/mês recorrente', quote:'O clube de assinatura trouxe uma renda fixa que eu nunca tive antes. Recomendo demais.', name:'Felipe Nogueira', shop:'Old Town Barber · Porto Alegre', hue:40}
+  ];
+  FAQS = [
+    {q:'Preciso de cartão para testar?', a:'Não. São 7 dias grátis, sem cartão. Você só cadastra a forma de pagamento se decidir assinar ao final do teste.'},
+    {q:'Como funciona o preço?', a:'São três planos mensais — Essencial (R$ 49), Profissional (R$ 89) e Avançado (R$ 139). Cada um libera um conjunto de funcionalidades e um limite de barbeiros. Você pode mudar de plano a qualquer momento direto no painel.'},
+    {q:'Posso cancelar quando quiser?', a:'Pode. Não há fidelidade nem multa. O cancelamento é feito em poucos cliques dentro do próprio painel, e você mantém acesso até o fim do ciclo já pago.'},
+    {q:'O que acontece se eu adicionar mais profissionais?', a:'O Essencial atende até 2 barbeiros e o Profissional até 4. Ao atingir o limite, o painel sugere o upgrade — a mudança de plano é feita em poucos cliques e vale imediatamente. No Avançado os barbeiros são ilimitados.'},
+    {q:'Meus dados e os dos meus clientes ficam seguros?', a:'Sim. Todos os dados são criptografados e armazenados em servidores seguros, em conformidade com a LGPD. Você é o dono dos seus dados e pode exportá-los quando quiser.'},
+    {q:'Já uso outra agenda. Dá para migrar?', a:'Dá. Durante o teste você pode importar sua lista de clientes e nossa equipe ajuda na configuração inicial sem custo.'}
+  ];
+
+  fmt(n){ return n.toFixed(2).replace('.',','); }
+  avatar(h){ return {background:`radial-gradient(100% 100% at 30% 20%,hsl(${h} 34% 32%),hsl(${h} 30% 17%) 70%,hsl(${h+6} 26% 10%))`}; }
+  scrollTo(id){ const el=document.getElementById(id); if(el) window.scrollTo({top:el.offsetTop-80,behavior:'smooth'}); }
+
+  openWizard(plan){ try{ window.location.href='BarberVP%20Cadastro%20Estabelecimento.dc.html'; }catch(e){} }
+
+  componentDidMount(){ this._propPal=this.props.palette; try{ const s=localStorage.getItem('bvp-palette'); if(s) this.setState({palette:s}); }catch(e){} }
+
+  componentDidUpdate(){ const cur=this.props.palette; if(cur!==this._propPal){ this._propPal=cur; if(cur) this.setState({palette:cur}); } if(this.state.palette && this.state.palette!==this._savedPal){ this._savedPal=this.state.palette; try{ localStorage.setItem('bvp-palette', this.state.palette); }catch(e){} } }
+
+  renderVals(){
+    const st=this.state;
+    const PALS={'Light SaaS':{bg:'#FAFAFA',bg2:'#F1F1F1',surface:'#FFFFFF',surface2:'#F4F4F4',surface3:'#EAEAEA',line:'#E7E7E7',line2:'#D8D8D8',txt:'#1A1A1A',txt2:'#5A5A5A',txt3:'#8C8C8C',gold:'#E8A33D',gold2:'#F2B65C',goldSoft:'rgba(232,163,61,.12)',green:'#2F9E6B',red:'#C75D4C',accent:'#E8A33D',accentSoft:'rgba(232,163,61,.12)',header:'rgba(255,255,255,.82)',hero1:'#FFFFFF',hero2:'#FAFAFA'},'Creme + Dourado':{bg:'#F5EFE6',bg2:'#ECE3D5',surface:'#FBF7F0',surface2:'#F0E8DA',surface3:'#E7DCC9',line:'#E3D8C5',line2:'#D2C3AA',txt:'#2B2420',txt2:'#6B5F52',txt3:'#998C7B',gold:'#D4A574',gold2:'#E2BB90',goldSoft:'rgba(212,165,116,.16)',green:'#6E8E5A',red:'#BE6E5A',accent:'#D4A574',accentSoft:'rgba(212,165,116,.16)',header:'rgba(245,239,230,.82)',hero1:'#FBF6EE',hero2:'#F5EFE6'},'Dark Leve':{bg:'#232B33',bg2:'#1E252C',surface:'#2A333C',surface2:'#313B45',surface3:'#3A4651',line:'#37424C',line2:'#4A5560',txt:'#EDF1F4',txt2:'#A9B5BF',txt3:'#7B8893',gold:'#D4A24A',gold2:'#ECC46B',goldSoft:'rgba(212,162,74,.14)',green:'#7FB287',red:'#D5897A',accent:'#D4A24A',accentSoft:'rgba(212,162,74,.14)',header:'rgba(30,37,44,.82)',hero1:'#2A333C',hero2:'#232B33'},'Branco + Acento':{bg:'#FFFFFF',bg2:'#F4F6F8',surface:'#FFFFFF',surface2:'#F3F6F7',surface3:'#E9EDEF',line:'#E7EBED',line2:'#D3D9DD',txt:'#1A1A1A',txt2:'#54606A',txt3:'#8A949C',gold:'#E8A33D',gold2:'#F2B65C',goldSoft:'rgba(232,163,61,.12)',green:'#2F9E6B',red:'#C75D4C',accent:'#3E5060',accentSoft:'rgba(62,80,96,.10)',header:'rgba(255,255,255,.85)',hero1:'#FFFFFF',hero2:'#F7F9FA'}};
+    let _palKey=this.state.palette||this.props.palette||'Light SaaS'; if(!PALS[_palKey])_palKey='Light SaaS';
+    const _p=PALS[_palKey];
+    const paletteVars=`--bg:${_p.bg};--bg2:${_p.bg2};--surface:${_p.surface};--surface-2:${_p.surface2};--surface-3:${_p.surface3};--line:${_p.line};--line-2:${_p.line2};--txt:${_p.txt};--txt-2:${_p.txt2};--txt-3:${_p.txt3};--gold:${_p.gold};--gold-2:${_p.gold2};--gold-soft:${_p.goldSoft};--green:${_p.green};--red:${_p.red};--accent:${_p.accent};--accent-soft:${_p.accentSoft};--header:${_p.header};--hero-1:${_p.hero1};--hero-2:${_p.hero2};`;
+    try{ document.body.style.background=_p.bg; }catch(e){}
+
+    const R=React.createElement;
+
+    const mockBars=[42,58,50,72,64,88,80].map(h=>({style:`flex:1;height:${h}%;border-radius:4px 4px 2px 2px;background:linear-gradient(180deg,var(--gold-2),rgba(212,162,74,.35))`}));
+
+    const plans = this.PLANS.map(pl=>{
+      const highlight = !!pl.destaque;
+      const cardBase='position:relative;display:flex;flex-direction:column;padding:26px;border-radius:18px;background:var(--surface);transition:all .15s;';
+      const cardStyle = cardBase + (highlight?'border:1.5px solid var(--gold);box-shadow:0 16px 50px rgba(212,162,74,.12);margin-top:8px;':'border:1px solid var(--line);');
+      const ctaStyle = 'margin-top:auto;height:46px;width:100%;border-radius:11px;font:700 14px Inter;cursor:pointer;transition:all .15s;border:1px solid '+(highlight?'var(--gold)':'var(--line-2)')+';'+(highlight?'background:var(--gold);color:#1a1408;':'background:transparent;color:var(--txt);');
+      return {
+        id:pl.id, nome:pl.nome, preco:this.fmt(pl.preco), priceColor: highlight?'var(--gold)':'var(--txt)',
+        baseLabel:pl.baseLabel, features:pl.features, highlight,
+        cardStyle, ctaStyle, onChoose:()=>this.openWizard(pl.id)
+      };
+    });
+
+    const faqsEl=this.FAQS.map((f,i)=>{ const open=st.faqOpen===i;
+      return R('div',{key:i, style:{border:'1px solid var(--line)',borderRadius:'13px',background:'var(--surface)',overflow:'hidden'}},
+        R('button',{onClick:()=>this.setState({faqOpen:open?-1:i}), style:{width:'100%',textAlign:'left',padding:'18px 20px',background:'none',border:'none',color:'var(--txt)',fontWeight:600,fontSize:'15px',fontFamily:'Inter',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:'16px'}},
+          R('span',null,f.q),
+          R('span',{style:{fontWeight:400,fontSize:'20px',fontFamily:'Inter',color:'var(--gold)',flexShrink:0,transform:open?'rotate(45deg)':'rotate(0deg)'}}, '+')),
+        open?R('div',{style:{padding:'0 20px 18px',fontWeight:400,fontSize:'14px',lineHeight:1.6,fontFamily:'Inter',color:'var(--txt-2)'}}, f.a):null); });
+
+    const testimonials=this.TESTIMONIALS.map(t=>({...t, avatarStyle:this.avatar(t.hue)}));
+
+    return {
+      paletteVars,
+      onNavFeatures:()=>this.scrollTo('bvp-features'), onNavHow:()=>this.scrollTo('bvp-how'),
+      onNavPlans:()=>this.scrollTo('bvp-plans'), onNavFaq:()=>this.scrollTo('bvp-faq'),
+      onHeroCta:()=>this.openWizard('pro'),
+      mockBars, stats:this.STATS, features:this.FEATURES, steps:this.STEPS, testimonials, faqsEl,
+      plans
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1158 @@
+
+const NAV_DEFS = [
+  {key:'dashboard', label:'Dashboard', path:'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z'},
+  {key:'agenda', label:'Agenda', path:'M4 5h16v15H4zM4 9h16M8 3v4M16 3v4'},
+  {key:'clientes', label:'Clientes', path:'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3 2.5-5 5-5s5 2 5 5M17 11a3 3 0 1 0 0-6M16 20c0-2.5 1.8-4.5 4-5'},
+  {key:'comandas', label:'Comandas', path:'M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21zM8 8h8M8 12h8M8 16h5'},
+  {key:'comissoes', label:'Comissões', path:'M6 18L18 6M7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z'},
+  {key:'fidelidade', label:'Fidelidade', path:'M12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7-6.2-3.9-6.2 3.9 1.6-7-5.4-4.8 7.1-.6z'},
+  {key:'relatorios', label:'Relatórios', path:'M5 20V10M12 20V4M19 20v-7'},
+];
+
+const BARBERS = [
+  {id:'diego', name:'Diego Martins', initials:'DM'},
+  {id:'matheus', name:'Matheus Rocha', initials:'MR'},
+  {id:'vini', name:'Vinícius Alves', initials:'VA'},
+  {id:'leo', name:'Léo Santana', initials:'LS'},
+];
+const SERVICES = [
+  {name:'Corte degradê', duration:45, price:45},
+  {name:'Corte na tesoura', duration:50, price:50},
+  {name:'Barba', duration:30, price:35},
+  {name:'Corte + Barba', duration:75, price:70},
+  {name:'Sobrancelha', duration:15, price:15},
+  {name:'Pigmentação', duration:40, price:60},
+  {name:'Luzes/Platinado', duration:120, price:160},
+];
+const WEEK_DAYS = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+const mkSchedule = (activeFrom, activeTo, vacationIdx) => WEEK_DAYS.map((d, i) => ({
+  day: d, active: i >= activeFrom && i <= activeTo, start: '09:00', end: '19:00',
+  lunchStart: '12:00', lunchEnd: '13:00', vacation: i === vacationIdx,
+}));
+const TEAM_DATA = [
+  {id:'diego', name:'Diego Martins', whatsapp:'(11) 98765-4321', photo:null, color:'#D4A84C', status:'Ativo',
+    services:['Corte degradê','Corte na tesoura','Barba','Corte + Barba'], commissionRule:'Faixas · até 50%', schedule: mkSchedule(1,5)},
+  {id:'matheus', name:'Matheus Rocha', whatsapp:'(11) 97654-3210', photo:null, color:'#5B8DE0', status:'Ativo',
+    services:['Corte degradê','Sobrancelha','Pigmentação'], commissionRule:'Faixas · até 45%', schedule: mkSchedule(1,5)},
+  {id:'vini', name:'Vinícius Alves', whatsapp:'(11) 96543-2109', photo:null, color:'#3FB68B', status:'Ativo',
+    services:['Barba','Corte + Barba','Luzes/Platinado'], commissionRule:'Fixa · 40%', schedule: mkSchedule(2,6)},
+  {id:'leo', name:'Léo Santana', whatsapp:'(11) 95432-1098', photo:null, color:'#E8A13C', status:'Ativo',
+    services:['Corte degradê','Corte na tesoura','Sobrancelha'], commissionRule:'Fixa · 35%', schedule: mkSchedule(1,5,4)},
+];
+const CUSTOMERS = ['João Pedro','Lucas Ferreira','André Souza','Gabriel Lima','Rafael Nunes','Bruno Carvalho','Thiago Melo'];
+const CUSTOMER_HISTORY = {
+  'João Pedro': [{d:'03/07', s:'Corte degradê', v:'R$ 45,00'}, {d:'19/06', s:'Corte degradê', v:'R$ 45,00'}, {d:'05/06', s:'Barba', v:'R$ 35,00'}],
+  'Lucas Ferreira': [{d:'01/07', s:'Barba', v:'R$ 35,00'}, {d:'15/06', s:'Corte degradê', v:'R$ 45,00'}, {d:'30/05', s:'Corte degradê', v:'R$ 45,00'}],
+  'André Souza': [{d:'10/07', s:'Corte + Barba', v:'R$ 70,00'}, {d:'26/06', s:'Corte degradê', v:'R$ 45,00'}, {d:'12/06', s:'Corte + Barba', v:'R$ 70,00'}],
+  'Gabriel Lima': [{d:'08/07', s:'Pigmentação', v:'R$ 60,00'}, {d:'24/06', s:'Sobrancelha', v:'R$ 15,00'}, {d:'10/06', s:'Corte + Barba', v:'R$ 70,00'}],
+  'Rafael Nunes': [{d:'02/07', s:'Sobrancelha', v:'R$ 15,00'}, {d:'18/06', s:'Corte degradê', v:'R$ 45,00'}, {d:'04/06', s:'Corte degradê', v:'R$ 45,00'}],
+  'Bruno Carvalho': [{d:'11/07', s:'Barba', v:'R$ 35,00'}, {d:'27/06', s:'Luzes/Platinado', v:'R$ 160,00'}, {d:'13/06', s:'Barba', v:'R$ 35,00'}],
+  'Thiago Melo': [{d:'09/07', s:'Corte na tesoura', v:'R$ 50,00'}, {d:'25/06', s:'Corte na tesoura', v:'R$ 50,00'}, {d:'11/06', s:'Corte degradê', v:'R$ 45,00'}],
+};
+const REASONS = ['Férias','Feriado','Manutenção','Pessoal'];
+const PAYMENTS = ['Pix','Cartão de crédito','Dinheiro'];
+const fmtBRL = (n) => 'R$ ' + n.toFixed(2).replace('.',',');
+
+const PRODUCTS = [
+  {name:'Pomada Matte', price:38},
+  {name:'Óleo para barba', price:42},
+  {name:'Shampoo anticaspa', price:35},
+  {name:'Cera modeladora', price:32},
+];
+const PAYMENT_METHODS = ['Pix','Dinheiro','Débito','Crédito','Dividir'];
+const COMANDAS_OPEN = [
+  {num:'0347', client:'João Pedro', barber:'Diego Martins', openedAt:'14:20', loyaltyBalance:240, items:[{name:'Corte degradê',qty:1,price:45},{name:'Barba',qty:1,price:35},{name:'Pomada Matte',qty:1,price:28}]},
+  {num:'0353', client:'Lucas Ferreira', barber:'Matheus Rocha', openedAt:'14:35', loyaltyBalance:90, items:[{name:'Corte na tesoura',qty:1,price:50}]},
+  {num:'0349', client:'André Souza', barber:'Vinícius Alves', openedAt:'15:05', loyaltyBalance:410, items:[{name:'Corte + Barba',qty:1,price:70},{name:'Sobrancelha',qty:1,price:15}]},
+  {num:'0354', client:'Rafael Nunes', barber:'Léo Santana', openedAt:'15:30', loyaltyBalance:130, items:[{name:'Pigmentação',qty:1,price:60},{name:'Óleo para barba',qty:1,price:42}]},
+];
+const CLOSED_COMANDAS = Array.from({length:11}, (_,i) => {
+  const svc = SERVICES[i % SERVICES.length];
+  const extra = i % 3 === 0 ? PRODUCTS[i % PRODUCTS.length].price : 0;
+  return {
+    num: (330+i).toString().padStart(4,'0'),
+    client: CUSTOMERS[i % CUSTOMERS.length],
+    barber: BARBERS[i % BARBERS.length].name,
+    closedAt: `${10 + Math.floor(i/2)}:${i%2 ? '30' : '00'}`,
+    total: svc.price + extra,
+    payment: PAYMENT_METHODS[i % PAYMENT_METHODS.length],
+  };
+});
+const CLIENTS_ALL = [
+  {id:1, name:'João Pedro', phone:'(16) 99123-4501', lastVisit:'03/07', visits:27, spent:1840, pts:240, faltas:1, status:'Mensalista', birthday:'12/03', favBarber:'Diego Martins', notes:'Máquina 2 na lateral, não gosta de conversa'},
+  {id:2, name:'Lucas Ferreira', phone:'(16) 99123-4502', lastVisit:'01/07', visits:14, spent:780, pts:90, faltas:0, status:'Ativo', birthday:'22/08', favBarber:'Matheus Rocha'},
+  {id:3, name:'André Souza', phone:'(16) 99123-4503', lastVisit:'10/07', visits:31, spent:2210, pts:310, faltas:0, status:'Mensalista', birthday:'05/01', favBarber:'Vinícius Alves'},
+  {id:4, name:'Gabriel Lima', phone:'(16) 99123-4504', lastVisit:'08/07', visits:9, spent:410, pts:40, faltas:2, status:'Ativo', birthday:'19/11', favBarber:'Léo Santana'},
+  {id:5, name:'Rafael Nunes', phone:'(16) 99123-4505', lastVisit:'02/07', visits:5, spent:180, pts:15, faltas:3, status:'Bloqueado', birthday:'27/04', favBarber:'Diego Martins'},
+  {id:6, name:'Bruno Carvalho', phone:'(16) 99123-4506', lastVisit:'11/07', visits:19, spent:1330, pts:150, faltas:0, status:'Ativo', birthday:'14/09', favBarber:'Matheus Rocha'},
+  {id:7, name:'Thiago Melo', phone:'(16) 99123-4507', lastVisit:'09/07', visits:22, spent:1590, pts:200, faltas:1, status:'Mensalista', birthday:'30/06', favBarber:'Vinícius Alves'},
+  {id:8, name:'Pedro Henrique', phone:'(16) 99123-4508', lastVisit:'12/05', visits:3, spent:135, pts:10, faltas:0, status:'Inativo', birthday:'08/02', favBarber:'Léo Santana'},
+  {id:9, name:'Marcos Vinícius', phone:'(16) 99123-4509', lastVisit:'20/04', visits:6, spent:270, pts:20, faltas:0, status:'Inativo', birthday:'16/12', favBarber:'Diego Martins'},
+  {id:10, name:'Felipe Costa', phone:'(16) 99123-4510', lastVisit:'13/07', visits:11, spent:495, pts:55, faltas:0, status:'Ativo', birthday:'03/07', favBarber:'Matheus Rocha'},
+  {id:11, name:'Rodrigo Alves', phone:'(16) 99123-4511', lastVisit:'05/07', visits:17, spent:1020, pts:130, faltas:1, status:'Ativo', birthday:'25/10', favBarber:'Vinícius Alves'},
+  {id:12, name:'Carlos Eduardo', phone:'(16) 99123-4512', lastVisit:'15/03', visits:2, spent:90, pts:5, faltas:0, status:'Inativo', birthday:'11/05', favBarber:'Léo Santana'},
+  {id:13, name:'Diego Freitas', phone:'(16) 99123-4513', lastVisit:'14/07', visits:25, spent:1780, pts:220, faltas:0, status:'Mensalista', birthday:'07/09', favBarber:'Diego Martins'},
+  {id:14, name:'Igor Santos', phone:'(16) 99123-4514', lastVisit:'06/07', visits:8, spent:360, pts:35, faltas:2, status:'Bloqueado', birthday:'29/01', favBarber:'Matheus Rocha'},
+  {id:15, name:'Vitor Hugo', phone:'(16) 99123-4515', lastVisit:'16/07', visits:13, spent:610, pts:65, faltas:0, status:'Ativo', birthday:'21/03', favBarber:'Vinícius Alves'},
+];
+const APPOINTMENTS_DAY = [
+  {id:1, barberId:'diego', start:540, duration:45, client:'João Pedro', service:'Corte degradê', status:'Confirmado', recurring:true},
+  {id:2, barberId:'diego', start:600, duration:75, client:'André Souza', service:'Corte + Barba', status:'Confirmado'},
+  {id:3, barberId:'diego', start:840, duration:45, client:'Rafael Nunes', service:'Corte degradê', status:'Pendente', warn:true},
+  {id:4, barberId:'diego', start:960, duration:30, client:'Bruno Carvalho', service:'Barba', status:'Concluído'},
+  {id:5, barberId:'matheus', start:570, duration:30, client:'Lucas Ferreira', service:'Barba', status:'Confirmado'},
+  {id:6, barberId:'matheus', start:660, duration:50, client:'Thiago Melo', service:'Corte na tesoura', status:'Pendente'},
+  {id:7, barberId:'matheus', start:870, duration:40, client:'Gabriel Lima', service:'Pigmentação', status:'Concluído'},
+  {id:8, barberId:'matheus', start:1020, duration:30, client:'João Pedro', service:'Barba', status:'Falta', warn:true},
+  {id:9, barberId:'vini', start:510, duration:45, client:'André Souza', service:'Corte degradê', status:'Confirmado', recurring:true},
+  {id:10, barberId:'vini', start:630, duration:15, client:'Rafael Nunes', service:'Sobrancelha', status:'Concluído'},
+  {id:11, barberId:'vini', start:900, duration:120, client:'Bruno Carvalho', service:'Luzes/Platinado', status:'Confirmado'},
+  {id:12, barberId:'vini', start:1080, duration:45, client:'Lucas Ferreira', service:'Corte degradê', status:'Cancelado'},
+  {id:13, barberId:'leo', start:540, duration:50, client:'Thiago Melo', service:'Corte na tesoura', status:'Confirmado'},
+  {id:14, barberId:'leo', start:810, duration:75, client:'Gabriel Lima', service:'Corte + Barba', status:'Pendente'},
+];
+
+const LOYALTY_CLIENTES_DATA = [
+  {nome:'Marcos Vinícius', saldo:340, ultimoGanho:'12/07/2026', ultimoResgate:'02/06/2026'},
+  {nome:'Rafael Souza', saldo:180, ultimoGanho:'15/07/2026', ultimoResgate:'—'},
+  {nome:'Bruno Almeida', saldo:520, ultimoGanho:'10/07/2026', ultimoResgate:'20/05/2026'},
+  {nome:'Thiago Nunes', saldo:90, ultimoGanho:'16/07/2026', ultimoResgate:'—'},
+  {nome:'Felipe Cardoso', saldo:260, ultimoGanho:'08/07/2026', ultimoResgate:'11/04/2026'},
+  {nome:'Diego Martins', saldo:410, ultimoGanho:'14/07/2026', ultimoResgate:'—'},
+];
+class Component extends DCLogic {
+  waEditorTextareaRef = React.createRef();
+  componentDidMount() {
+    this.handleResize = () => this.setState({ isNarrow: window.innerWidth < 640 });
+    this.handleResize();
+    window.addEventListener('resize', this.handleResize);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.handleResize);
+  }
+  state = {
+    isNarrow: false,
+    collapsed: this.props.sidebarCollapsedDefault ?? false,
+    activeKey: 'dashboard',
+    openMenu: null,
+    selectedUnit: 'Unidade Centro',
+    chartPeriod: 'mes',
+    hoveredPointIdx: null,
+    apptMenuOpenIdx: null,
+    agendaView: 'dia',
+    agendaDate: new Date(),
+    modalNewAppt: false,
+    modalBlock: false,
+    drawerAppt: null,
+    toast: {show: false, msg: ''},
+    newApptForm: {clientQuery:'', selectedClient:null, showNewClientForm:false, newClientName:'', newClientWhatsapp:'', selectedServices:[], date:'', time:null, recurrence:'Não repete', recurrenceUntil:'', notes:'', whatsappConfirm:true},
+    blockForm: {dateStart:'', dateEnd:'', timeStart:'', timeEnd:'', reason:'Férias', notes:''},
+    clientSearch: '',
+    clientFilter: 'todos',
+    selectedClientIds: [],
+    clientMenuOpenIdx: null,
+    drawerClient: null,
+    drawerTab: 'historico',
+    modalNewClient: false,
+    newClientForm: {name:'', whatsapp:'', email:'', birthdate:'', notes:'', acceptsMessages:true},
+    comandasTab: 'abertas',
+    comandaSearch: '',
+    modalComanda: null,
+    clientPickerOpen: false,
+    comandaClientQuery: '',
+    comissaoPeriodType: 'mensal',
+    comissaoDate: new Date(2026,6,17),
+    comissaoStatus: 'Aberto',
+    expandedComissao: {},
+    modalPdf: null,
+    barberRules: {
+      'Diego Martins': {tipo:'faixas', pctServicos:'50', pctProdutos:'10', faixas: DEFAULT_FAIXAS.map(f=>({...f})), descontarVales:true},
+      'Matheus Rocha': {tipo:'faixas', pctServicos:'45', pctProdutos:'10', faixas: DEFAULT_FAIXAS.map(f=>({...f})), descontarVales:true},
+      'Vinícius Alves': {tipo:'percentual', pctServicos:'40', pctProdutos:'10', faixas: DEFAULT_FAIXAS.map(f=>({...f})), descontarVales:true},
+      'Léo Santana': {tipo:'faixas', pctServicos:'40', pctProdutos:'10', faixas: DEFAULT_FAIXAS.map(f=>({...f})), descontarVales:false},
+    },
+    relPeriod: '30d',
+    relCustomFrom: '',
+    relCustomTo: '',
+  };
+
+  getBarberLogado() {
+    return BARBERS.find(b => b.id === this.props.funcionarioLogado) ?? BARBERS[0];
+  }
+  getBarberProdData(barberLogado) {
+    const comissaoData = BARBEIROS_COMISSAO_DATA.find(b => b.nome === barberLogado.name) || BARBEIROS_COMISSAO_DATA[0];
+    const teamData = TEAM_DATA.find(b => b.id === barberLogado.id) || TEAM_DATA[0];
+    const seed = barberLogado.name.length;
+    const values30d = Array.from({length:30}, (_,i) => {
+      const base = comissaoData.faturadoServicos / 22;
+      const wave = Math.sin((i+seed)*0.6) * base * 0.35 + Math.sin((i+seed)*0.21) * base * 0.15;
+      return Math.max(20, Math.round(base + wave));
+    });
+    const weights = [0.34,0.26,0.2,0.13,0.07];
+    const serviceRows = teamData.services.map((name, i) => ({
+      name, revenue: Math.round(comissaoData.faturadoServicos * (weights[i] ?? 0.05)),
+    }));
+    return {comissaoData, teamData, values30d, serviceRows};
+  }
+
+  toggleCollapse = () => this.setState(s => ({collapsed: !s.collapsed}));  toggleCollapse = () => this.setState(s => ({collapsed: !s.collapsed}));
+  toggleMenu = (name) => this.setState(s => ({openMenu: s.openMenu === name ? null : name}));
+  closeMenus = () => this.setState({openMenu: null, apptMenuOpenIdx: null});
+  setActive = (key) => {
+    const ALLOWED = ['dashboard','agenda','clientes','comandas','comissoes','fidelidade','relatorios'];
+    this.setState({activeKey: ALLOWED.includes(key) ? key : 'dashboard'});
+  };
+  setRelPeriod  setRelPeriod = (p) => this.setState({relPeriod: p});
+  setChartPeriod = (p) => this.setState({chartPeriod: p, hoveredPointIdx: null});
+  setHoveredPoint = (idx) => this.setState({hoveredPointIdx: idx});
+  clearHoveredPoint = () => this.setState({hoveredPointIdx: null});
+  toggleApptMenu = (idx) => this.setState(s => ({apptMenuOpenIdx: s.apptMenuOpenIdx === idx ? null : idx}));
+
+  fmtBRL(n) {
+    return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  showToast(msg) {
+    clearTimeout(this._toastTimer);
+    this.setState({toast: {show:true, msg}});
+    this._toastTimer = setTimeout(() => this.setState({toast:{show:false, msg:''}}), 4000);
+  }
+  setAgendaView = (v) => this.setState({agendaView: v});
+  navDate = (deltaDays) => this.setState(s => { const d = new Date(s.agendaDate); d.setDate(d.getDate()+deltaDays); return {agendaDate: d}; });
+  goToday = () => this.setState({agendaDate: new Date(), agendaView: 'dia'});
+  setAgendaDateInput = (e) => { const [y,m,d] = e.target.value.split('-').map(Number); this.setState({agendaDate: new Date(y, m-1, d)}); };
+  goToDay = (date) => this.setState({agendaDate: date, agendaView: 'dia'});
+  copyApptLink = () => { this.showToast('Link copiado: barberos.app/agendar/barbearia-central'); };
+  openNewApptModal = () => this.setState({modalNewAppt: true});
+  closeNewApptModal = () => this.setState({modalNewAppt: false, newApptForm: {clientQuery:'', selectedClient:null, showNewClientForm:false, newClientName:'', newClientWhatsapp:'', selectedServices:[], selectedBarber:null, date:'', time:null, recurrence:'Não repete', recurrenceUntil:'', notes:'', whatsappConfirm:true}});
+  updNewAppt(patch) { this.setState(s => ({newApptForm: {...s.newApptForm, ...patch}})); }
+  toggleService = (name) => this.setState(s => { const has = s.newApptForm.selectedServices.includes(name); return {newApptForm: {...s.newApptForm, selectedServices: has ? s.newApptForm.selectedServices.filter(x=>x!==name) : [...s.newApptForm.selectedServices, name]}}; });
+  submitNewAppt = () => { this.closeNewApptModal(); this.showToast('Agendamento criado com sucesso'); };
+  openBlockModal = () => this.setState({modalBlock: true});
+  closeBlockModal = () => this.setState({modalBlock: false, blockForm: {barber:'Todos', dateStart:'', dateEnd:'', timeStart:'', timeEnd:'', reason:'Férias', notes:''}});
+  updBlock(patch) { this.setState(s => ({blockForm: {...s.blockForm, ...patch}})); }
+  submitBlock = () => { this.closeBlockModal(); this.showToast('Horário bloqueado com sucesso'); };
+  openDrawer = (appt) => this.setState({drawerAppt: appt});
+  closeDrawer = () => this.setState({drawerAppt: null});
+  markFalta = () => { this.closeDrawer(); this.showToast('Falta registrada. Cliente tem 2 faltas — na 3ª será bloqueado automaticamente (configurável)'); };
+  drawerAction = (msg) => { this.closeDrawer(); this.showToast(msg); };
+
+  buildClientHistory(client) {
+    const n = Math.min(4, Math.max(2, Math.floor(client.visits/8)+2));
+    const out = [];
+    for (let i=0;i<n;i++) {
+      const svc = SERVICES[(client.id+i)%SERVICES.length];
+      const barb = BARBERS[(client.id+i)%BARBERS.length];
+      out.push({date: `${(10-i).toString().padStart(2,'0')}/0${((7-i)%9)+1}`, service: svc.name, barber: barb.name, value: 'R$ '+svc.price.toFixed(2).replace('.',','), payment: PAYMENTS[(client.id+i)%PAYMENTS.length]});
+    }
+    return out;
+  }
+  buildLoyaltyExtract(client) {
+    return [
+      {date: client.lastVisit, desc: 'Ganho por visita', pts: '+15 pts'},
+      {date: '20/06', desc: 'Resgate: Sobrancelha grátis', pts: '-100 pts'},
+      {date: '05/06', desc: 'Ganho por visita', pts: '+15 pts'},
+      {date: '18/05', desc: 'Ganho por indicação', pts: '+30 pts'},
+    ];
+  }
+
+  renderClientesVals() {
+    const isClientes = this.state.activeKey === 'clientes';
+    const { clientSearch, clientFilter, selectedClientIds, clientMenuOpenIdx, drawerClient, drawerTab, modalNewClient, newClientForm } = this.state;
+    const STATUS_COLORS = {'Ativo':'#3FB68B','Inativo':'#9AA1AC','Mensalista':'#D4A84C','Bloqueado':'#E05B5B'};
+
+    const filterDefs = [
+      {key:'todos', label:'Todos', count:412},
+      {key:'ativo', label:'Ativos', count:361},
+      {key:'inativo', label:'Inativos 30+ dias', count:38},
+      {key:'mensalista', label:'Mensalistas', count:24},
+      {key:'bloqueado', label:'Bloqueados', count:13},
+    ];
+    const filterChips = filterDefs.map(f => ({...f, active: clientFilter===f.key, bg: clientFilter===f.key?'#D4A84C':'transparent', color: clientFilter===f.key?'#0F1115':'#F2F3F5', onClick: () => this.setClientFilter(f.key)}));
+
+    const q = clientSearch.trim().toLowerCase();
+    let filtered = CLIENTS_ALL.filter(c => !q || c.name.toLowerCase().includes(q) || c.phone.includes(q));
+    if (clientFilter !== 'todos') {
+      const map = {ativo:'Ativo', inativo:'Inativo', mensalista:'Mensalista', bloqueado:'Bloqueado'};
+      filtered = filtered.filter(c => c.status === map[clientFilter]);
+    }
+
+    const rows = filtered.map((c, i) => ({
+      ...c,
+      initials: c.name.split(' ').map(w=>w[0]).slice(0,2).join(''),
+      spentFmt: 'R$ '+c.spent.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}),
+      statusColor: STATUS_COLORS[c.status],
+      checked: selectedClientIds.includes(c.id),
+      onToggle: () => this.toggleClientSelected(c.id),
+      onRowClick: () => this.openClientDrawer(c),
+      menuOpen: clientMenuOpenIdx === i,
+      toggleMenu: () => this.toggleClientMenu(i),
+      menuIdx: i,
+    }));
+
+    const allChecked = filtered.length > 0 && filtered.every(c => selectedClientIds.includes(c.id));
+    const toggleSelectAll = () => this.setState(s => allChecked
+      ? {selectedClientIds: s.selectedClientIds.filter(id => !filtered.some(c=>c.id===id))}
+      : {selectedClientIds: [...new Set([...s.selectedClientIds, ...filtered.map(c=>c.id)])]});
+
+    let drawerView = null;
+    if (drawerClient) {
+      const c = drawerClient;
+      drawerView = {
+        ...c,
+        initials: c.name.split(' ').map(w=>w[0]).slice(0,2).join(''),
+        statusColor: STATUS_COLORS[c.status],
+        spentFmt: 'R$ '+c.spent.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}),
+        ticketFmt: 'R$ '+Math.round(c.spent/c.visits),
+        isMensalista: c.status === 'Mensalista',
+        history: this.buildClientHistory(c),
+        loyalty: this.buildLoyaltyExtract(c),
+        notesText: c.notes || 'Nenhuma observação registrada.',
+        tabHistoricoStyle: {padding:'8px 14px', borderRadius:'8px', cursor:'pointer', font:'600 12px Inter,sans-serif', background: drawerTab==='historico'?'#D4A84C':'transparent', color: drawerTab==='historico'?'#0F1115':'#9AA1AC'},
+        tabFidelidadeStyle: {padding:'8px 14px', borderRadius:'8px', cursor:'pointer', font:'600 12px Inter,sans-serif', background: drawerTab==='fidelidade'?'#D4A84C':'transparent', color: drawerTab==='fidelidade'?'#0F1115':'#9AA1AC'},
+        tabAssinaturaStyle: {padding:'8px 14px', borderRadius:'8px', cursor:'pointer', font:'600 12px Inter,sans-serif', background: drawerTab==='assinatura'?'#D4A84C':'transparent', color: drawerTab==='assinatura'?'#0F1115':'#9AA1AC'},
+        tabPreferenciasStyle: {padding:'8px 14px', borderRadius:'8px', cursor:'pointer', font:'600 12px Inter,sans-serif', background: drawerTab==='preferencias'?'#D4A84C':'transparent', color: drawerTab==='preferencias'?'#0F1115':'#9AA1AC'},
+      };
+    }
+
+    return {
+      isClientes,
+      clientSearch,
+      setClientSearch: this.setClientSearch,
+      filterChips,
+      openNewClientModal: this.openNewClientModal,
+      exportClientsCsv: () => this.showToast('Exportando CSV de clientes…'),
+      clientRows: rows,
+      allClientsChecked: allChecked,
+      toggleSelectAllClients: toggleSelectAll,
+      selectedClientCount: selectedClientIds.length,
+      hasClientSelection: selectedClientIds.length > 0,
+      clearClientSelection: this.clearClientSelection,
+      bulkSendMessage: () => this.bulkClientAction(selectedClientIds.length+' clientes: mensagem enviada'),
+      bulkExport: () => this.bulkClientAction('Exportação iniciada'),
+      bulkBlock: () => this.bulkClientAction('Clientes bloqueados'),
+      bulkUnblock: () => this.bulkClientAction('Clientes desbloqueados'),
+      rowAgendar: () => this.clientRowAction('Redirecionando para novo agendamento…'),
+      rowWhatsapp: () => this.clientRowAction('Abrindo WhatsApp…'),
+      rowBloquear: () => this.clientRowAction('Cliente bloqueado'),
+      drawerClientOpen: !!drawerClient,
+      drawerClient: drawerView,
+      closeClientDrawer: this.closeClientDrawer,
+      setTabHistorico: () => this.setDrawerTab('historico'),
+      setTabFidelidade: () => this.setDrawerTab('fidelidade'),
+      setTabAssinatura: () => this.setDrawerTab('assinatura'),
+      setTabPreferencias: () => this.setDrawerTab('preferencias'),
+      isTabHistorico: drawerTab === 'historico',
+      isTabFidelidade: drawerTab === 'fidelidade',
+      isTabAssinatura: drawerTab === 'assinatura',
+      isTabPreferencias: drawerTab === 'preferencias',
+      drawerAgendar: () => this.clientRowAction('Redirecionando para novo agendamento…'),
+      drawerMessage: () => this.clientRowAction('Mensagem enviada'),
+      modalNewClient,
+      closeNewClientModal: this.closeNewClientModal,
+      newClientForm,
+      updNewClientName2: (e) => this.updNewClient({name:e.target.value}),
+      updNewClientWhatsapp2: (e) => this.updNewClient({whatsapp:e.target.value}),
+      updNewClientEmail: (e) => this.updNewClient({email:e.target.value}),
+      updNewClientBirthdate: (e) => this.updNewClient({birthdate:e.target.value}),
+      updNewClientNotes: (e) => this.updNewClient({notes:e.target.value}),
+      toggleAcceptsMessages: () => this.updNewClient({acceptsMessages: !newClientForm.acceptsMessages}),
+      acceptsToggleStyle: {width:'40px',height:'22px',borderRadius:'11px',background:newClientForm.acceptsMessages?'#D4A84C':'#2A2F38',position:'relative',cursor:'pointer',transition:'background 0.15s'},
+      acceptsKnobStyle: {width:'18px',height:'18px',borderRadius:'50%',background:'#F2F3F5',position:'absolute',top:'2px',left:newClientForm.acceptsMessages?'20px':'2px',transition:'left 0.15s'},
+      submitNewClient: this.submitNewClient,
+    };
+  }
+
+  renderAgendaVals() {
+    const isAgenda = this.state.activeKey === 'agenda';
+    const barberLogado = this.getBarberLogado();
+    const { agendaView, agendaDate, modalNewAppt, modalBlock, drawerAppt, toast, newApptForm, blockForm } = this.state;
+    const STATUS_COLORS = {'Confirmado':'#3FB68B','Pendente':'#E8A13C','Concluído':'#5B8DE0','Falta':'#E05B5B','Cancelado':'#9AA1AC'};
+    const DAY_START = 480, DAY_END = 1200;
+    const dayHeight = 800;
+    const pxPerMin = dayHeight / (DAY_END - DAY_START);
+    const fmtDate = (d) => d.toLocaleDateString('pt-BR', {weekday:'long', day:'2-digit', month:'long'});
+    const fmtHM = (mins) => Math.floor(mins/60).toString().padStart(2,'0') + ':' + (mins%60).toString().padStart(2,'0');
+
+    const ownAppts = APPOINTMENTS_DAY.filter(a => a.barberId === barberLogado.id);
+    const dayColumns = [barberLogado].map(b => ({
+      ...b,
+      events: ownAppts.map(a => ({
+        ...a,
+        top: (a.start - DAY_START) * pxPerMin,
+        height: Math.max(a.duration * pxPerMin - 2, 20),
+        color: STATUS_COLORS[a.status],
+        timeLabel: fmtHM(a.start),
+        onClick: () => this.openDrawer(a),
+      })),
+    }));
+    const hourRows = [];
+    for (let m = DAY_START; m < DAY_END; m += 30) hourRows.push({label: m % 60 === 0 ? fmtHM(m) : '', top:(m-DAY_START)*pxPerMin});
+    const lunchTop = (720 - DAY_START) * pxPerMin, lunchHeight = 60 * pxPerMin;
+    const now = new Date();
+    const nowMins = now.getHours()*60 + now.getMinutes();
+    const isToday = now.toDateString() === agendaDate.toDateString();
+    const showNowLine = isToday && agendaView === 'dia' && nowMins >= DAY_START && nowMins <= DAY_END;
+    const nowLineTop = 56 + (nowMins - DAY_START) * pxPerMin;
+
+    const weekDayNames = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+    const weekDays = weekDayNames.map((label, i) => {
+      const events = ownAppts.filter((_, idx) => idx % 7 === i).slice(0,4).map(a => ({...a, timeLabel: fmtHM(a.start), color: STATUS_COLORS[a.status]}));
+      const d = new Date(agendaDate); d.setDate(d.getDate() - d.getDay() + 1 + i);
+      return {label, dateLabel: d.getDate().toString().padStart(2,'0')+'/'+(d.getMonth()+1).toString().padStart(2,'0'), events, isToday: d.toDateString() === now.toDateString()};
+    });
+
+    const monthYear = agendaDate.getFullYear(), monthIdx = agendaDate.getMonth();
+    const firstOfMonth = new Date(monthYear, monthIdx, 1);
+    const startOffset = (firstOfMonth.getDay() + 6) % 7;
+    const daysInMonth = new Date(monthYear, monthIdx+1, 0).getDate();
+    const monthCells = [];
+    for (let i=0;i<startOffset;i++) monthCells.push(null);
+    for (let d=1; d<=daysInMonth; d++) {
+      const count = ((d*5)%8)+1;
+      const cellDate = new Date(monthYear, monthIdx, d);
+      monthCells.push({day:d, count, occPct: Math.min(100, count*10), isToday: cellDate.toDateString()===now.toDateString(), onClick: () => this.goToDay(cellDate)});
+    }
+    const monthLabel = agendaDate.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+
+    const timelineRows = [barberLogado].map(b => ({
+      ...b,
+      blocks: ownAppts.map(a => ({...a, leftPct:(a.start-DAY_START)/(DAY_END-DAY_START)*100, widthPct: a.duration/(DAY_END-DAY_START)*100, color: STATUS_COLORS[a.status], onClick: () => this.openDrawer(a)})),
+    }));
+    const timelineHours = [];
+    for (let m=DAY_START; m<=DAY_END; m+=60) timelineHours.push({label:fmtHM(m), leftPct:(m-DAY_START)/(DAY_END-DAY_START)*100});
+
+    const filteredCustomers = (newApptForm.clientQuery ? CUSTOMERS.filter(c => c.toLowerCase().includes(newApptForm.clientQuery.toLowerCase())) : []).map(name => ({name, onClick: () => this.updNewAppt({selectedClient:name, clientQuery:''})}));
+    const serviceChips = SERVICES.map(s => { const sel = newApptForm.selectedServices.includes(s.name); return {...s, selected: sel, bg: sel?'rgba(212,168,76,0.15)':'transparent', color: sel?'#D4A84C':'#F2F3F5', borderColor: sel?'#D4A84C':'#2A2F38', onClick: () => this.toggleService(s.name)}; });
+    const selTotalDuration = newApptForm.selectedServices.reduce((sum,n)=>sum+SERVICES.find(s=>s.name===n).duration,0);
+    const selTotalPrice = newApptForm.selectedServices.reduce((sum,n)=>sum+SERVICES.find(s=>s.name===n).price,0);
+    const summaryLabel = newApptForm.selectedServices.length ? `${newApptForm.selectedServices.join(' + ')} · ${selTotalDuration>=60?Math.floor(selTotalDuration/60)+'h'+(selTotalDuration%60?(selTotalDuration%60)+'min':''):selTotalDuration+'min'} · R$ ${selTotalPrice.toFixed(2).replace('.',',')}` : '';
+    const BUSY_TIMES = ['09:00','11:30','15:00','18:30'];
+    const timeSlots = [];
+    for (let m=540; m<=1170; m+=30) {
+      const t=fmtHM(m); const busy = BUSY_TIMES.includes(t); const sel = newApptForm.time===t;
+      timeSlots.push({t, busy, selected: sel,
+        borderColor: sel?'#D4A84C':'#2A2F38', textColor: busy?'#5B616B':(sel?'#D4A84C':'#F2F3F5'),
+        bg: sel?'rgba(212,168,76,0.15)':'transparent', decoration: busy?'line-through':'none', cursor: busy?'not-allowed':'pointer',
+        onClick: () => !busy && this.updNewAppt({time:t})});
+    }
+    const recurrenceOptions = ['Não repete','Toda semana','A cada 15 dias','Todo mês'].map(r => ({label:r, selected:newApptForm.recurrence===r, bg: newApptForm.recurrence===r?'#D4A84C':'transparent', color: newApptForm.recurrence===r?'#0F1115':'#9AA1AC', onClick:()=>this.updNewAppt({recurrence:r})}));
+
+    const reasonOptions = REASONS.map(r => ({label:r, selected: blockForm.reason===r, bg: blockForm.reason===r?'#D4A84C':'transparent', color: blockForm.reason===r?'#0F1115':'#9AA1AC', onClick:()=>this.updBlock({reason:r})}));
+
+    const drawerHistory = drawerAppt ? CUSTOMER_HISTORY[drawerAppt.client] || [] : [];
+    const drawerApptView = drawerAppt ? {...drawerAppt, statusColor: STATUS_COLORS[drawerAppt.status], statusBg: STATUS_COLORS[drawerAppt.status]+'26', timeLabel: fmtHM(drawerAppt.start)+'–'+fmtHM(drawerAppt.start+drawerAppt.duration), barberName: barberLogado.name} : null;
+
+    return {
+      isAgenda,
+      barberLogadoNome: barberLogado.name,
+      agendaView,
+      isDayView: agendaView === 'dia',
+      isWeekView: agendaView === 'semana',
+      isMonthView: agendaView === 'mes',
+      isTimelineView: agendaView === 'timeline',
+      agendaDateLabel: fmtDate(agendaDate),
+      agendaDateISO: agendaDate.getFullYear()+'-'+(agendaDate.getMonth()+1).toString().padStart(2,'0')+'-'+agendaDate.getDate().toString().padStart(2,'0'),
+      navPrevDay: () => this.navDate(-1),
+      navNextDay: () => this.navDate(1),
+      goToday: this.goToday,
+      setAgendaDateInput: this.setAgendaDateInput,
+      viewDiaStyle: {padding:'7px 14px', borderRadius:'8px', cursor:'pointer', font:'600 13px Inter,sans-serif', background: agendaView==='dia'?'#D4A84C':'transparent', color: agendaView==='dia'?'#0F1115':'#9AA1AC'},
+      viewSemanaStyle: {padding:'7px 14px', borderRadius:'8px', cursor:'pointer', font:'600 13px Inter,sans-serif', background: agendaView==='semana'?'#D4A84C':'transparent', color: agendaView==='semana'?'#0F1115':'#9AA1AC'},
+      viewMesStyle: {padding:'7px 14px', borderRadius:'8px', cursor:'pointer', font:'600 13px Inter,sans-serif', background: agendaView==='mes'?'#D4A84C':'transparent', color: agendaView==='mes'?'#0F1115':'#9AA1AC'},
+      viewTimelineStyle: {padding:'7px 14px', borderRadius:'8px', cursor:'pointer', font:'600 13px Inter,sans-serif', background: agendaView==='timeline'?'#D4A84C':'transparent', color: agendaView==='timeline'?'#0F1115':'#9AA1AC'},
+      setViewDia: () => this.setAgendaView('dia'),
+      setViewSemana: () => this.setAgendaView('semana'),
+      setViewMes: () => this.setAgendaView('mes'),
+      setViewTimeline: () => this.setAgendaView('timeline'),
+      openBlockModal: this.openBlockModal,
+      copyApptLink: this.copyApptLink,
+      openNewApptModal: this.openNewApptModal,
+      dayColumns, hourRows, dayHeight, lunchTop, lunchHeight,
+      showNowLine, nowLineTop,
+      weekDays,
+      monthCells, monthLabel,
+      timelineRows, timelineHours,
+      modalNewAppt,
+      closeNewApptModal: this.closeNewApptModal,
+      newApptForm,
+      updClientQuery: (e) => this.updNewAppt({clientQuery:e.target.value, selectedClient:null}),
+      filteredCustomers,
+      selectClient: (name) => this.updNewAppt({selectedClient:name, clientQuery:''}),
+      clearSelectedClient: () => this.updNewAppt({selectedClient:null}),
+      toggleNewClientForm: () => this.updNewAppt({showNewClientForm: !newApptForm.showNewClientForm}),
+      updNewClientName: (e) => this.updNewAppt({newClientName:e.target.value}),
+      updNewClientWhatsapp: (e) => this.updNewAppt({newClientWhatsapp:e.target.value}),
+      saveNewClient: () => this.updNewAppt({selectedClient:newApptForm.newClientName, showNewClientForm:false, newClientName:'', newClientWhatsapp:''}),
+      serviceChips,
+      summaryLabel,
+      timeSlots,
+      recurrenceOptions,
+      showRecurrenceUntil: newApptForm.recurrence !== 'Não repete',
+      updRecurrenceUntil: (e) => this.updNewAppt({recurrenceUntil:e.target.value}),
+      updApptDate: (e) => this.updNewAppt({date:e.target.value}),
+      updNotes: (e) => this.updNewAppt({notes:e.target.value}),
+      toggleWhatsappConfirm: () => this.updNewAppt({whatsappConfirm: !newApptForm.whatsappConfirm}),
+      whatsappToggleStyle: {width:'40px',height:'22px',borderRadius:'11px',background:newApptForm.whatsappConfirm?'#D4A84C':'#2A2F38',position:'relative',cursor:'pointer',transition:'background 0.15s'},
+      whatsappKnobStyle: {width:'18px',height:'18px',borderRadius:'50%',background:'#F2F3F5',position:'absolute',top:'2px',left:newApptForm.whatsappConfirm?'20px':'2px',transition:'left 0.15s'},
+      submitNewAppt: this.submitNewAppt,
+      modalBlock,
+      closeBlockModal: this.closeBlockModal,
+      blockForm,
+      updBlockDateStart: (e) => this.updBlock({dateStart:e.target.value}),
+      updBlockDateEnd: (e) => this.updBlock({dateEnd:e.target.value}),
+      updBlockTimeStart: (e) => this.updBlock({timeStart:e.target.value}),
+      updBlockTimeEnd: (e) => this.updBlock({timeEnd:e.target.value}),
+      updBlockNotes: (e) => this.updBlock({notes:e.target.value}),
+      reasonOptions,
+      submitBlock: this.submitBlock,
+      drawerAppt: drawerApptView,
+      drawerOpen: !!drawerAppt,
+      stopPropagation: (e) => e.stopPropagation(),
+      closeDrawer: this.closeDrawer,
+      drawerHistory,
+      markFalta: this.markFalta,
+      drawerConfirm: () => this.drawerAction('Agendamento confirmado'),
+      drawerConclude: () => this.drawerAction('Comanda aberta'),
+      drawerReschedule: () => this.drawerAction('Reagendamento iniciado'),
+      drawerCancel: () => this.drawerAction('Agendamento cancelado'),
+      toast,
+    };
+  }
+
+  setClientSearch = (e) => this.setState({clientSearch: e.target.value});  setClientSearch = (e) => this.setState({clientSearch: e.target.value});
+  setClientFilter = (f) => this.setState({clientFilter: f});
+  toggleClientSelected = (id) => this.setState(s => ({selectedClientIds: s.selectedClientIds.includes(id) ? s.selectedClientIds.filter(x=>x!==id) : [...s.selectedClientIds, id]}));
+  clearClientSelection = () => this.setState({selectedClientIds: []});
+  toggleClientMenu = (idx) => this.setState(s => ({clientMenuOpenIdx: s.clientMenuOpenIdx === idx ? null : idx}));
+  openClientDrawer = (client) => this.setState({drawerClient: client, drawerTab: 'historico', clientMenuOpenIdx: null});
+  closeClientDrawer = () => this.setState({drawerClient: null});
+  setDrawerTab = (tab) => this.setState({drawerTab: tab});
+  openNewClientModal = () => this.setState({modalNewClient: true});
+  closeNewClientModal = () => this.setState({modalNewClient: false, newClientForm: {name:'', whatsapp:'', email:'', birthdate:'', notes:'', acceptsMessages:true}});
+  updNewClient(patch) { this.setState(s => ({newClientForm: {...s.newClientForm, ...patch}})); }
+  submitNewClient = () => { this.closeNewClientModal(); this.showToast('Cliente cadastrado com sucesso'); };
+
+  setComandasTab = (tab) => this.setState({comandasTab: tab});
+  setComandaSearch = (e) => this.setState({comandaSearch: e.target.value});
+  openComanda = (c) => this.setState({modalComanda: {
+    num: c.num, client: c.client, barber: c.barber, loyaltyBalance: c.loyaltyBalance,
+    items: c.items.map(it => ({...it})), serviceQuery: '',
+    discountType: 'R$', discountValue: 0, useLoyalty: false,
+    payment: 'Pix', splitMode: false, splitPayments: [{method:'Pix', value:0}, {method:'Dinheiro', value:0}],
+  }});
+  openNewComanda = () => {
+    const nextNum = (Math.max(...COMANDAS_OPEN.map(c => parseInt(c.num,10))) + 1).toString().padStart(4,'0'); // eslint: shared numbering sequence
+    this.setState({modalComanda: {
+      num: nextNum, client: null, barber: this.getBarberLogado().name, loyaltyBalance: 0,
+      items: [], serviceQuery: '', discountType: 'R$', discountValue: 0, useLoyalty: false,
+      payment: 'Pix', splitMode: false, splitPayments: [{method:'Pix', value:0}, {method:'Dinheiro', value:0}],
+    }});
+    this.setState({clientPickerOpen: true, comandaClientQuery: ''});
+  };
+  closeComandaModal = () => this.setState({modalComanda: null, clientPickerOpen: false});
+  toggleClientPicker = () => this.setState(s => ({clientPickerOpen: !s.clientPickerOpen, comandaClientQuery: ''}));
+  selectComandaClient = (name) => { this.updComanda({client: name}); this.setState({clientPickerOpen: false}); };
+  updComandaClientQuery = (e) => this.setState({comandaClientQuery: e.target.value});
+  updComanda(patch) { this.setState(s => ({modalComanda: {...s.modalComanda, ...patch}})); }
+  updComandaQuery = (e) => this.updComanda({serviceQuery: e.target.value});
+  addComandaItem = (name, price) => this.setState(s => {
+    const items = s.modalComanda.items.slice();
+    const idx = items.findIndex(it => it.name === name);
+    if (idx >= 0) items[idx] = {...items[idx], qty: items[idx].qty + 1};
+    else items.push({name, price, qty: 1});
+    return {modalComanda: {...s.modalComanda, items, serviceQuery: ''}};
+  });
+  incComandaItem = (idx) => this.setState(s => {
+    const items = s.modalComanda.items.slice();
+    items[idx] = {...items[idx], qty: items[idx].qty + 1};
+    return {modalComanda: {...s.modalComanda, items}};
+  });
+  decComandaItem = (idx) => this.setState(s => {
+    const items = s.modalComanda.items.slice();
+    if (items[idx].qty <= 1) return {};
+    items[idx] = {...items[idx], qty: items[idx].qty - 1};
+    return {modalComanda: {...s.modalComanda, items}};
+  });
+  removeComandaItem = (idx) => this.setState(s => ({modalComanda: {...s.modalComanda, items: s.modalComanda.items.filter((_,i) => i !== idx)}}));
+  setDiscountType = (t) => this.updComanda({discountType: t});
+  updDiscountValue = (e) => this.updComanda({discountValue: Math.max(0, Number(e.target.value) || 0)});
+  toggleLoyalty = () => this.updComanda({useLoyalty: !this.state.modalComanda.useLoyalty});
+  setComandaPayment = (m) => this.updComanda({payment: m, splitMode: m === 'Dividir'});
+  updSplitValue(idx, e) {
+    this.setState(s => {
+      const splitPayments = s.modalComanda.splitPayments.slice();
+      splitPayments[idx] = {...splitPayments[idx], value: Math.max(0, Number(e.target.value) || 0)};
+      return {modalComanda: {...s.modalComanda, splitPayments}};
+    });
+  }
+  saveComandaOpen = () => {
+    if (!this.state.modalComanda || !this.state.modalComanda.client) return;
+    this.closeComandaModal(); this.showToast('Comanda salva e mantida aberta');
+  };
+  closeComandaFinal = () => {
+    const mc = this.state.modalComanda;
+    if (!mc || !mc.client) return;
+    const subtotal = mc.items.reduce((s,it) => s + it.qty*it.price, 0);
+    const pts = Math.round(subtotal);
+    const firstName = mc.client.split(' ')[0];
+    this.closeComandaModal();
+    this.showToast(`Comanda #${mc.num} fechada · +${pts} pts para ${firstName}`);
+  };
+
+  setFinTab = (tab) => this.setState({finTab: tab});
+  toggleCaixaDemo = () => this.setState(s => ({caixaAberto: !s.caixaAberto}));
+  updSaldoInicial = (e) => this.setState({saldoInicialInput: e.target.value});
+  abrirCaixa = () => this.setState({caixaAberto: true});
+  openFecharCaixaModal = () => this.setState({modalFecharCaixa: true});
+  closeFecharCaixaModal = () => this.setState({modalFecharCaixa: false, valorConferidoInput: ''});
+  updValorConferido = (e) => this.setState({valorConferidoInput: e.target.value});
+  confirmFecharCaixa = () => { this.setState({caixaAberto: false, modalFecharCaixa: false, valorConferidoInput: ''}); this.showToast('Caixa fechado com sucesso'); };
+
+  marcarContaPaga = (id) => { this.setState(s => ({contasPagar: s.contasPagar.map(c => c.id===id ? {...c, status:'pago'} : c)})); this.showToast('Conta marcada como paga'); };
+  marcarContaRecebida = (id) => { this.setState(s => ({contasReceber: s.contasReceber.map(c => c.id===id ? {...c, status:'recebido'} : c)})); this.showToast('Conta marcada como recebida'); };
+
+  openNovaContaPagar = () => this.setState({modalNovaContaPagar: true});
+  closeNovaContaPagar = () => this.setState({modalNovaContaPagar: false, novaContaPagarForm: {descricao:'', categoria:'Aluguel', valor:'', recorrente:false, frequencia:'Mensal', parcelado:false, parcelas:'2', vencimento:'', contaSaida:'Nubank PJ'}});
+  updNovaContaPagar = (patch) => this.setState(s => ({novaContaPagarForm: {...s.novaContaPagarForm, ...patch}}));
+  toggleNovaContaPagarRecorrente = () => this.updNovaContaPagar({recorrente: !this.state.novaContaPagarForm.recorrente});
+  toggleNovaContaPagarParcelado = () => this.updNovaContaPagar({parcelado: !this.state.novaContaPagarForm.parcelado});
+  submitNovaContaPagar = () => {
+    const f = this.state.novaContaPagarForm;
+    const valor = parseFloat((f.valor||'0').replace(',','.')) || 0;
+    this.setState(s => ({contasPagar: [...s.contasPagar, {id: Date.now(), desc: f.descricao || 'Nova conta', cat: f.categoria, fornecedor: '—', parcela: f.parcelado ? `1/${f.parcelas}` : null, venc: f.vencimento || '2026-07-17', valor, status:'pendente'}]}));
+    this.closeNovaContaPagar();
+    this.showToast('Conta a pagar cadastrada');
+  };
+
+  openNovaContaReceber = () => this.setState({modalNovaContaReceber: true});
+  closeNovaContaReceber = () => this.setState({modalNovaContaReceber: false, novaContaReceberForm: {cliente:'', categoria:'Mensalidade', valor:'', recorrente:false, frequencia:'Mensal', parcelado:false, parcelas:'2', vencimento:'', contaEntrada:'Nubank PJ'}});
+  updNovaContaReceber = (patch) => this.setState(s => ({novaContaReceberForm: {...s.novaContaReceberForm, ...patch}}));
+  toggleNovaContaReceberRecorrente = () => this.updNovaContaReceber({recorrente: !this.state.novaContaReceberForm.recorrente});
+  toggleNovaContaReceberParcelado = () => this.updNovaContaReceber({parcelado: !this.state.novaContaReceberForm.parcelado});
+  submitNovaContaReceber = () => {
+    const f = this.state.novaContaReceberForm;
+    const valor = parseFloat((f.valor||'0').replace(',','.')) || 0;
+    this.setState(s => ({contasReceber: [...s.contasReceber, {id: Date.now(), desc: f.categoria === 'Mensalidade' ? 'Mensalidade Clube do Corte' : (f.categoria === 'Venda parcelada' ? 'Venda parcelada' : f.categoria), cat: f.categoria, cliente: f.cliente || 'Cliente', parcela: f.parcelado ? `1/${f.parcelas}` : null, venc: f.vencimento || '2026-07-17', valor, status:'pendente'}]}));
+    this.closeNovaContaReceber();
+    this.showToast('Conta a receber cadastrada');
+  };
+
+  openNovoVale = () => this.setState({modalNovoVale: true});
+  closeNovoVale = () => this.setState({modalNovoVale: false, novoValeForm: {funcionario: BARBERS[0].name, data:'', valor:'', motivo:''}});
+  updNovoVale = (patch) => this.setState(s => ({novoValeForm: {...s.novoValeForm, ...patch}}));
+  submitNovoVale = () => {
+    const f = this.state.novoValeForm;
+    const valor = parseFloat((f.valor||'0').replace(',','.')) || 0;
+    this.setState(s => ({vales: [...s.vales, {id: Date.now(), funcionario: f.funcionario, data: f.data || '2026-07-17', valor, motivo: f.motivo || 'Adiantamento', mes: 'Julho', descontado:false}]}));
+    this.closeNovoVale();
+    this.showToast('Vale registrado com sucesso');
+  };
+
+  openNovaContaBancaria = () => this.setState({modalNovaContaBancaria: true});
+  closeNovaContaBancaria = () => this.setState({modalNovaContaBancaria: false, novaContaBancariaForm: {nome:'', tipo:'Conta bancária', saldoInicial:'', formas:[]}});
+  updNovaContaBancaria = (patch) => this.setState(s => ({novaContaBancariaForm: {...s.novaContaBancariaForm, ...patch}}));
+  toggleFormaPagamento = (forma) => this.setState(s => { const has = s.novaContaBancariaForm.formas.includes(forma); return {novaContaBancariaForm: {...s.novaContaBancariaForm, formas: has ? s.novaContaBancariaForm.formas.filter(x=>x!==forma) : [...s.novaContaBancariaForm.formas, forma]}}; });
+  submitNovaContaBancaria = () => {
+    const f = this.state.novaContaBancariaForm;
+    const saldo = parseFloat((f.saldoInicial||'0').replace(',','.')) || 0;
+    this.setState(s => ({contasBancarias: [...s.contasBancarias, {id: Date.now(), nome: f.nome || 'Nova conta', tipo: f.tipo, saldo, formas: f.formas.length ? f.formas : ['—']}]}));
+    this.closeNovaContaBancaria();
+    this.showToast('Conta bancária cadastrada');
+  };
+
+  toggleFluxoMonth = (idx) => this.setState(s => ({expandedFluxo: {...s.expandedFluxo, [idx]: !s.expandedFluxo[idx]}}));
+
+  setComissaoPeriodType = (t) => this.setState({comissaoPeriodType: t});
+  navComissaoPeriod = (delta) => this.setState(s => {
+    const d = new Date(s.comissaoDate);
+    if (s.comissaoPeriodType === 'semanal') d.setDate(d.getDate() + delta*7);
+    else d.setMonth(d.getMonth() + delta);
+    return {comissaoDate: d};
+  });
+  toggleExpandComissao = (nome) => this.setState(s => ({expandedComissao: {...s.expandedComissao, [nome]: !s.expandedComissao[nome]}}));
+
+  openModalPdf = (nome) => this.setState({modalPdf: nome});
+  closeModalPdf = () => this.setState({modalPdf: null});
+  baixarPdfComissao = () => { this.showToast('PDF do relat\u00f3rio gerado e baixado'); this.setState({modalPdf: null}); };
+
+  calcComissaoBarbeiro(b, rule) {
+    let pctServicos, regraLabel;
+    if (rule.tipo === 'percentual') {
+      pctServicos = parseFloat(rule.pctServicos) || 0;
+      regraLabel = `Percentual fixo ${pctServicos}%`;
+    } else {
+      const faixaAscending = rule.faixas.filter(f=>!f.acima).sort((a,b2)=>parseFloat(a.ate)-parseFloat(b2.ate));
+      const acima = rule.faixas.find(f=>f.acima);
+      let matched = faixaAscending.find(f => b.faturadoServicos <= parseFloat(f.ate));
+      if (!matched) matched = acima || faixaAscending[faixaAscending.length-1];
+      pctServicos = parseFloat(matched && matched.pct) || 0;
+      regraLabel = `Faixa ${pctServicos}%`;
+    }
+    const pctProdutos = parseFloat(rule.pctProdutos) || 0;
+    const comissaoServicos = b.faturadoServicos * pctServicos / 100;
+    const comissaoProdutos = b.faturadoProdutos * pctProdutos / 100;
+    const valeAplicado = rule.descontarVales ? b.vale : 0;
+    const total = comissaoServicos + comissaoProdutos - valeAplicado;
+    return { pctServicos, regraLabel, comissaoServicos, comissaoProdutos, valeAplicado, total };
+  }
+
+  renderComissoesVals() {
+    const isComissoes = this.state.activeKey === 'comissoes';
+    const barberLogado = this.getBarberLogado();
+    const { comissaoPeriodType, comissaoDate, expandedComissao, barberRules, modalPdf } = this.state;
+
+    const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const MESES_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    let periodoLabel, periodoRangeLabel;
+    if (comissaoPeriodType === 'mensal') {
+      periodoLabel = `${MESES_FULL[comissaoDate.getMonth()]} ${comissaoDate.getFullYear()}`;
+      const lastDay = new Date(comissaoDate.getFullYear(), comissaoDate.getMonth()+1, 0).getDate();
+      periodoRangeLabel = `01\u201331 ${MESES[comissaoDate.getMonth()]}`.replace('31', String(lastDay).padStart(2,'0'));
+    } else {
+      const d = new Date(comissaoDate);
+      const day = d.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      const monday = new Date(d); monday.setDate(d.getDate() + diffToMonday);
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      periodoLabel = `Semana de ${String(monday.getDate()).padStart(2,'0')} a ${String(sunday.getDate()).padStart(2,'0')} de ${MESES_FULL[sunday.getMonth()]}`;
+      periodoRangeLabel = `${String(monday.getDate()).padStart(2,'0')}\u2013${String(sunday.getDate()).padStart(2,'0')} ${MESES[sunday.getMonth()]}`;
+    }
+
+    const own = BARBEIROS_COMISSAO_DATA.find(b => b.nome === barberLogado.name) || BARBEIROS_COMISSAO_DATA[0];
+    const calc = this.calcComissaoBarbeiro(own, barberRules[own.nome]);
+    const expanded = !!expandedComissao[own.nome];
+
+    const comissaoRows = [{
+      nome: own.nome,
+      iniciais: own.nome.split(' ').map(w=>w[0]).slice(0,2).join(''),
+      faturadoServicosFmt: this.fmtBRL(own.faturadoServicos),
+      faturadoProdutosFmt: this.fmtBRL(own.faturadoProdutos),
+      regraLabel: calc.regraLabel,
+      comissaoServicosFmt: this.fmtBRL(calc.comissaoServicos),
+      comissaoProdutosFmt: this.fmtBRL(calc.comissaoProdutos),
+      valeFmt: calc.valeAplicado > 0 ? `\u2212 ${this.fmtBRL(calc.valeAplicado)}` : '\u2014',
+      totalFmt: this.fmtBRL(calc.total),
+      expanded,
+      chevron: expanded ? '\u25be' : '\u25b8',
+      onToggle: () => this.toggleExpandComissao(own.nome),
+      onOpenPdf: () => this.openModalPdf(own.nome),
+      extrato: own.extrato.map(e => ({...e, valorFmt: this.fmtBRL(e.valor), pctLabel: `${calc.pctServicos}%`})),
+      nota: own.nota,
+    }];
+
+    const pdfBarbeiro = modalPdf === own.nome ? {b: own, calc} : null;
+
+    return {
+      isComissoes,
+      comissaoPeriodType,
+      isComissaoMensal: comissaoPeriodType === 'mensal',
+      periodTypeSemanalStyle: {padding:'0 14px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'7px', cursor:'pointer', font:'600 13px Inter,sans-serif', background: comissaoPeriodType==='semanal' ? '#D4A84C' : 'transparent', color: comissaoPeriodType==='semanal' ? '#0F1115' : '#9AA1AC'},
+      periodTypeMensalStyle: {padding:'0 14px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'7px', cursor:'pointer', font:'600 13px Inter,sans-serif', background: comissaoPeriodType==='mensal' ? '#D4A84C' : 'transparent', color: comissaoPeriodType==='mensal' ? '#0F1115' : '#9AA1AC'},
+      setPeriodSemanal: () => this.setComissaoPeriodType('semanal'),
+      setPeriodMensal: () => this.setComissaoPeriodType('mensal'),
+      navComissaoPrev: () => this.navComissaoPeriod(-1),
+      navComissaoNext: () => this.navComissaoPeriod(1),
+      periodoLabel,
+      periodoRangeLabel,
+      totalAPagarFmt: this.fmtBRL(calc.total),
+      comissaoRows,
+      modalPdfOpen: !!modalPdf,
+      pdfBarbeiro: pdfBarbeiro ? {
+        nome: pdfBarbeiro.b.nome,
+        extrato: pdfBarbeiro.b.extrato.map(e => ({...e, valorFmt: this.fmtBRL(e.valor), pctLabel: `${pdfBarbeiro.calc.pctServicos}%`})),
+        regraLabel: pdfBarbeiro.calc.regraLabel,
+        comissaoServicosFmt: this.fmtBRL(pdfBarbeiro.calc.comissaoServicos),
+        comissaoProdutosFmt: this.fmtBRL(pdfBarbeiro.calc.comissaoProdutos),
+        valeFmt: pdfBarbeiro.calc.valeAplicado > 0 ? `\u2212 ${this.fmtBRL(pdfBarbeiro.calc.valeAplicado)}` : '\u2014',
+        totalFmt: this.fmtBRL(pdfBarbeiro.calc.total),
+      } : null,
+      pdfPeriodoLabel: periodoRangeLabel,
+      closeModalPdf: this.closeModalPdf,
+      baixarPdfComissao: this.baixarPdfComissao,
+    };
+  }
+
+  renderFidelidadeVals  renderFidelidadeVals() {
+    const isFidelidadeScreen = this.state.activeKey === 'fidelidade';
+    const loyaltyClientRows = LOYALTY_CLIENTES_DATA.map(c => ({
+      nome: c.nome, saldo: c.saldo, ultimoGanho: c.ultimoGanho, ultimoResgate: c.ultimoResgate,
+    }));
+    return {
+      isFidelidadeScreen,
+      loyaltyClientRows,
+    };
+  }
+
+  renderComandasVals  renderComandasVals() {
+    const isComandas = this.state.activeKey === 'comandas';
+    const { comandasTab, comandaSearch, modalComanda } = this.state;
+    const barberLogado = this.getBarberLogado();
+    const myOpen = COMANDAS_OPEN.filter(c => c.barber === barberLogado.name);
+    const myClosed = CLOSED_COMANDAS.filter(c => c.barber === barberLogado.name);
+    const q = comandaSearch.trim().toLowerCase();
+    const matches = (num, client) => !q || client.toLowerCase().includes(q) || num.includes(q);
+
+    const tabDefs = [
+      {key:'abertas', label:`Abertas ${myOpen.length}`},
+      {key:'fechadas', label:`Fechadas hoje ${myClosed.length}`},
+      {key:'todas', label:'Todas'},
+    ];
+    const comandaTabs = tabDefs.map(t => ({
+      label: t.label,
+      onClick: () => this.setComandasTab(t.key),
+      style: {padding:'8px 16px', borderRadius:'7px', cursor:'pointer', font: comandasTab===t.key?'600 13px Inter,sans-serif':'500 13px Inter,sans-serif', background: comandasTab===t.key?'#181B21':'transparent', color: comandasTab===t.key?'#F2F3F5':'#9AA1AC', whiteSpace:'nowrap'},
+    }));
+
+    const showOpen = comandasTab === 'abertas' || comandasTab === 'todas';
+    const showClosed = comandasTab === 'fechadas' || comandasTab === 'todas';
+
+    const comandaCards = showOpen ? myOpen.filter(c => matches(c.num, c.client)).map(c => {
+      const subtotal = c.items.reduce((s,it) => s + it.qty*it.price, 0);
+      return {
+        num: c.num, client: c.client, barber: c.barber, openedAt: c.openedAt,
+        itemsSummary: c.items.map(it => `${it.qty}× ${it.name} ${fmtBRL(it.price)}`).join(' · '),
+        subtotalFmt: fmtBRL(subtotal),
+        onContinue: () => this.openComanda(c),
+      };
+    }) : [];
+
+    const closedRows = showClosed ? myClosed.filter(c => matches(c.num, c.client)).map(c => ({
+      num: c.num, client: c.client, barber: c.barber, closedAt: c.closedAt,
+      totalFmt: fmtBRL(c.total), payment: c.payment,
+    })) : [];
+
+    const mc = modalComanda || {items:[], discountType:'R$', discountValue:0, useLoyalty:false, payment:'Pix', splitMode:false, splitPayments:[], loyaltyBalance:0, serviceQuery:'', num:'', client:null, barber:''};
+    const needsClientSelect = !mc.client;
+    const cq = (this.state.comandaClientQuery||'').trim().toLowerCase();
+    const clientPickerResults = CLIENTS_ALL.filter(c => !cq || c.name.toLowerCase().includes(cq)).slice(0,20).map(c => ({name: c.name, initials: c.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(), onClick: () => this.selectComandaClient(c.name)}));
+    const clientInitials = mc.client ? mc.client.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '';
+    const disabledBtnStyle = {height:'40px', padding:'0 20px', borderRadius:'10px', background:'#1D2027', border:'1px solid #2A2F38', color:'#5B616B', font:'600 13px Inter,sans-serif', cursor:'not-allowed'};
+    const subtotal = mc.items.reduce((s,it) => s + it.qty*it.price, 0);
+    const discountAmt = mc.discountType === '%' ? subtotal * mc.discountValue / 100 : mc.discountValue;
+    const loyaltyPtsUsed = 100;
+    const loyaltyDiscount = mc.useLoyalty && mc.loyaltyBalance >= loyaltyPtsUsed ? 10 : 0;
+    const total = Math.max(0, subtotal - discountAmt - loyaltyDiscount);
+
+    const sq = mc.serviceQuery.trim().toLowerCase();
+    const mkResult = c => ({name:c.name, priceFmt: fmtBRL(c.price), onClick: () => this.addComandaItem(c.name, c.price)});
+    const servicesCat = SERVICES.map(s => ({name:s.name, price:s.price}));
+    const comandaServiceResults = (sq ? servicesCat.filter(c => c.name.toLowerCase().includes(sq)) : servicesCat).map(mkResult);
+    const comandaProductResults = (sq ? PRODUCTS.filter(c => c.name.toLowerCase().includes(sq)) : PRODUCTS).map(mkResult);
+
+    const comandaItems = mc.items.map((it, idx) => ({
+      name: it.name, qty: it.qty, unitPriceFmt: fmtBRL(it.price), subtotalFmt: fmtBRL(it.qty*it.price),
+      onInc: () => this.incComandaItem(idx), onDec: () => this.decComandaItem(idx), onRemove: () => this.removeComandaItem(idx),
+    }));
+
+    const paymentMethodChips = PAYMENT_METHODS.map(m => ({
+      label: m, onClick: () => this.setComandaPayment(m),
+      style: {height:'34px', padding:'0 14px', borderRadius:'8px', cursor:'pointer', font:'600 12px Inter,sans-serif', border: mc.payment===m ? '1px solid #D4A84C' : '1px solid #2A2F38', background: mc.payment===m ? 'rgba(212,168,76,0.15)' : 'transparent', color: mc.payment===m ? '#D4A84C' : '#F2F3F5'},
+    }));
+
+    const splitSum = (mc.splitPayments||[]).reduce((s,p) => s + p.value, 0);
+    const splitRows = (mc.splitPayments||[]).map((p, idx) => ({method: p.method, value: p.value, onChange: (e) => this.updSplitValue(idx, e)}));
+    const splitDiff = Math.round((total - splitSum)*100)/100;
+
+    return {
+      isComandas,
+      comandaTabs,
+      comandaSearch,
+      setComandaSearch: this.setComandaSearch,
+      openNewComanda: this.openNewComanda,
+      comandaCards,
+      closedRows,
+      showOpenComandas: showOpen,
+      showClosedComandas: showClosed,
+      noComandaResults: comandaCards.length===0 && closedRows.length===0,
+      modalComandaOpen: !!modalComanda,
+      comandaForm: mc,
+      comandaServiceResults,
+      comandaProductResults,
+      comandaItems,
+      comandaItemsEmpty: comandaItems.length===0,
+      closeComandaModal: this.closeComandaModal,
+      updComandaQuery: this.updComandaQuery,
+      comandaSubtotalFmt: fmtBRL(subtotal),
+      comandaTotalFmt: fmtBRL(total),
+      discountRSStyle: {padding:'6px 10px', borderRadius:'6px', cursor:'pointer', font:'600 12px Inter,sans-serif', background: mc.discountType==='R$' ? '#2A2F38' : 'transparent', color: mc.discountType==='R$' ? '#F2F3F5' : '#9AA1AC'},
+      discountPctStyle: {padding:'6px 10px', borderRadius:'6px', cursor:'pointer', font:'600 12px Inter,sans-serif', background: mc.discountType==='%' ? '#2A2F38' : 'transparent', color: mc.discountType==='%' ? '#F2F3F5' : '#9AA1AC'},
+      setDiscountR$: () => this.setDiscountType('R$'),
+      setDiscountPct: () => this.setDiscountType('%'),
+      updDiscountValue: this.updDiscountValue,
+      toggleLoyalty: this.toggleLoyalty,
+      loyaltyEnabled: mc.loyaltyBalance >= loyaltyPtsUsed,
+      loyaltyCardStyle: {display:'flex', flexDirection:'column', gap:'4px', padding:'10px', border:'1px solid #2A2F38', borderRadius:'9px', background:'#12151A', opacity: mc.loyaltyBalance >= loyaltyPtsUsed ? 1 : 0.5},
+      loyaltyToggleTrackStyle: {width:'36px', height:'20px', borderRadius:'10px', background: mc.useLoyalty ? '#D4A84C' : '#2A2F38', position:'relative', cursor: mc.loyaltyBalance>=loyaltyPtsUsed ? 'pointer' : 'not-allowed', transition:'background 0.15s', opacity: mc.loyaltyBalance>=loyaltyPtsUsed ? 1 : 0.5, flexShrink:0},
+      loyaltyToggleThumbStyle: {width:'16px', height:'16px', borderRadius:'50%', background:'#F2F3F5', position:'absolute', top:'2px', left: mc.useLoyalty ? '18px' : '2px', transition:'left 0.15s'},
+      loyaltyDiscountFmt: fmtBRL(loyaltyDiscount),
+      loyaltyPtsUsed: mc.useLoyalty ? loyaltyPtsUsed : 0,
+      paymentMethodChips,
+      splitRows,
+      splitRemainderLabel: splitDiff === 0 ? 'Valores conferem com o total' : (splitDiff > 0 ? `Faltam ${fmtBRL(splitDiff)}` : `Excedente de ${fmtBRL(-splitDiff)}`),
+      splitRemainderStyle: {font:'500 12px Inter,sans-serif', color: splitDiff===0 ? '#3FB68B' : '#E8A13C'},
+      saveComandaOpen: this.saveComandaOpen,
+      closeComandaFinal: this.closeComandaFinal,
+      needsClientSelect,
+      hasClientSelected: !needsClientSelect,
+      clientInitials,
+      clientPickerOpen: this.state.clientPickerOpen,
+      toggleClientPicker: this.toggleClientPicker,
+      comandaClientQuery: this.state.comandaClientQuery,
+      updComandaClientQuery: this.updComandaClientQuery,
+      clientPickerResults,
+      clientPickerEmpty: clientPickerResults.length===0,
+      closeComandaBtnStyle: needsClientSelect ? disabledBtnStyle : {height:'40px', padding:'0 20px', borderRadius:'10px', background:'#D4A84C', border:'none', color:'#0F1115', font:'600 13px Inter,sans-serif', cursor:'pointer'},
+      saveComandaBtnStyle: needsClientSelect ? disabledBtnStyle : {height:'40px', padding:'0 16px', borderRadius:'10px', background:'#0F1115', border:'1px solid #2A2F38', color:'#F2F3F5', font:'600 13px Inter,sans-serif', cursor:'pointer'},
+    };
+  }
+  clientRowAction = (msg) => { this.setState({clientMenuOpenIdx: null}); this.showToast(msg); };
+  bulkClientAction = (msg) => { this.showToast(msg); this.clearClientSelection(); };
+
+  buildChartGeometry(values, w, h) {
+    const max = Math.max(...values) * 1.15;
+    const min = 0;
+    const n = values.length;
+    const stepX = w / (n - 1);
+    const points = values.map((v, i) => ({
+      x: i * stepX,
+      y: h - ((v - min) / (max - min)) * (h - 20) - 6,
+      value: v,
+    }));
+    const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+    const areaPath = linePath + ` L${w},${h} L0,${h} Z`;
+    const goalPerPoint = 28000 / 30;
+    const goalY = h - ((goalPerPoint - min) / (max - min)) * (h - 20) - 6;
+    return {points, linePath, areaPath, goalY};
+  }
+
+  renderRelatoriosVals() {
+    const isRelatorios = this.state.activeKey === 'relatorios';
+    const barberLogado = this.getBarberLogado();
+    const { relPeriod, relCustomFrom, relCustomTo } = this.state;
+
+    const PERIODS = [
+      {key:'hoje', label:'Hoje'}, {key:'7d', label:'7 dias'}, {key:'30d', label:'30 dias'},
+      {key:'mes', label:'Este mês'}, {key:'custom', label:'Personalizado'},
+    ];
+    const periodPills = PERIODS.map(p => ({
+      label: p.label,
+      style: {padding:'6px 14px', borderRadius:'7px', cursor:'pointer', font:'600 12px Inter,sans-serif', whiteSpace:'nowrap',
+        background: relPeriod === p.key ? '#D4A84C' : 'transparent', color: relPeriod === p.key ? '#0F1115' : '#9AA1AC'},
+      onClick: () => this.setRelPeriod(p.key),
+    }));
+    const isRelCustom = relPeriod === 'custom';
+
+    const prod = this.getBarberProdData(barberLogado);
+    const DATASETS = {
+      hoje: prod.values30d.slice(0,8),
+      '7d': prod.values30d.slice(-7),
+      '30d': prod.values30d,
+      mes: prod.values30d.slice(-15),
+      custom: prod.values30d.slice(-15),
+    };
+    const revValues = DATASETS[relPeriod] || DATASETS['30d'];
+    const REV_W = 680, REV_H = 200;
+    const revGeo = this.buildChartGeometry(revValues, REV_W, REV_H);
+    const revLabelsFull = revValues.map((_, i) => `Dia ${i+1}`);
+    const revLabelStep = Math.max(1, Math.ceil(revLabelsFull.length / 8));
+    const revXLabels = revLabelsFull.map((label, i) => ({label, show: i % revLabelStep === 0 || i === revLabelsFull.length - 1})).filter(l => l.show);
+    const revMax = Math.max(...revValues) * 1.15;
+    const revYLabels = [revMax, revMax*0.75, revMax*0.5, revMax*0.25, 0].map(v => this.fmtBRL(Math.round(v)));
+    const totalRevenue = revValues.reduce((s,v)=>s+v,0);
+    const prevRevenue = totalRevenue * 0.9;
+    const deltaPct = Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100);
+
+    const maxRevService = Math.max(...prod.serviceRows.map(s=>s.revenue), 1);
+    const revServiceRows = prod.serviceRows.map(s => ({
+      name: s.name, revenueFmt: this.fmtBRL(s.revenue),
+      barStyle: {height:'10px', width:(s.revenue/maxRevService*100)+'%', background:'#D4A84C', borderRadius:'5px'},
+    }));
+
+    const PAYMENT_SEGMENTS = [
+      {label:'Pix', pct:48, color:'#D4A84C'}, {label:'Crédito', pct:22, color:'#5B8DE0'},
+      {label:'Dinheiro', pct:18, color:'#3FB68B'}, {label:'Débito', pct:12, color:'#E8A13C'},
+    ];
+    const R = 54, CIRC = 2*Math.PI*R;
+    let acc = 0;
+    const donutSegments = PAYMENT_SEGMENTS.map(s => {
+      const dash = (s.pct/100)*CIRC;
+      const seg = {color:s.color, dasharray: `${dash.toFixed(2)} ${(CIRC-dash).toFixed(2)}`, dashoffset: (-acc).toFixed(2)};
+      acc += dash;
+      return seg;
+    });
+    const paymentLegend = PAYMENT_SEGMENTS.map(s => ({label:s.label, color:s.color, pctLabel: s.pct+'%'}));
+
+    const atendimentos = Math.max(1, Math.round(prod.comissaoData.faturadoServicos / 62));
+    const ticketMedioFmt = this.fmtBRL(prod.comissaoData.faturadoServicos / atendimentos);
+
+    return {
+      isRelatorios, periodPills, isRelCustom, relCustomFrom, relCustomTo,
+      updRelCustomFrom: (e) => this.setState({relCustomFrom: e.target.value}),
+      updRelCustomTo: (e) => this.setState({relCustomTo: e.target.value}),
+      exportRelatorioPdf: () => this.showToast('Relatório exportado em PDF'),
+      exportRelatorioCsv: () => this.showToast('Relatório exportado em CSV'),
+      totalRevenueFmt: this.fmtBRL(totalRevenue),
+      deltaPctLabel: (deltaPct>=0?'+':'') + deltaPct + '% vs. período anterior',
+      deltaColor: deltaPct>=0?'#3FB68B':'#E05B5B',
+      revAreaPath: revGeo.areaPath, revLinePath: revGeo.linePath, revW: REV_W, revH: REV_H,
+      revXLabels, revYLabels,
+      revServiceRows,
+      donutSegments, paymentLegend, donutR: R,
+      atendimentosLabel: atendimentos + ' atendimentos no período',
+      ticketMedioFmt,
+    };
+  }
+
+  renderVals  renderVals() {
+    const barberLogado = this.getBarberLogado();
+    const { collapsed, activeKey, openMenu, apptMenuOpenIdx, chartPeriod, hoveredPointIdx } = this.state;
+    const isDashboard = activeKey === 'dashboard';
+    const showEmptyState = false;
+
+    const navItems = NAV_DEFS.map(n => {
+      const active = n.key === activeKey;
+      return {
+        key: n.key, label: n.label, iconPath: n.path, badge: false, locked: false,
+        iconColor: active ? '#D4A84C' : '#9AA1AC',
+        onClick: () => this.setActive(n.key),
+        rowStyle: {
+          display: 'flex', alignItems: 'center', gap: '12px',
+          height: '40px', padding: collapsed ? '0' : '0 12px',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          borderRadius: '9px', cursor: 'pointer',
+          background: active ? 'rgba(212,168,76,0.14)' : 'transparent',
+        },
+      };
+    });
+
+    const teamData = TEAM_DATA.find(b => b.id === barberLogado.id) || TEAM_DATA[0];
+    const ownAppts = APPOINTMENTS_DAY.filter(a => a.barberId === barberLogado.id);
+    const concluidos = ownAppts.filter(a => a.status === 'Concluído').length;
+    const fmtHM = (mins) => Math.floor(mins/60).toString().padStart(2,'0') + ':' + (mins%60).toString().padStart(2,'0');
+    const now = new Date();
+    const nowMins = now.getHours()*60 + now.getMinutes();
+    const proximo = ownAppts.filter(a => a.status !== 'Concluído' && a.status !== 'Cancelado' && a.start >= nowMins).sort((a,b)=>a.start-b.start)[0] || null;
+
+    const activeDay = teamData.schedule.find(d => d.active);
+    const parseHM = (t) => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+    const workMinutes = activeDay ? (parseHM(activeDay.end) - parseHM(activeDay.start) - 60) : 480;
+    const bookedMinutes = ownAppts.reduce((s,a)=>s+a.duration, 0);
+    const ocupacaoPct = Math.max(0, Math.min(100, Math.round((bookedMinutes / workMinutes) * 100)));
+
+    const prod = this.getBarberProdData(barberLogado);
+    const barberRule = this.state.barberRules[barberLogado.name];
+    const comissaoEstimadaFmt = barberRule ? this.fmtBRL(this.calcComissaoBarbeiro(prod.comissaoData, barberRule).total) : this.fmtBRL(0);
+
+    const CHART_W = 600, CHART_H = 220;
+    const chartValues = prod.values30d;
+    const geo = this.buildChartGeometry(chartValues, CHART_W, CHART_H);
+    const hoverPoints = geo.points.map((p, i) => ({
+      idx: i,
+      leftPct: (p.x / CHART_W) * 100,
+      topPct: (p.y / CHART_H) * 100,
+      onEnter: () => this.setHoveredPoint(i),
+      zoneStyle: {position:'absolute', left: (p.x/CHART_W)*100 + '%', top:0, width: (100/chartValues.length) + '%', height:'100%', transform:'translateX(-50%)', cursor:'crosshair'},
+    }));
+    const hovered = hoveredPointIdx != null ? {
+      label: 'Dia ' + (hoveredPointIdx+1),
+      value: this.fmtBRL(chartValues[hoveredPointIdx]),
+      style: {position:'absolute', left: hoverPoints[hoveredPointIdx].leftPct + '%', top: hoverPoints[hoveredPointIdx].topPct + '%', transform:'translate(-50%,-130%)'},
+    } : null;
+    const periodBtnStyle = (p) => ({
+      padding:'6px 12px', borderRadius:'7px', cursor:'pointer',
+      font:'600 12px Inter,sans-serif',
+      background: chartPeriod === p ? '#D4A84C' : 'transparent',
+      color: chartPeriod === p ? '#0F1115' : '#9AA1AC',
+    });
+
+    const maxSvc = Math.max(...prod.serviceRows.map(s=>s.revenue), 1);
+    const meuServiceRows = prod.serviceRows.map(s => ({
+      name: s.name, revenueFmt: this.fmtBRL(s.revenue),
+      barStyle: {height:'10px', width: (s.revenue/maxSvc*100) + '%', background:'#D4A84C', borderRadius:'5px'},
+    }));
+
+    const STATUS_COLORS = {'Confirmado':'#3FB68B','Pendente':'#E8A13C','Concluído':'#5B8DE0','Falta':'#E05B5B','Cancelado':'#9AA1AC'};
+    const appointments = ownAppts.map((a, i) => ({
+      time: fmtHM(a.start), client: a.client, service: a.service,
+      statusColor: STATUS_COLORS[a.status], status: a.status,
+      cancelled: a.status === 'Cancelado',
+      textDecoration: a.status === 'Cancelado' ? 'line-through' : 'none',
+      menuOpen: apptMenuOpenIdx === i,
+      toggleMenu: () => this.toggleApptMenu(i),
+    }));
+
+    return {
+      isDashboard,
+      showEmptyState,
+      barberLogadoNome: barberLogado.name,
+      kpiAtendimentosCount: ownAppts.length,
+      kpiConcluidosLabel: concluidos + (concluidos === 1 ? ' concluído' : ' concluídos'),
+      hasProximoCliente: !!proximo,
+      proximoClienteNome: proximo ? proximo.client : '',
+      proximoClienteInfo: proximo ? fmtHM(proximo.start) + ' · ' + proximo.service : 'Nenhum agendamento restante hoje',
+      kpiOcupacaoPct: ocupacaoPct,
+      comissaoEstimadaFmt,
+      chartPeriod,
+      periodDiaStyle: periodBtnStyle('dia'),
+      periodSemanaStyle: periodBtnStyle('semana'),
+      periodMesStyle: periodBtnStyle('mes'),
+      setPeriodDia: () => this.setChartPeriod('dia'),
+      setPeriodSemana: () => this.setChartPeriod('semana'),
+      setPeriodMes: () => this.setChartPeriod('mes'),
+      chartAreaPath: geo.areaPath,
+      chartLinePath: geo.linePath,
+      chartW: CHART_W, chartH: CHART_H,
+      hoverPoints,
+      hovered,
+      clearHoveredPoint: this.clearHoveredPoint,
+      meuServiceRows,
+      appointments,
+      anyMenuOpenAppt: apptMenuOpenIdx != null,
+      ...this.renderAgendaVals(),
+      ...this.renderClientesVals(),
+      ...this.renderComandasVals(),
+      ...this.renderComissoesVals(),
+      ...this.renderFidelidadeVals(),
+      ...this.renderRelatoriosVals(),
+      collapsed: collapsed || this.state.isNarrow,
+      isNarrow: this.state.isNarrow,
+      sidebarStyle: {
+        width: (collapsed || this.state.isNarrow) ? '64px' : '240px', minWidth: (collapsed || this.state.isNarrow) ? '64px' : '240px',
+        background: '#181B21', borderRight: '1px solid #2A2F38',
+        display: 'flex', flexDirection: 'column', height: '100%',
+        transition: 'width 0.18s ease, min-width 0.18s ease', flexShrink: 0,
+      },
+      headerSearchWrapStyle: { flex: this.state.isNarrow ? '0 0 auto' : 1, display: this.state.isNarrow ? 'none' : 'flex', justifyContent: 'center', minWidth: 0, overflow: 'hidden' },
+      newApptBtnStyle: {
+        height: '40px', padding: this.state.isNarrow ? '0 10px' : '0 16px', borderRadius: '10px', background: '#D4A84C',
+        border: 'none', color: '#0F1115', font: '600 14px Inter,sans-serif', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+      },
+      collapseBtnStyle: {
+        width: '28px', height: '28px', borderRadius: '7px', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
+        background: 'transparent',
+      },
+      collapseIconStyle: { color: '#9AA1AC', transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s ease' },
+      navItems,
+      toggleCollapse: this.toggleCollapse,
+      selectedUnit: this.state.selectedUnit,
+      barberInitials: barberLogado.initials,
+      barberColor: teamData.color,
+      notifOpen: openMenu === 'notif',
+      toggleNotifMenu: () => this.toggleMenu('notif'),
+      notifBtnBg: openMenu === 'notif' ? '#1F232B' : 'transparent',
+      notifications: [
+        {text: 'João confirmou o horário de 14h'},
+        {text: 'Rafael cancelou o agendamento das 16h'},
+        {text: 'Bruno remarcou para sexta-feira'},
+      ],
+      avatarOpen: openMenu === 'avatar',
+      toggleAvatarMenu: () => this.toggleMenu('avatar'),
+      anyMenuOpen: !!openMenu || apptMenuOpenIdx != null,
+      closeMenus: this.closeMenus,
+    };
+  }
+}
+

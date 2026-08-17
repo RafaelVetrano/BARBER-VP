@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#0E1013;-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(212,162,74,.3)}
+  input::placeholder{color:#5a626d}
+  @keyframes bvpUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @keyframes bvpFadeImg{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="--bg:#0E1013;--surface:#15181D;--surface-2:#1B1F26;--surface-3:#232831;--line:#222831;--line-2:#313844;--txt:#E8ECF1;--txt-2:#9BA6B4;--txt-3:#69727F;--gold:#D4A24A;--gold-2:#ECC46B;--gold-soft:rgba(212,162,74,.12);--green:#5FB389;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex">
+
+  <!-- ============ LEFT — IMAGE ============ -->
+  <div style="flex:1 1 50%;position:relative;overflow:hidden;display:none;min-height:100vh" class="bvp-imghalf">
+    <!-- image placeholder -->
+    <div style="position:absolute;inset:0;animation:bvpFadeImg .7s ease both;background:radial-gradient(120% 120% at 18% 0%,hsl(214 18% 22%),hsl(216 20% 12%) 52%,hsl(220 22% 7%) 100%),repeating-linear-gradient(122deg,rgba(255,255,255,.02) 0 1px,transparent 1px 13px)"></div>
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,13,.3) 0%,rgba(8,10,13,.52) 55%,rgba(8,10,13,.9) 100%)"></div>
+    <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font:500 11px ui-monospace,monospace;color:rgba(232,236,241,.32);letter-spacing:.7px;text-align:center;line-height:1.7">FOTO · barbeiro usando o sistema<br>(tablet / agenda na barbearia)</span>
+
+    <!-- panel mock chips -->
+    <div style="position:absolute;top:42%;left:40px;display:flex;flex-direction:column;gap:10px;z-index:2;opacity:.92">
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:rgba(21,24,29,.72);backdrop-filter:blur(8px);border:1px solid var(--line-2);border-radius:11px;width:248px">
+        <span style="width:32px;height:32px;border-radius:8px;background:rgba(95,179,137,.15);border:1px solid var(--green);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">✓</span>
+        <div style="min-width:0"><div style="font:700 13px 'Inter'">14 agendamentos hoje</div><div style="font:500 11px 'Inter';color:var(--txt-3)">agenda 82% ocupada</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:rgba(21,24,29,.72);backdrop-filter:blur(8px);border:1px solid var(--line-2);border-radius:11px;width:248px;margin-left:30px">
+        <span style="width:32px;height:32px;border-radius:8px;background:var(--gold-soft);border:1px solid var(--gold);color:var(--gold);display:flex;align-items:center;justify-content:center;font:700 14px 'Inter';flex-shrink:0">R$</span>
+        <div style="min-width:0"><div style="font:700 13px 'Inter'">R$ 3.240 hoje</div><div style="font:500 11px 'Inter';color:var(--txt-3)">+18% vs. ontem</div></div>
+      </div>
+    </div>
+
+    <!-- logo -->
+    <a href="BarberVP Vendas.dc.html" style="position:absolute;top:34px;left:40px;display:flex;align-items:center;gap:10px;text-decoration:none;z-index:2">
+      <span style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:#1a1408;font:800 17px 'Inter'">B</span>
+      <span style="font:800 19px 'Inter';letter-spacing:-.4px;color:var(--txt)">Barber<span style="color:var(--gold)">VP</span></span>
+    </a>
+
+    <!-- overlay headline -->
+    <div style="position:absolute;left:40px;right:40px;bottom:48px;z-index:2">
+      <div style="display:inline-flex;align-items:center;gap:8px;font:600 10.5px ui-monospace,monospace;color:var(--txt-3);letter-spacing:1.6px;margin-bottom:18px">PAINEL ADMINISTRATIVO</div>
+      <h2 style="font:800 clamp(30px,3.4vw,44px)/1.06 'Inter';letter-spacing:-1.2px;margin:0 0 14px;max-width:520px;text-wrap:balance">Menos esforço na rotina, mais <span style="color:var(--gold)">controle</span> do seu negócio</h2>
+      <p style="font:400 16px/1.55 'Inter';color:var(--txt-2);margin:0;max-width:440px">Agenda, financeiro e equipe num só painel — feito para donos e barbeiros.</p>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT — FORM ============ -->
+  <div style="flex:1 1 50%;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 28px;position:relative;background:var(--surface)">
+    <!-- mobile logo -->
+    <a href="BarberVP.dc.html" style="position:absolute;top:28px;left:28px;display:flex;align-items:center;gap:9px;text-decoration:none" class="bvp-mobilelogo">
+      <span style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:#1a1408;font:800 16px 'Inter'">B</span>
+      <span style="font:800 18px 'Inter';letter-spacing:-.4px;color:var(--txt)">Barber<span style="color:var(--gold)">VP</span></span>
+    </a>
+
+    <div style="width:100%;max-width:392px;animation:bvpUp .4s both">
+      <div style="font:600 10.5px ui-monospace,monospace;color:var(--txt-3);letter-spacing:1.6px;margin-bottom:14px">PAINEL ADMINISTRATIVO</div>
+      <div style="font:800 28px 'Inter';letter-spacing:-.7px;margin-bottom:8px">Acesse seu painel</div>
+      <div style="font:400 15px 'Inter';color:var(--txt-2);margin-bottom:30px">Gerencie agenda, financeiro e equipe da sua barbearia.</div>
+
+      <!-- email -->
+      <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">E-mail</label>
+      <input value="{{ email }}" onInput="{{ onEmail }}" type="email" placeholder="voce@suabarbearia.com" style="width:100%;height:50px;padding:0 15px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:11px;color:var(--txt);font:500 15px 'Inter';outline:none;margin-bottom:18px" style-focus="border-color:var(--gold)">
+
+      <!-- password -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2)">Senha</label>
+        <span onClick="{{ onForgot }}" style="font:600 12.5px 'Inter';color:var(--gold);cursor:pointer" style-hover="color:var(--gold-2)">Esqueci a senha</span>
+      </div>
+      <div style="position:relative;margin-bottom:24px">
+        <input value="{{ password }}" onInput="{{ onPassword }}" type="{{ pwType }}" placeholder="••••••••" style="width:100%;height:50px;padding:0 50px 0 15px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:11px;color:var(--txt);font:500 15px 'Inter';outline:none" style-focus="border-color:var(--gold)">
+        <button onClick="{{ onTogglePw }}" type="button" style="position:absolute;right:8px;top:9px;height:32px;padding:0 11px;border-radius:8px;background:transparent;border:none;color:var(--txt-3);font:600 12px 'Inter';cursor:pointer" style-hover="color:var(--gold)">{{ pwLabel }}</button>
+      </div>
+
+      <!-- submit -->
+      <button onClick="{{ onSubmit }}" style="height:52px;width:100%;background:var(--gold);border:none;border-radius:11px;color:#1a1408;font:700 15px 'Inter';cursor:pointer;letter-spacing:.2px;margin-bottom:26px" style-hover="background:var(--gold-2)" style-active="transform:translateY(1px)">Entrar no painel</button>
+
+      <!-- plans link -->
+      <div style="height:1px;background:var(--line);margin-bottom:20px"></div>
+      <div style="text-align:center;font:400 13.5px 'Inter';color:var(--txt-2);margin-bottom:10px">Quer cadastrar sua barbearia?</div>
+      <a href="BarberVP Cadastro Estabelecimento.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; width: 100%; background: transparent; border: 1px solid var(--gold); border-radius: 11px; color: var(--gold); font: 600 14px 'Inter'; text-decoration: none; margin-bottom: 22px" style-hover="background:var(--gold-soft)">Cadastrar barbearia →</a>
+
+      <div style="text-align:center"><a href="BarberVP Login Cliente.dc.html" style="font:500 13px 'Inter';color:var(--txt-3);text-decoration:none" style-hover="color:var(--txt-2)">← Entrar como cliente</a></div>
+    </div>
+
+    <div style="position:absolute;bottom:24px;font:500 11.5px 'Inter';color:var(--txt-3)">© 2026 BarberVP</div>
+  </div>
+
+  <helmet><style>
+    @media(min-width:880px){ .bvp-imghalf{display:block !important} .bvp-mobilelogo{display:none !important} }
+  </style></helmet>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { email:'', password:'', showPw:false };
+  renderVals(){
+    const st=this.state;
+    return {
+      email:st.email, password:st.password,
+      onEmail:e=>this.setState({email:e.target.value}),
+      onPassword:e=>this.setState({password:e.target.value}),
+      pwType: st.showPw?'text':'password',
+      pwLabel: st.showPw?'Ocultar':'Mostrar',
+      onTogglePw:()=>this.setState({showPw:!st.showPw}),
+      onForgot:()=>{},
+      onSubmit:()=>{ try{ window.location.href='BarberVP%20Dashboard.dc.html'; }catch(e){} },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "barbervp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:isolation": "pnpm --filter @barbervp/api test:isolation",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\""
+  },
+  "devDependencies": {
+    "prettier": "3.3.3",
+    "turbo": "2.1.3",
+    "typescript": "5.6.3"
+  },
+  "pnpm": {
+    "//": "Postinstall só das dependências que realmente precisam (Prisma baixa engines).",
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "nestjs-pino",
+      "prisma",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

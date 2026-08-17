@@ -1,0 +1,132 @@
+# Stack de produção — imagens multi-stage, sem bind mount e sem código-fonte.
+#   make prod-build   → constrói as 5 imagens
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Antes de subir, defina no `.env`: POSTGRES_PASSWORD, JWT_ACCESS_SECRET,
+# JWT_REFRESH_SECRET e as quatro origens CORS com o domínio real.
+
+x-web-common: &web-common
+  restart: always
+  depends_on:
+    api:
+      condition: service_healthy
+  environment:
+    NODE_ENV: production
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    # Banco não é exposto ao host em produção.
+    expose:
+      - '5432'
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    expose:
+      - '6379'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: barbervp/api:latest
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: 3333
+      API_PREFIX: ${API_PREFIX:-api/v1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?defina JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?defina JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      CORS_ORIGIN_SITE: ${CORS_ORIGIN_SITE:?defina CORS_ORIGIN_SITE}
+      CORS_ORIGIN_BOOKING: ${CORS_ORIGIN_BOOKING:?defina CORS_ORIGIN_BOOKING}
+      CORS_ORIGIN_DASHBOARD: ${CORS_ORIGIN_DASHBOARD:?defina CORS_ORIGIN_DASHBOARD}
+      CORS_ORIGIN_ADMIN: ${CORS_ORIGIN_ADMIN:?defina CORS_ORIGIN_ADMIN}
+      NOTIFICATION_DRIVER: ${NOTIFICATION_DRIVER:-mock}
+      PAYMENT_DRIVER: ${PAYMENT_DRIVER:-mock}
+      MAIL_DRIVER: ${MAIL_DRIVER:-mock}
+    ports:
+      - '${API_PORT:-3333}:3333'
+
+  site:
+    <<: *web-common
+    build:
+      context: .
+      dockerfile: apps/site/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?defina NEXT_PUBLIC_API_URL}
+    image: barbervp/site:latest
+    ports:
+      - '${SITE_PORT:-3000}:3000'
+
+  booking:
+    <<: *web-common
+    build:
+      context: .
+      dockerfile: apps/booking/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    image: barbervp/booking:latest
+    ports:
+      - '${BOOKING_PORT:-3001}:3001'
+
+  dashboard:
+    <<: *web-common
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    image: barbervp/dashboard:latest
+    ports:
+      - '${DASHBOARD_PORT:-3002}:3002'
+
+  admin:
+    <<: *web-common
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    image: barbervp/admin:latest
+    ports:
+      - '${ADMIN_PORT:-3003}:3003'
+
+volumes:
+  db-data:
+    name: barbervp-prod-db-data
+  redis-data:
+    name: barbervp-prod-redis-data

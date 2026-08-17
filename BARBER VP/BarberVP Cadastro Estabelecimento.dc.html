@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#0E1013;-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(212,162,74,.32);color:#fff}
+  input::placeholder{color:#5a626d}
+  @keyframes bvpInLeft{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
+  @keyframes bvpRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes bvpFloat{0%,100%{transform:rotate(-3deg) translateY(0)}50%{transform:rotate(-3deg) translateY(-12px)}}
+  @keyframes bvpFadeBg{from{opacity:0;transform:scale(1.05)}to{opacity:1;transform:none}}
+  @keyframes bvpPop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+</style>
+</helmet>
+
+<div style="--bg-r:#0E1013;--gold:#D4A24A;--gold-2:#ECC46B;--ink:#1a1408;--surface:#15181D;--line:#222831;--inline:rgba(212,162,74,.30);--txt:#E8ECF1;--txt-2:#9BA6B4;--txt-3:#69727F;--red:#E0796B;--red-line:rgba(224,121,107,.55);--green:#5FB389;font-family:'Inter',system-ui,sans-serif;background:var(--bg-r);color:var(--txt);min-height:100vh;display:flex;flex-direction:column">
+
+  <div style="flex:1;display:flex;width:100%" class="bvp-shell">
+
+    <!-- ============ LEFT — HERO / MOCKUP ============ -->
+    <div style="flex:0 0 45%;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;padding:46px 48px 44px;min-height:100vh" class="bvp-left">
+      <!-- textured diagonal backdrop -->
+      <div style="position:absolute;inset:0;z-index:0;animation:bvpFadeBg .8s ease both;background:linear-gradient(135deg,#0E1013 0%,#13171D 46%,#1B1F26 100%)"></div>
+      <div style="position:absolute;inset:0;z-index:0;opacity:.5;background:repeating-linear-gradient(128deg,rgba(212,162,74,.045) 0 1px,transparent 1px 15px)"></div>
+      <div style="position:absolute;left:-160px;top:-120px;width:420px;height:420px;border-radius:50%;z-index:0;background:radial-gradient(circle,rgba(212,162,74,.12),transparent 68%);filter:blur(8px)"></div>
+
+      <!-- top headline -->
+      <div style="position:relative;z-index:2;max-width:430px;animation:bvpRise .7s ease both">
+        <h1 style="font:600 clamp(32px,3.4vw,46px)/1.12 'Playfair Display',serif;letter-spacing:-.5px;margin:0;color:#E8ECF1;text-wrap:balance">tudo pra você simplificar a sua gestão <span style="font-style:italic;color:var(--gold)">em um só lugar.</span></h1>
+        <p style="font:400 16px/1.5 'Inter';color:rgba(232,236,241,.62);margin:18px 0 0;max-width:360px">A vida de quem toca uma barbearia é corrida — aqui, ela acontece em minutos.</p>
+      </div>
+
+      <!-- floating dashboard mockup -->
+      <div style="position:relative;z-index:2;flex:1;display:flex;align-items:center;justify-content:center;margin:8px 0" class="bvp-mockwrap">
+        <div style="width:min(420px,100%);border-radius:18px;background:#15181D;border:1px solid #222831;box-shadow:0 34px 80px rgba(0,0,0,.6),0 0 0 1px rgba(212,162,74,.10),0 18px 50px rgba(212,162,74,.14);transform:rotate(-3deg);animation:bvpFloat 7s ease-in-out infinite;overflow:hidden">
+          <!-- mock topbar -->
+          <div style="display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid #222831">
+            <span style="width:9px;height:9px;border-radius:50%;background:#2a313b"></span>
+            <span style="width:9px;height:9px;border-radius:50%;background:#2a313b"></span>
+            <span style="width:9px;height:9px;border-radius:50%;background:#2a313b"></span>
+            <span style="margin-left:auto;font:700 11px 'Inter';color:#69727F;letter-spacing:.4px">PAINEL · HOJE</span>
+          </div>
+          <div style="padding:16px">
+            <!-- metric cards -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+              <div style="padding:13px;border-radius:12px;background:#1B1F26;border:1px solid #222831">
+                <div style="font:600 10px 'Inter';color:#69727F;letter-spacing:.4px;text-transform:uppercase;margin-bottom:7px">Faturamento</div>
+                <div style="font:700 21px 'Inter';color:var(--gold);letter-spacing:-.5px">R$ 3.240</div>
+                <div style="font:500 10.5px 'Inter';color:var(--green);margin-top:3px">↑ 12% na semana</div>
+              </div>
+              <div style="padding:13px;border-radius:12px;background:#1B1F26;border:1px solid #222831">
+                <div style="font:600 10px 'Inter';color:#69727F;letter-spacing:.4px;text-transform:uppercase;margin-bottom:7px">Agendamentos</div>
+                <div style="font:700 21px 'Inter';color:#E8ECF1;letter-spacing:-.5px">28</div>
+                <div style="font:500 10.5px 'Inter';color:#9BA6B4;margin-top:3px">4 horários livres</div>
+              </div>
+            </div>
+            <!-- revenue chart -->
+            <div style="padding:13px 14px;border-radius:12px;background:#1B1F26;border:1px solid #222831;margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <span style="font:600 11px 'Inter';color:#9BA6B4">Receita · 7 dias</span>
+                <span style="font:700 11px 'Inter';color:var(--gold)">+18%</span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:7px;height:62px">
+                {{ chartBars }}
+              </div>
+            </div>
+            <!-- agenda list -->
+            <div style="font:600 10px 'Inter';color:#69727F;letter-spacing:.4px;text-transform:uppercase;margin-bottom:9px">Próximos</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:700 11px 'Inter';color:var(--gold);width:38px;flex:none">10:15</span>
+                <span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--gold-2),var(--gold));flex:none"></span>
+                <span style="font:600 12px 'Inter';color:#E8ECF1;flex:1">Rafael M.</span>
+                <span style="font:500 11px 'Inter';color:#69727F">Corte + Barba</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:700 11px 'Inter';color:#9BA6B4;width:38px;flex:none">11:00</span>
+                <span style="width:26px;height:26px;border-radius:50%;background:#232831;flex:none"></span>
+                <span style="font:600 12px 'Inter';color:#E8ECF1;flex:1">Diego S.</span>
+                <span style="font:500 11px 'Inter';color:#69727F">Degradê</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT — FORM ============ -->
+    <div style="flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:64px 32px 56px;min-height:100vh" class="bvp-right">
+      <!-- signature razor-cut gold border -->
+      <div style="position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,transparent 0%,rgba(212,162,74,.05) 14%,var(--gold) 50%,rgba(212,162,74,.05) 86%,transparent 100%)" class="bvp-razor"></div>
+
+      <!-- logo -->
+      <a href="BarberVP Vendas.dc.html" style="position:absolute;top:30px;left:38px;display:flex;align-items:center;gap:9px;text-decoration:none;z-index:3">
+        <span style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:var(--ink);font:800 15px 'Inter'">B</span>
+        <span style="font:800 16px 'Inter';letter-spacing:-.3px;color:#E8ECF1">Barber<span style="color:var(--gold)">VP</span></span>
+      </a>
+
+      <div style="width:100%;max-width:432px;animation:bvpInLeft .55s cubic-bezier(.2,.7,.3,1) both">
+      <sc-if value="{{ showForm }}" hint-placeholder-val="{{ true }}">
+        <!-- header -->
+        <h2 style="font:600 32px 'Playfair Display',serif;letter-spacing:-.4px;margin:0 0 9px;color:#E8ECF1">Cadastre sua barbearia</h2>
+        <p style="font:400 15px 'Inter';color:var(--txt-2);margin:0 0 30px">7 dias grátis · sem cartão de crédito.</p>
+
+        <sc-if value="{{ notClienteLink }}" hint-placeholder-val="{{ true }}">
+        <!-- nome completo -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Nome completo</label>
+        <div style="position:relative;margin-bottom:17px">
+          <input value="{{ nome }}" onInput="{{ onNome }}" type="text" placeholder="Como você se chama" style="{{ nomeStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)">
+          <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--green);font:700 13px 'Inter';opacity:{{ nomeOk }};pointer-events:none">✓</span>
+        </div>
+
+        <!-- celular -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Celular</label>
+        <div style="position:relative;margin-bottom:17px">
+          <input value="{{ fone }}" onInput="{{ onFone }}" type="tel" inputmode="numeric" placeholder="(00) 00000-0000" style="{{ foneStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)">
+          <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--green);font:700 13px 'Inter';opacity:{{ foneOk }};pointer-events:none">✓</span>
+        </div>
+        </sc-if>
+
+        <!-- email -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">E-mail</label>
+        <div style="position:relative;margin-bottom:{{ emailGap }}">
+          <input ref="{{ emailInputRef }}" value="{{ email }}" onInput="{{ onEmail }}" type="email" placeholder="voce@email.com" style="{{ emailStyle }}" style-focus="{{ emailFocus }}">
+          <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);font:700 13px 'Inter';color:{{ emailIconColor }};opacity:{{ emailIconOpacity }};pointer-events:none">{{ emailIcon }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;margin:-9px 0 17px;font:500 12.5px 'Inter';color:var(--red);height:16px;opacity:{{ emailErrOpacity }}">
+          <span style="font-size:12px">⚠</span> Ops! Já existe um cadastro com este e-mail.
+        </div>
+
+        <sc-if value="{{ isClienteLink }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:2px 0 17px;padding:18px;border-radius:14px;background:rgba(212,162,74,.08);border:1px solid rgba(212,162,74,.32)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;font:800 12px 'Inter';color:var(--ink);flex:none">LA</span>
+            <div style="min-width:0">
+              <div style="font:700 13px 'Inter';color:var(--txt)">Lucas Andrade</div>
+              <div style="font:500 11.5px 'Inter';color:var(--txt-3)">lucas.andrade@email.com</div>
+            </div>
+          </div>
+          <div style="font:700 15px 'Inter';color:var(--txt);margin-bottom:8px">Que bom te ver de novo! 👋</div>
+          <p style="font:400 13px/1.55 'Inter';color:var(--txt-2);margin:0 0 16px">Este e-mail já tem uma conta BarberVP como cliente. Você pode usar a mesma conta para gerenciar sua barbearia — seus agendamentos como cliente continuam intactos.</p>
+
+          <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Confirme sua senha para continuar</label>
+          <input value="{{ linkPassword }}" onInput="{{ onLinkPassword }}" type="password" placeholder="Sua senha atual" style="{{ linkPasswordStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)">
+          <div style="font:500 12px 'Inter';color:var(--red);margin:7px 0 0;min-height:14px;opacity:{{ linkPassErrOpacity }}">{{ linkPassErrText }}</div>
+          <div style="text-align:right;margin:5px 0 16px">
+            <a href="#" onClick="{{ noop }}" style="font:600 12px 'Inter';color:var(--gold);text-decoration:none" style-hover="text-decoration:underline">Esqueci minha senha</a>
+          </div>
+
+          <button onClick="{{ onLinkSubmit }}" style="height:52px;width:100%;background:{{ linkBtnBg }};border:none;border-radius:12px;color:var(--ink);font:700 14.5px 'Inter';cursor:{{ linkBtnCursor }};opacity:{{ linkBtnOpacity }};transition:background .14s,transform .1s" style-hover="{{ linkBtnHover }}" style-active="{{ linkBtnActive }}">{{ linkBtnLabel }}</button>
+
+          <div style="text-align:center;margin-top:14px">
+            <a href="#" onClick="{{ onUseOtherEmail }}" style="font:500 12.5px 'Inter';color:var(--txt-3);text-decoration:none;cursor:pointer" style-hover="color:var(--txt-2)">Prefiro usar outro e-mail</a>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- nome da barbearia -->
+        <label style="font:600 12.5px 'Inter';color:var(--txt-2);display:block;margin-bottom:7px">Nome da barbearia</label>
+        <div style="position:relative;margin-bottom:17px">
+          <input value="{{ shop }}" onInput="{{ onShop }}" type="text" placeholder="Ex: Studio Navalha" style="{{ shopStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)">
+          <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--green);font:700 13px 'Inter';opacity:{{ shopOk }};pointer-events:none">✓</span>
+        </div>
+
+        <!-- termos -->
+        <label style="display:flex;align-items:flex-start;gap:11px;cursor:pointer;margin-bottom:24px">
+          <span style="flex:none;width:20px;height:20px;border-radius:6px;border:1.5px solid {{ termsBorder }};background:{{ termsBg }};display:flex;align-items:center;justify-content:center;margin-top:1px;transition:all .12s">
+            <span style="color:var(--ink);font:800 11px 'Inter';opacity:{{ termsCheck }}">✓</span>
+          </span>
+          <input type="checkbox" checked="{{ terms }}" onChange="{{ onTerms }}" style="position:absolute;opacity:0;width:0;height:0">
+          <span style="font:400 13px/1.5 'Inter';color:var(--txt-2)">Li e aceito os <a href="#" onClick="{{ noop }}" style="color:var(--gold);font-weight:600;text-decoration:none" style-hover="text-decoration:underline">termos de uso</a> e a <a href="#" onClick="{{ noop }}" style="color:var(--gold);font-weight:600;text-decoration:none" style-hover="text-decoration:underline">política de privacidade</a></span>
+        </label>
+
+        <!-- CTA -->
+        <sc-if value="{{ notClienteLink }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ onSubmit }}" style="height:54px;width:100%;background:{{ btnBg }};border:none;border-radius:12px;color:var(--ink);font:700 15.5px 'Inter';cursor:{{ btnCursor }};letter-spacing:.2px;opacity:{{ btnOpacity }};transition:background .14s,transform .1s" style-hover="{{ btnHover }}" style-active="{{ btnActive }}">Criar minha conta grátis</button>
+
+        <div style="text-align:center;font:600 11.5px 'Inter';color:var(--green);margin:13px 0 4px;min-height:14px">7 dias grátis · sem cartão de crédito</div>
+        <div style="text-align:center;font:500 11.5px 'Inter';color:var(--txt-3);margin:0 0 22px;min-height:14px;opacity:{{ hintOpacity }}">{{ hintText }}</div>
+        </sc-if>
+
+        <!-- footer links -->
+        <div style="display:flex;flex-direction:column;gap:11px;align-items:center">
+          <div style="font:500 13.5px 'Inter';color:var(--txt-2)">Já tem uma conta? <a href="BarberVP Login Estabelecimento.dc.html" style="color:var(--gold);font-weight:600;text-decoration:none" style-hover="color:var(--gold-2)">Entrar aqui</a></div>
+          <a href="BarberVP Login Cliente.dc.html" style="font:500 13px 'Inter';color:var(--txt-3);text-decoration:none" style-hover="color:var(--txt-2)">É cliente buscando uma barbearia? Acesse como cliente →</a>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ linked }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:40px;animation:bvpRise .5s ease both">
+          <div style="width:76px;height:76px;border-radius:50%;background:rgba(212,162,74,.12);display:flex;align-items:center;justify-content:center;margin-bottom:24px;animation:bvpPop .45s .05s cubic-bezier(.2,.8,.3,1) both">
+            <svg width="38" height="38" viewBox="0 0 40 40" fill="none">
+              <circle cx="20" cy="20" r="19" stroke="var(--gold)" stroke-width="2"></circle>
+              <path d="M12 20.5l5.2 5.2L28.5 14.5" stroke="var(--gold)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <h2 style="font:600 27px 'Playfair Display',serif;color:#E8ECF1;margin:0 0 12px;letter-spacing:-.3px">Barbearia vinculada à sua conta!</h2>
+          <p style="font:400 15px/1.55 'Inter';color:var(--txt-2);margin:0 0 30px;max-width:360px">Agora você tem dois perfis na mesma conta: cliente e dono. Vamos configurar a {{ shopDisplay }}.</p>
+          <button style="height:54px;width:100%;background:var(--gold);border:none;border-radius:12px;color:var(--ink);font:700 15.5px 'Inter';cursor:pointer;letter-spacing:.2px;transition:background .14s" style-hover="background:#C2966A">Configurar minha barbearia →</button>
+          <div style="font:500 12px 'Inter';color:var(--txt-3);margin-top:16px">Você poderá alternar entre os perfis a qualquer momento.</div>
+        </div>
+      </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <helmet><style>
+    @media(max-width:860px){
+      .bvp-shell{flex-direction:column}
+      .bvp-left{flex:none !important;min-height:auto !important;height:210px;padding:22px 24px !important}
+      .bvp-left .bvp-mockwrap,.bvp-left .bvp-trust{display:none}
+      .bvp-right{min-height:auto !important;padding:54px 22px 44px !important}
+      .bvp-razor{left:0;top:0;right:0;bottom:auto;width:auto !important;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent) !important}
+    }
+  </style></helmet>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { nome:'', fone:'', email:'joao@email.com', shop:'', coupon:'', couponOpen:false, terms:false, linkPassword:'', linkAttempted:false, linking:false, linked:false };
+  ESTABLISHMENTS = ['joao@email.com','contato@barbearia.com'];
+  CLIENTS = ['lucas.andrade@email.com'];
+  emailRef = React.createRef();
+
+  maskPhone(v){
+    const d=(v||'').replace(/\D/g,'').slice(0,11);
+    let o='';
+    if(d.length>0) o='('+d.slice(0,2);
+    if(d.length>=3) o+=') '+d.slice(2,7);
+    else if(d.length>2) o+=') '+d.slice(2);
+    if(d.length>=8) o+='-'+d.slice(7,11);
+    else if(d.length>7) o+='-'+d.slice(7);
+    return o;
+  }
+  validEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e); }
+
+  inputBase(extra){
+    return `width:100%;height:52px;padding:0 42px 0 15px;background:var(--surface);border:1px solid ${extra};border-radius:12px;color:var(--txt);font:500 15px 'Inter';outline:none;transition:border-color .14s,box-shadow .14s`;
+  }
+
+  renderVals(){
+    const st=this.state;
+    const R=React.createElement;
+
+    // chart bars
+    const heights=[44,60,52,74,66,90,82];
+    const chartBars = heights.map((h,i)=>R('div',{key:i,style:{flex:'1',height:h+'%',borderRadius:'4px 4px 2px 2px',background:i===5?'linear-gradient(180deg,var(--gold-2),var(--gold))':'linear-gradient(180deg,rgba(212,162,74,.42),rgba(212,162,74,.14))'}}));
+
+    // validation
+    const nomeValid = st.nome.trim().length>=3;
+    const foneDigits = st.fone.replace(/\D/g,'');
+    const foneValid = foneDigits.length===11;
+    const shopValid = st.shop.trim().length>=2;
+    const emailTrim = st.email.trim().toLowerCase();
+    const isEstabErr = this.ESTABLISHMENTS.includes(emailTrim);
+    const isClienteLink = this.CLIENTS.includes(emailTrim);
+    const notClienteLink = !isClienteLink;
+    const emailValid = this.validEmail(emailTrim) && !isEstabErr && !isClienteLink;
+
+    const okStyle = this.inputBase('var(--inline)');
+    const validBorder = this.inputBase('rgba(111,191,149,.5)');
+    const goldBorder = this.inputBase('var(--gold)');
+
+    const emailStyle = isEstabErr ? this.inputBase('var(--red-line)')
+                      : isClienteLink ? goldBorder
+                      : emailValid ? validBorder : okStyle;
+    const emailFocus = isEstabErr ? 'border-color:var(--red);box-shadow:0 0 0 3px rgba(224,121,107,.14)'
+                                : 'border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.14)';
+
+    const canSubmit = nomeValid && foneValid && emailValid && shopValid && st.terms;
+
+    // link-card (e-mail já é cliente) validation
+    const passTrim = st.linkPassword.trim();
+    const passTooShort = passTrim.length < 6;
+    const passWrong = passTrim === 'errada123';
+    let linkPassErrText = '';
+    if (st.linkAttempted) {
+      if (passTooShort) linkPassErrText = 'Digite sua senha para confirmar.';
+      else if (passWrong) linkPassErrText = 'Senha incorreta. Tente novamente ou recupere sua senha.';
+    }
+    const linkCanSubmit = !passTooShort && !passWrong && shopValid && st.terms;
+    const shopDisplay = st.shop.trim() || 'sua barbearia';
+
+    return {
+      chartBars,
+      nome:st.nome, fone:st.fone, email:st.email, shop:st.shop, terms:st.terms,
+      onNome:e=>this.setState({nome:e.target.value}),
+      onFone:e=>this.setState({fone:this.maskPhone(e.target.value)}),
+      onEmail:e=>this.setState({email:e.target.value}),
+      onShop:e=>this.setState({shop:e.target.value}),
+      noop:e=>{ e.preventDefault(); },
+
+      nomeStyle: nomeValid ? validBorder : okStyle, nomeOk: nomeValid?1:0,
+      foneStyle: foneValid ? validBorder : okStyle, foneOk: foneValid?1:0,
+      shopStyle: shopValid ? validBorder : okStyle, shopOk: shopValid?1:0,
+      emailStyle, emailFocus, emailInputRef:this.emailRef,
+      emailIcon: isEstabErr?'✕':'✓',
+      emailIconColor: isEstabErr?'var(--red)':(isClienteLink?'var(--gold)':'var(--green)'),
+      emailIconOpacity: isEstabErr?1:(isClienteLink?1:(emailValid?1:0)),
+      emailErrOpacity: isEstabErr?1:0,
+      emailGap: (isEstabErr||isClienteLink)?'8px':'17px',
+      isClienteLink, notClienteLink, showForm: !st.linked, linked: st.linked, shopDisplay,
+
+      linkPassword: st.linkPassword,
+      onLinkPassword: e=>this.setState({linkPassword:e.target.value}),
+      linkPasswordStyle: (st.linkAttempted && (passTooShort||passWrong)) ? this.inputBase('var(--red-line)') : okStyle,
+      linkPassErrText, linkPassErrOpacity: linkPassErrText?1:0,
+      linkBtnLabel: st.linking?'Vinculando...':'Entrar e vincular minha barbearia',
+      linkBtnBg: st.linking?'rgba(212,162,74,.5)':(linkCanSubmit?'var(--gold)':'rgba(212,162,74,.34)'),
+      linkBtnCursor: (st.linking||!linkCanSubmit)?'not-allowed':'pointer',
+      linkBtnOpacity: st.linking?.7:(linkCanSubmit?1:.85),
+      linkBtnHover: (linkCanSubmit && !st.linking)?'background:#C2966A':'',
+      linkBtnActive: (linkCanSubmit && !st.linking)?'transform:translateY(1px)':'',
+      onLinkSubmit: ()=>{
+        if(st.linking) return;
+        this.setState({linkAttempted:true});
+        if(!linkCanSubmit) return;
+        this.setState({linking:true});
+        setTimeout(()=>{ this.setState({linking:false, linked:true}); }, 1200);
+      },
+      onUseOtherEmail: e=>{
+        e.preventDefault();
+        this.setState({email:'', linkPassword:'', linkAttempted:false});
+        setTimeout(()=>{ if(this.emailRef.current) this.emailRef.current.focus(); }, 0);
+      },
+
+      // terms
+      onTerms:()=>this.setState({terms:!st.terms}),
+      termsBorder: st.terms?'var(--gold)':'var(--inline)',
+      termsBg: st.terms?'var(--gold)':'transparent',
+      termsCheck: st.terms?1:0,
+
+      // submit
+      btnBg: canSubmit?'var(--gold)':'rgba(212,162,74,.34)',
+      btnCursor: canSubmit?'pointer':'not-allowed',
+      btnOpacity: canSubmit?1:.85,
+      btnHover: canSubmit?'background:#C2966A':'',
+      btnActive: canSubmit?'transform:translateY(1px)':'',
+      hintOpacity: canSubmit?0:1,
+      hintText: isEstabErr?'Use outro e-mail para continuar':'Preencha os campos e aceite os termos',
+      onSubmit:()=>{ if(!canSubmit) return; try{ window.location.href='BarberVP Configurar Barbearia.dc.html'; }catch(e){} },
+    };
+  }
+}
+</script>
+</body>
+</html>

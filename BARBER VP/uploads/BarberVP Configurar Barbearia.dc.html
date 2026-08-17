@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg,#FAFAFA);-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(212,162,74,.32);color:#fff}
+  input::placeholder,textarea::placeholder{color:#998c7b}
+  @keyframes bvpFade{from{opacity:0}to{opacity:1}}
+  @keyframes bvpUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes bvpPop{0%{transform:scale(.7);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+  @keyframes bvpGlow{0%,100%{box-shadow:0 0 0 0 rgba(212,162,74,.0)}50%{box-shadow:0 0 38px 6px rgba(212,162,74,.30)}}
+  @keyframes bvpRing{from{stroke-dashoffset:201}to{stroke-dashoffset:0}}
+  @keyframes bvpCheck{from{stroke-dashoffset:48}to{stroke-dashoffset:0}}
+</style>
+</helmet>
+
+<div style="{{ paletteVars }}font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh">
+
+  <!-- HEADER -->
+  <sc-if value="{{ showChrome }}" hint-placeholder-val="{{ true }}">
+    <div style="position:sticky;top:0;background:var(--header);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:5">
+      <div style="max-width:720px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:14px">
+        <span style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:#1a1408;font:800 14px 'Inter'">B</span>
+        <span style="font:700 14px 'Inter';color:var(--txt-3)">BarberVP</span>
+        <span style="flex:1;text-align:center;font:700 14px 'Inter'">{{ wizardHeader }}</span>
+        <a href="BarberVP Dashboard.dc.html" title="Continuar depois — seu progresso é salvo" style="width:32px;height:32px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line);color:var(--txt-2);cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-shrink:0" style-hover="color:var(--txt)">✕</a>
+      </div>
+      <div style="max-width:720px;margin:0 auto;padding:0 24px 16px;display:flex;gap:6px">
+        {{ wizardDots }}
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- STEP 0 — WELCOME -->
+  <sc-if value="{{ isWelcome }}" hint-placeholder-val="{{ true }}">
+    <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 24px">
+      <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,var(--gold-2),var(--gold));display:flex;align-items:center;justify-content:center;color:#1a1408;font:900 34px 'Inter';margin-bottom:28px;animation:bvpGlow 2.6s ease-in-out infinite,bvpPop .5s">B</div>
+      <h1 style="font:800 30px 'Inter';letter-spacing:-.7px;margin:0 0 12px;max-width:520px">Bem-vindo ao BarberVP, {{ ownerFirst }}</h1>
+      <p style="font:400 16px/1.55 'Inter';color:var(--txt-2);max-width:440px;margin:0 0 30px">Vamos configurar sua barbearia em 5 minutos. Você pode pausar a qualquer momento.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-bottom:38px;max-width:640px">
+        {{ welcomeBullets }}
+      </div>
+      <button onClick="{{ onWizNext }}" style="height:54px;padding:0 32px;background:var(--gold);border:none;border-radius:12px;color:#1a1408;font:700 16px 'Inter';cursor:pointer" style-hover="background:var(--gold-2)">Começar configuração →</button>
+      <a href="BarberVP Dashboard.dc.html" style="margin-top:18px;font:500 14px 'Inter';color:var(--txt-3);text-decoration:none" style-hover="color:var(--txt-2)">Pular e explorar o painel</a>
+    </div>
+  </sc-if>
+
+  <!-- WIZARD STEPS 1-5 -->
+  <sc-if value="{{ isWizard }}">
+    <div style="max-width:720px;margin:0 auto;padding:32px 24px 120px">
+      <!-- STEP 1 dados -->
+      <sc-if value="{{ isStep1 }}">
+        <h2 style="font:800 24px 'Inter';letter-spacing:-.5px;margin:0 0 6px">Dados da sua barbearia</h2>
+        <p style="font:400 14px 'Inter';color:var(--txt-2);margin:0 0 24px">Preenchemos parte com o que você já informou. Confira e complete.</p>
+        <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Nome da barbearia</label>
+        <input value="{{ bizName }}" onInput="{{ onBizName }}" style="width:100%;height:46px;padding:0 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none;margin-bottom:16px" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)">
+        <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Telefone / WhatsApp</label>
+        <input value="{{ bizPhone }}" onInput="{{ onBizPhone }}" inputMode="numeric" style="width:100%;height:46px;padding:0 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none;margin-bottom:16px" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)">
+        <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Instagram</label>
+        <div style="display:flex;align-items:center;height:46px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:0 14px;margin-bottom:16px" style-focus-within="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)">
+          <span style="font:600 14px 'Inter';color:var(--txt-3);margin-right:2px">@</span>
+          <input value="{{ bizInsta }}" onInput="{{ onBizInsta }}" placeholder="suabarbearia" style="flex:1;height:100%;background:none;border:none;outline:none;color:var(--txt);font:500 14px 'Inter'">
+        </div>
+        <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Descrição curta (opcional)</label>
+        <textarea onInput="{{ onBizDesc }}" maxLength="200" placeholder="Ex: Especialistas em corte degradê e barba. Ambiente climatizado, Wi-Fi e café." style="width:100%;height:90px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px/1.5 'Inter';outline:none;resize:none" value="{{ bizDesc }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px">
+          <span style="font:400 12px 'Inter';color:var(--txt-3)">Essas informações aparecem no seu perfil público para clientes.</span>
+          <span style="font:500 12px 'Inter';color:var(--txt-3)">{{ descCount }}/200</span>
+        </div>
+      </sc-if>
+
+      <!-- STEP 2 localização -->
+      <sc-if value="{{ isStep2 }}">
+        <h2 style="font:800 24px 'Inter';letter-spacing:-.5px;margin:0 0 6px">Onde fica sua barbearia</h2>
+        <p style="font:400 14px 'Inter';color:var(--txt-2);margin:0 0 24px">Digite o CEP e buscamos o endereço para você. Confira o número e o complemento.</p>
+        <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">CEP</label>
+        <div style="display:flex;gap:10px;margin-bottom:6px">
+          <input value="{{ bizCep }}" onInput="{{ onBizCep }}" onKeyDown="{{ onCepKey }}" placeholder="00000-000" inputMode="numeric" maxLength="9" style="flex:0 0 160px;height:46px;padding:0 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)">
+          <button onClick="{{ onCepSearch }}" disabled="{{ cepBtnDisabled }}" style="{{ cepBtnStyle }}" style-hover="border-color:var(--gold);color:var(--gold)">{{ cepBtnLabel }}</button>
+        </div>
+        <sc-if value="{{ cepError }}"><div style="font:500 12px 'Inter';color:#d8674e;margin-bottom:8px">{{ cepError }}</div></sc-if>
+        <sc-if value="{{ cepFound }}"><div style="display:inline-flex;align-items:center;gap:7px;font:600 12.5px 'Inter';color:var(--green);margin-bottom:8px"><span style="width:18px;height:18px;border-radius:50%;background:rgba(127,178,135,.16);display:flex;align-items:center;justify-content:center;font-size:11px">✓</span>Endereço encontrado</div></sc-if>
+        <div style="height:8px"></div>
+        <label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Endereço (rua / logradouro)</label>
+        <div style="position:relative;margin-bottom:14px">
+          <input value="{{ bizStreet }}" onInput="{{ onBizStreet }}" placeholder="Rua, avenida…" style="{{ autoFieldStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)">
+          <span title="Preenchido pelo CEP. Você pode editar se necessário." style="{{ lockIconStyle }}">🔓</span>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <div style="flex:0 0 120px"><label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Número</label><input value="{{ bizNumber }}" onInput="{{ onBizNumber }}" placeholder="Nº" style="width:100%;height:46px;padding:0 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)"></div>
+          <div style="flex:1 1 200px"><label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Complemento (opcional)</label><input value="{{ bizComp }}" onInput="{{ onBizComp }}" placeholder="Sala, andar…" style="width:100%;height:46px;padding:0 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)"></div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <div style="flex:1 1 180px"><label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Bairro</label><div style="position:relative"><input value="{{ bizNeighb }}" onInput="{{ onBizNeighb }}" style="{{ autoFieldStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)"><span title="Preenchido pelo CEP. Você pode editar se necessário." style="{{ lockIconStyle }}">🔓</span></div></div>
+          <div style="flex:1 1 180px"><label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">Cidade</label><div style="position:relative"><input value="{{ bizCity }}" onInput="{{ onBizCity }}" style="{{ autoFieldStyle }}" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)"><span title="Preenchido pelo CEP. Você pode editar se necessário." style="{{ lockIconStyle }}">🔓</span></div></div>
+          <div style="flex:0 0 90px"><label style="font:600 12px 'Inter';color:var(--txt-2);display:block;margin-bottom:6px">UF</label><input value="{{ bizUf }}" onInput="{{ onBizUf }}" maxLength="2" placeholder="UF" style="width:100%;height:46px;padding:0 14px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none;text-transform:uppercase" style-focus="border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,162,74,.15)"></div>
+        </div>
+      </sc-if>
+
+      <!-- STEP 3 fotos -->
+      <sc-if value="{{ isStep3 }}">
+        <h2 style="font:800 24px 'Inter';letter-spacing:-.5px;margin:0 0 6px">Logo e foto de capa</h2>
+        <p style="font:400 14px 'Inter';color:var(--txt-2);margin:0 0 24px">Capriche — é a primeira coisa que o cliente vê. Você pode trocar depois.</p>
+
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:24px">
+          {{ logoBlock }}
+          <div style="font:400 13px/1.5 'Inter';color:var(--txt-2)">Formato quadrado, mínimo 400×400px.<br>PNG ou JPG até 5MB.</div>
+        </div>
+
+        {{ coverBlock }}
+        <label style="display:inline-block;margin-top:12px;font:600 13px 'Inter';color:var(--gold);cursor:pointer">ou clique para selecionar arquivo
+          <input type="file" accept="image/*" onChange="{{ onCoverFile }}" style="display:none">
+        </label>
+      </sc-if>
+
+      <!-- STEP 4 serviços -->
+      <sc-if value="{{ isStep4 }}">
+        <h2 style="font:800 24px 'Inter';letter-spacing:-.5px;margin:0 0 6px">Seus primeiros serviços</h2>
+        <p style="font:400 14px 'Inter';color:var(--txt-2);margin:0 0 22px">Sugerimos alguns comuns. Edite preço, duração, remova ou adicione os seus.</p>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+          {{ wizServicesEl }}
+          {{ addServiceForm }}
+        </div>
+        <sc-if value="{{ showAddSvcBtn }}"><button onClick="{{ onAddService }}" style="height:42px;padding:0 16px;background:var(--surface-2);border:1px dashed var(--line-2);border-radius:10px;color:var(--txt-2);font:600 13px 'Inter';cursor:pointer" style-hover="border-color:var(--gold);color:var(--gold)">＋ Adicionar serviço</button></sc-if>
+        <p style="font:400 12px 'Inter';color:var(--txt-3);margin:16px 0 0">Você adiciona mais serviços e categorias no painel depois.</p>
+      </sc-if>
+
+      <!-- STEP 5 horários -->
+      <sc-if value="{{ isStep5 }}">
+        <h2 style="font:800 24px 'Inter';letter-spacing:-.5px;margin:0 0 6px">Horário de funcionamento</h2>
+        <p style="font:400 14px 'Inter';color:var(--txt-2);margin:0 0 22px">Defina os dias e janelas de atendimento. Ajuste fino depois no painel.</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          {{ wizHoursEl }}
+        </div>
+        <button onClick="{{ onCopyHours }}" style="margin-top:14px;background:none;border:none;padding:0;font:600 13px 'Inter';color:var(--gold);cursor:pointer" style-hover="text-decoration:underline">↧ Aplicar estes horários para todos os dias abertos</button>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- DONE -->
+  <sc-if value="{{ isDone }}">
+    <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px">
+      <svg width="84" height="84" viewBox="0 0 84 84" style="margin-bottom:24px">
+        <circle cx="42" cy="42" r="32" fill="none" stroke="var(--gold)" stroke-width="4" stroke-dasharray="201" stroke-dashoffset="0" transform="rotate(-90 42 42)" style="animation:bvpRing .7s ease-out both"></circle>
+        <path d="M28 43 L38 53 L57 32" fill="none" stroke="var(--gold)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="48" stroke-dashoffset="0" style="animation:bvpCheck .4s .55s ease-out both"></path>
+      </svg>
+      <h1 style="font:800 32px 'Inter';letter-spacing:-.7px;margin:0 0 12px">Tudo pronto, {{ ownerFirst }}!</h1>
+      <p style="font:400 15px/1.55 'Inter';color:var(--txt-2);max-width:460px;margin:0 0 32px">Sua barbearia está configurada. Agora é hora de ver o painel e receber seus primeiros agendamentos.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:560px;margin-bottom:32px">
+        <a href="BarberVP Dashboard.dc.html" style="flex:1 1 230px;text-align:left;text-decoration:none;display:flex;align-items:center;gap:14px;padding:18px;background:var(--surface);border:1px solid var(--gold-soft);border-radius:14px;cursor:pointer" style-hover="border-color:var(--gold)">
+          <span style="width:40px;height:40px;border-radius:11px;background:rgba(212,162,74,.14);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🔗</span>
+          <span style="font:600 14px/1.4 'Inter';color:var(--txt)">Compartilhe seu link de agendamento com clientes</span>
+        </a>
+        <a href="BarberVP Dashboard.dc.html" style="flex:1 1 230px;text-align:left;text-decoration:none;display:flex;flex-direction:column;gap:4px;padding:18px;background:var(--surface);border:1px solid var(--gold-soft);border-radius:14px;cursor:pointer" style-hover="border-color:var(--gold)">
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="width:40px;height:40px;border-radius:11px;background:rgba(212,162,74,.14);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">👤</span>
+            <span style="font:600 14px/1.4 'Inter';color:var(--txt)">Adicione os barbeiros da sua equipe</span>
+          </div>
+          <span style="font:400 11.5px/1.4 'Inter';color:var(--txt-3);padding-left:54px">A quantidade de profissionais define sua faixa de plano.</span>
+        </a>
+      </div>
+      <a href="BarberVP Dashboard.dc.html" style="height:52px;padding:0 30px;display:inline-flex;align-items:center;background:var(--gold);border:none;border-radius:12px;color:#1a1408;font:700 15px 'Inter';cursor:pointer;text-decoration:none" style-hover="background:var(--gold-2)">Ir para o dashboard →</a>
+    </div>
+  </sc-if>
+
+  <!-- FOOTER NAV -->
+  <sc-if value="{{ showWizardNav }}">
+    <div style="position:fixed;bottom:0;left:0;right:0;background:var(--header);backdrop-filter:blur(10px);border-top:1px solid var(--line)">
+      <div style="max-width:720px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:12px">
+        <sc-if value="{{ showWizBack }}"><button onClick="{{ onWizBack }}" style="height:46px;padding:0 18px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;color:var(--txt-2);font:600 14px 'Inter';cursor:pointer" style-hover="color:var(--txt)">Voltar</button></sc-if>
+        <div style="flex:1"></div>
+        <sc-if value="{{ showWizSkip }}"><button onClick="{{ onWizNext }}" style="height:46px;padding:0 16px;background:none;border:none;color:var(--txt-3);font:600 14px 'Inter';cursor:pointer" style-hover="color:var(--txt-2)">Pular etapa</button></sc-if>
+        <button onClick="{{ onWizNext }}" style="{{ nextBtnStyle }}" style-hover="background:var(--gold-2)">{{ wizNextLabel }}</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;},&quot;palette&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Light SaaS&quot;,&quot;options&quot;:[&quot;Light SaaS&quot;,&quot;Creme + Dourado&quot;,&quot;Dark Leve&quot;,&quot;Branco + Acento&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tema&quot;,&quot;label&quot;:&quot;Paleta de cores&quot;}}">
+class Component extends DCLogic {
+  state = {
+    palette:null,
+    wizStep:0,
+    ownerFirst:'Rafael',
+    bizName:'Navalha de Ouro', bizPhone:'(11) 9 8123-4567', bizInsta:'navalhadeouro', bizDesc:'',
+    bizCity:'São Paulo',
+    bizCep:'', bizStreet:'', bizNumber:'', bizComp:'', bizNeighb:'', bizUf:'',
+    cepLoading:false, cepError:'', cepFound:false,
+    logoSrc:null, coverSrc:null, coverHover:false,
+    wizServices:[ {id:1,name:'Corte Masculino',dur:30,price:'50'},{id:2,name:'Barba Tradicional',dur:30,price:'40'},{id:3,name:'Corte + Barba',dur:60,price:'80'} ],
+    nextSvcId:4, adding:false, draftName:'', draftDur:30, draftPrice:'',
+    wizDays:{seg:true,ter:true,qua:true,qui:true,sex:true,sab:true,dom:false},
+    wizHours:{seg:['09:00','20:00'],ter:['09:00','20:00'],qua:['09:00','20:00'],qui:['09:00','20:00'],sex:['09:00','20:00'],sab:['09:00','18:00'],dom:['09:00','18:00']}
+  };
+
+  wizSteps=['1','2','3','4','5'];
+  wizNext(){ const s=this.state.wizStep;
+    if(s===5) this.setState({wizStep:'done'});
+    else if(typeof s==='number') this.setState({wizStep:s+1});
+    try{window.scrollTo(0,0);}catch(e){}
+  }
+  wizBack(){ const s=this.state.wizStep; if(typeof s==='number'&&s>0) this.setState({wizStep:s-1}); try{window.scrollTo(0,0);}catch(e){} }
+
+  fmtCep(v){ const d=String(v||'').replace(/\D/g,'').slice(0,8); return d.length>5 ? d.slice(0,5)+'-'+d.slice(5) : d; }
+  async lookupCep(){
+    const digits=String(this.state.bizCep||'').replace(/\D/g,'');
+    if(digits.length!==8){ this.setState({cepError:'Digite um CEP com 8 dígitos.',cepFound:false}); return; }
+    this.setState({cepLoading:true,cepError:'',cepFound:false});
+    try{
+      const res=await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data=await res.json();
+      if(data.erro){ this.setState({cepLoading:false,cepError:'CEP não encontrado.'}); return; }
+      this.setState({
+        cepLoading:false, cepError:'', cepFound:true,
+        bizStreet:data.logradouro||this.state.bizStreet,
+        bizNeighb:data.bairro||this.state.bizNeighb,
+        bizCity:data.localidade||this.state.bizCity,
+        bizUf:data.uf||this.state.bizUf,
+        bizComp:data.complemento||this.state.bizComp
+      });
+    }catch(e){ this.setState({cepLoading:false,cepError:'Não foi possível buscar o CEP. Preencha manualmente.'}); }
+  }
+
+  readImg(file,key){ if(!file)return; const r=new FileReader(); r.onload=()=>this.setState({[key]:r.result}); r.readAsDataURL(file); }
+
+  componentDidMount(){ this._propPal=this.props.palette; try{ const s=localStorage.getItem('bvp-palette'); if(s) this.setState({palette:s}); }catch(e){} }
+  componentDidUpdate(){ const cur=this.props.palette; if(cur!==this._propPal){ this._propPal=cur; if(cur) this.setState({palette:cur}); } if(this.state.palette && this.state.palette!==this._savedPal){ this._savedPal=this.state.palette; try{ localStorage.setItem('bvp-palette', this.state.palette); }catch(e){} } }
+
+  renderVals(){
+    const st=this.state;
+    const PALS={'Light SaaS':{bg:'#FAFAFA',bg2:'#F1F1F1',surface:'#FFFFFF',surface2:'#F4F4F4',surface3:'#EAEAEA',line:'#E7E7E7',line2:'#D8D8D8',txt:'#1A1A1A',txt2:'#5A5A5A',txt3:'#8C8C8C',gold:'#E8A33D',gold2:'#F2B65C',green:'#2F9E6B',header:'rgba(255,255,255,.82)'},'Creme + Dourado':{bg:'#F5EFE6',bg2:'#ECE3D5',surface:'#FBF7F0',surface2:'#F0E8DA',surface3:'#E7DCC9',line:'#E3D8C5',line2:'#D2C3AA',txt:'#2B2420',txt2:'#6B5F52',txt3:'#998C7B',gold:'#D4A574',gold2:'#E2BB90',green:'#6E8E5A',header:'rgba(245,239,230,.82)'},'Dark Leve':{bg:'#232B33',bg2:'#1E252C',surface:'#2A333C',surface2:'#313B45',surface3:'#3A4651',line:'#37424C',line2:'#4A5560',txt:'#EDF1F4',txt2:'#A9B5BF',txt3:'#7B8893',gold:'#D4A24A',gold2:'#ECC46B',green:'#7FB287',header:'rgba(30,37,44,.82)'},'Branco + Acento':{bg:'#FFFFFF',bg2:'#F4F6F8',surface:'#FFFFFF',surface2:'#F3F6F7',surface3:'#E9EDEF',line:'#E7EBED',line2:'#D3D9DD',txt:'#1A1A1A',txt2:'#54606A',txt3:'#8A949C',gold:'#E8A33D',gold2:'#F2B65C',green:'#2F9E6B',header:'rgba(255,255,255,.85)'}};
+    let _palKey=this.state.palette||this.props.palette||'Light SaaS'; if(!PALS[_palKey])_palKey='Light SaaS';
+    const _p=PALS[_palKey];
+    const goldSoft='rgba(212,162,74,.28)';
+    const paletteVars=`--bg:${_p.bg};--bg2:${_p.bg2};--surface:${_p.surface};--surface-2:${_p.surface2};--surface-3:${_p.surface3};--line:${_p.line};--line-2:${_p.line2};--txt:${_p.txt};--txt-2:${_p.txt2};--txt-3:${_p.txt3};--gold:${_p.gold};--gold-2:${_p.gold2};--green:${_p.green};--gold-soft:${goldSoft};--header:${_p.header};`;
+    try{ document.body.style.background=_p.bg; }catch(e){}
+
+    const R=React.createElement;
+    const s=st.wizStep;
+    const isWelcome=s===0, isStep1=s===1, isStep2=s===2, isStep3=s===3, isStep4=s===4, isStep5=s===5, isDone=s==='done';
+    const isWizard = typeof s==='number' && s>=1 && s<=5;
+    const showChrome = isWizard;
+    const stepNum = typeof s==='number'?s:6;
+    const wizardDots=this.wizSteps.map((d,i)=>R('div',{key:i, style:{flex:1,height:'4px',borderRadius:'999px',background:(stepNum>=i+1)?'var(--gold)':'var(--surface-3)'}}));
+    const headers={1:'Configurar barbearia · 1 de 5',2:'Configurar barbearia · 2 de 5',3:'Configurar barbearia · 3 de 5',4:'Configurar barbearia · 4 de 5',5:'Configurar barbearia · 5 de 5'};
+
+    // welcome bullets
+    const BL=[['🔒','Seus dados de acesso já estão salvos'],['🎁','7 dias grátis, sem cartão de crédito'],['⚙️','Você pode editar tudo depois no painel']];
+    const welcomeBullets=BL.map(([ic,tx],i)=>R('div',{key:i,style:{display:'flex',alignItems:'center',gap:'10px',padding:'12px 16px',background:'var(--surface)',border:'1px solid var(--line)',borderRadius:'12px',flex:'1 1 180px'}},
+      R('span',{style:{width:'22px',height:'22px',borderRadius:'50%',background:'rgba(212,162,74,.16)',color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',flexShrink:0}},'✓'),
+      R('span',{style:{font:"500 13px/1.35 'Inter'",color:'var(--txt-2)',textAlign:'left'}},tx)));
+
+    // CEP
+    const cepBusy=st.cepLoading;
+    const cepBtnStyle=`flex:0 0 auto;height:46px;padding:0 20px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt-2);font:600 14px 'Inter';cursor:${cepBusy?'default':'pointer'};opacity:${cepBusy?'.6':'1'}`;
+    const cepBtnLabel=cepBusy?'Buscando…':'Buscar CEP';
+    const onCepSearch=()=>{ if(!cepBusy) this.lookupCep(); };
+    const onCepKey=e=>{ if(e.key==='Enter'){ e.preventDefault(); onCepSearch(); } };
+    const autoBg = st.cepFound ? 'var(--surface-3)' : 'var(--surface-2)';
+    const autoFieldStyle=`width:100%;height:46px;padding:0 38px 0 14px;background:${autoBg};border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font:500 14px 'Inter';outline:none`;
+    const lockIconStyle=`position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;opacity:${st.cepFound?'.55':'0'};pointer-events:none;transition:opacity .2s`;
+
+    // STEP 3 logo + cover
+    let logoBlock;
+    if(st.logoSrc){
+      logoBlock=R('div',{style:{position:'relative',width:'110px',height:'110px',flexShrink:0}},
+        R('img',{src:st.logoSrc,style:{width:'110px',height:'110px',borderRadius:'20px',objectFit:'cover',display:'block'}}),
+        R('button',{onClick:()=>this.setState({logoSrc:null}),style:{position:'absolute',top:'-8px',right:'-8px',width:'26px',height:'26px',borderRadius:'50%',background:'var(--surface)',border:'1px solid var(--line-2)',color:'var(--txt-2)',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.18)'}},'✕'));
+    } else {
+      logoBlock=R('label',{style:{width:'110px',height:'110px',borderRadius:'20px',border:'1px dashed var(--line-2)',background:'var(--surface-2)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'6px',cursor:'pointer',flexShrink:0}},
+        R('span',{style:{fontSize:'22px',color:'var(--txt-3)'}},'＋'),
+        R('span',{style:{font:"500 11px 'Inter'",color:'var(--txt-3)'}},'Logo'),
+        R('input',{type:'file',accept:'image/*',onChange:e=>this.readImg(e.target.files&&e.target.files[0],'logoSrc'),style:{display:'none'}}));
+    }
+    let coverBlock;
+    if(st.coverSrc){
+      coverBlock=R('label',{style:{position:'relative',display:'block',height:'170px',borderRadius:'16px',overflow:'hidden',cursor:'pointer'}},
+        R('img',{src:st.coverSrc,style:{width:'100%',height:'100%',objectFit:'cover',display:'block'}}),
+        R('div',{style:{position:'absolute',inset:0,background:'rgba(0,0,0,.42)',display:'flex',alignItems:'center',justifyContent:'center'}},
+          R('span',{style:{padding:'10px 18px',background:'rgba(0,0,0,.55)',border:'1px solid rgba(255,255,255,.4)',borderRadius:'10px',color:'#fff',font:"600 13px 'Inter'"}},'Trocar foto')),
+        R('input',{type:'file',accept:'image/*',onChange:e=>this.readImg(e.target.files&&e.target.files[0],'coverSrc'),style:{display:'none'}}));
+    } else {
+      coverBlock=R('label',{
+        onDragOver:e=>{e.preventDefault();if(!st.coverHover)this.setState({coverHover:true});},
+        onDragLeave:e=>{e.preventDefault();this.setState({coverHover:false});},
+        onDrop:e=>{e.preventDefault();this.setState({coverHover:false});this.readImg(e.dataTransfer.files&&e.dataTransfer.files[0],'coverSrc');},
+        style:{height:'170px',borderRadius:'16px',border:'1px dashed '+(st.coverHover?'var(--gold)':'var(--line-2)'),background:st.coverHover?'var(--surface-3)':'var(--surface-2)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'8px',cursor:'pointer',transition:'all .15s'}},
+        R('span',{style:{fontSize:'26px',color:st.coverHover?'var(--gold)':'var(--txt-3)'}},'⤓'),
+        R('span',{style:{font:"600 13px 'Inter'",color:'var(--txt-2)'}},'Arraste a foto de capa aqui'),
+        R('span',{style:{font:"500 11.5px 'Inter'",color:'var(--txt-3)'}},'recomendado 1600×600px'),
+        R('input',{type:'file',accept:'image/*',onChange:e=>this.readImg(e.target.files&&e.target.files[0],'coverSrc'),style:{display:'none'}}));
+    }
+
+    // STEP 4 services
+    const DURS=[15,30,45,60,90];
+    const inputStyle={background:'var(--surface-2)',border:'1px solid var(--line-2)',borderRadius:'9px',height:'38px',padding:'0 10px',color:'var(--txt)',font:"600 14px 'Inter'",outline:'none'};
+    const wizServicesEl=st.wizServices.map(sv=>R('div',{key:sv.id, style:{display:'flex',alignItems:'center',gap:'10px',padding:'11px 14px',border:'1px solid var(--line)',borderRadius:'12px',background:'var(--surface)',flexWrap:'wrap'}},
+      R('input',{value:sv.name, onChange:e=>{const v=e.target.value;this.setState({wizServices:st.wizServices.map(x=>x.id===sv.id?{...x,name:v}:x)});}, style:{flex:'1 1 140px',minWidth:'120px',background:'transparent',border:'1px solid transparent',borderRadius:'8px',height:'34px',padding:'0 8px',color:'var(--txt)',font:"600 14px 'Inter'",outline:'none'}, onFocus:e=>{e.target.style.borderColor='var(--gold)';e.target.style.background='var(--surface-2)';}, onBlur:e=>{e.target.style.borderColor='transparent';e.target.style.background='transparent';}}),
+      R('select',{value:sv.dur, onChange:e=>{const v=+e.target.value;this.setState({wizServices:st.wizServices.map(x=>x.id===sv.id?{...x,dur:v}:x)});}, style:{...inputStyle,cursor:'pointer'}}, DURS.map(d=>R('option',{key:d,value:d},d+' min'))),
+      R('div',{style:{display:'flex',alignItems:'center',gap:'4px',background:'var(--surface-2)',border:'1px solid var(--line-2)',borderRadius:'9px',padding:'0 10px',height:'38px'}},
+        R('span',{style:{fontWeight:500,fontSize:'13px',fontFamily:'Inter',color:'var(--txt-3)'}},'R$'),
+        R('input',{value:sv.price, onChange:e=>{const v=e.target.value.replace(/[^0-9]/g,'');this.setState({wizServices:st.wizServices.map(x=>x.id===sv.id?{...x,price:v}:x)});}, style:{width:'48px',background:'none',border:'none',outline:'none',color:'var(--txt)',fontWeight:600,fontSize:'14px',fontFamily:'Inter',textAlign:'right'}})),
+      R('button',{onClick:()=>this.setState({wizServices:st.wizServices.filter(x=>x.id!==sv.id)}), style:{width:'34px',height:'34px',borderRadius:'8px',background:'var(--surface-2)',border:'1px solid var(--line)',color:'var(--txt-3)',cursor:'pointer'}}, '✕')));
+
+    let addServiceForm=null;
+    if(st.adding){
+      addServiceForm=R('div',{style:{display:'flex',alignItems:'center',gap:'10px',padding:'11px 14px',border:'1px solid var(--gold)',borderRadius:'12px',background:'var(--surface)',flexWrap:'wrap',animation:'bvpFade .2s'}},
+        R('input',{autoFocus:true,value:st.draftName,placeholder:'Nome do serviço',onChange:e=>this.setState({draftName:e.target.value}),style:{flex:'1 1 140px',minWidth:'120px',background:'var(--surface-2)',border:'1px solid var(--line-2)',borderRadius:'8px',height:'38px',padding:'0 10px',color:'var(--txt)',font:"600 14px 'Inter'",outline:'none'}}),
+        R('select',{value:st.draftDur,onChange:e=>this.setState({draftDur:+e.target.value}),style:{...inputStyle,cursor:'pointer'}},DURS.map(d=>R('option',{key:d,value:d},d+' min'))),
+        R('div',{style:{display:'flex',alignItems:'center',gap:'4px',background:'var(--surface-2)',border:'1px solid var(--line-2)',borderRadius:'9px',padding:'0 10px',height:'38px'}},
+          R('span',{style:{fontWeight:500,fontSize:'13px',color:'var(--txt-3)'}},'R$'),
+          R('input',{value:st.draftPrice,placeholder:'0',onChange:e=>this.setState({draftPrice:e.target.value.replace(/[^0-9]/g,'')}),style:{width:'48px',background:'none',border:'none',outline:'none',color:'var(--txt)',fontWeight:600,fontSize:'14px',textAlign:'right'}})),
+        R('button',{onClick:()=>{const nm=st.draftName.trim();if(!nm)return;this.setState({wizServices:[...st.wizServices,{id:st.nextSvcId,name:nm,dur:st.draftDur,price:st.draftPrice||'0'}],nextSvcId:st.nextSvcId+1,adding:false,draftName:'',draftDur:30,draftPrice:''});},style:{height:'38px',padding:'0 14px',background:'var(--gold)',border:'none',borderRadius:'9px',color:'#1a1408',font:"700 13px 'Inter'",cursor:'pointer'}},'✓ Salvar'),
+        R('button',{onClick:()=>this.setState({adding:false,draftName:'',draftDur:30,draftPrice:''}),style:{height:'38px',padding:'0 12px',background:'none',border:'none',color:'var(--txt-3)',font:"600 13px 'Inter'",cursor:'pointer'}},'Cancelar'));
+    }
+
+    // STEP 5 hours
+    const DAYS=[['seg','Segunda'],['ter','Terça'],['qua','Quarta'],['qui','Quinta'],['sex','Sexta'],['sab','Sábado'],['dom','Domingo']];
+    const TIMES=[]; for(let h=6;h<=23;h++){ for(const m of ['00','30']){ TIMES.push(String(h).padStart(2,'0')+':'+m); } } TIMES.push('00:00');
+    const mkTimeSelect=(k,idx,val)=>R('select',{value:val,
+      onChange:e=>{ const cur=st.wizHours[k].slice(); cur[idx]=e.target.value; this.setState({wizHours:{...st.wizHours,[k]:cur}}); },
+      style:{height:'36px',padding:'0 8px',borderRadius:'8px',background:'var(--surface-2)',border:'1px solid var(--line-2)',color:'var(--txt)',font:"600 13px 'Inter'",cursor:'pointer',outline:'none'}},
+      TIMES.map(t=>R('option',{key:t,value:t},t)));
+    const wizHoursEl=DAYS.map(([k,label])=>{ const on=st.wizDays[k]; const hrs=st.wizHours[k]||['09:00','20:00'];
+      return R('div',{key:k, style:{display:'flex',alignItems:'center',gap:'14px',padding:'11px 14px',border:'1px solid var(--line)',borderRadius:'11px',background:'var(--surface)',flexWrap:'wrap'}},
+        R('button',{onClick:()=>this.setState({wizDays:{...st.wizDays,[k]:!on}}), style:{width:'42px',height:'24px',borderRadius:'999px',border:'none',cursor:'pointer',position:'relative',flexShrink:0,background:on?'var(--gold)':'var(--surface-3)'}},
+          R('span',{style:{position:'absolute',top:'3px',left:on?'21px':'3px',width:'18px',height:'18px',borderRadius:'50%',background:on?'#1a1408':'var(--txt-3)',transition:'left .15s'}})),
+        R('span',{style:{fontWeight:600,fontSize:'14px',fontFamily:'Inter',width:'100px'}}, label),
+        R('div',{style:{flex:1}}),
+        on
+          ? R('div',{style:{display:'flex',alignItems:'center',gap:'8px'}}, mkTimeSelect(k,0,hrs[0]), R('span',{style:{color:'var(--txt-3)',fontSize:'13px'}},'às'), mkTimeSelect(k,1,hrs[1]))
+          : R('span',{style:{fontWeight:500,fontSize:'13px',fontFamily:'Inter',color:'var(--txt-3)'}},'Fechado')); });
+    const onCopyHours=()=>{ const ref=st.wizHours.seg||['09:00','20:00']; const nh={...st.wizHours}; DAYS.forEach(([k])=>{ if(st.wizDays[k]) nh[k]=ref.slice(); }); this.setState({wizHours:nh}); };
+
+    let wizNextLabel='Continuar';
+    if(isStep5) wizNextLabel='Abrir meu painel →';
+    const nextBtnStyle=`height:46px;padding:0 ${isStep5?'30':'26'}px;background:var(--gold);border:none;border-radius:10px;color:#1a1408;font:700 ${isStep5?'15':'14'}px 'Inter';cursor:pointer`;
+
+    return {
+      paletteVars,
+      wizardHeader:headers[s]||'', wizardDots,
+      isWelcome, isWizard, showChrome, ownerFirst:st.ownerFirst, welcomeBullets,
+      isStep1, isStep2, isStep3, isStep4, isStep5, isDone,
+      bizName:st.bizName, bizPhone:st.bizPhone, bizInsta:st.bizInsta, bizDesc:st.bizDesc, descCount:(st.bizDesc||'').length,
+      bizCep:st.bizCep, bizStreet:st.bizStreet, bizNumber:st.bizNumber, bizComp:st.bizComp, bizNeighb:st.bizNeighb, bizCity:st.bizCity, bizUf:st.bizUf,
+      cepError:st.cepError, cepFound:st.cepFound, cepBtnStyle, cepBtnLabel, cepBtnDisabled:cepBusy, onCepSearch, onCepKey,
+      autoFieldStyle, lockIconStyle,
+      onBizCep:e=>this.setState({bizCep:this.fmtCep(e.target.value),cepError:''}),
+      onBizStreet:e=>this.setState({bizStreet:e.target.value}), onBizNumber:e=>this.setState({bizNumber:e.target.value}),
+      onBizComp:e=>this.setState({bizComp:e.target.value}), onBizNeighb:e=>this.setState({bizNeighb:e.target.value}),
+      onBizUf:e=>this.setState({bizUf:e.target.value.toUpperCase().slice(0,2)}),
+      onBizName:e=>this.setState({bizName:e.target.value}), onBizPhone:e=>this.setState({bizPhone:e.target.value}),
+      onBizInsta:e=>this.setState({bizInsta:e.target.value.replace(/[^a-zA-Z0-9._]/g,'')}),
+      onBizCity:e=>this.setState({bizCity:e.target.value}), onBizDesc:e=>this.setState({bizDesc:e.target.value.slice(0,200)}),
+      logoBlock, coverBlock, onCoverFile:e=>this.readImg(e.target.files&&e.target.files[0],'coverSrc'),
+      wizServicesEl, addServiceForm, showAddSvcBtn:!st.adding, onAddService:()=>this.setState({adding:true}),
+      wizHoursEl, onCopyHours,
+      showWizardNav: isWizard, showWizBack: typeof s==='number' && s>1, showWizSkip: isStep3,
+      onWizBack:()=>this.wizBack(), onWizNext:()=>this.wizNext(), wizNextLabel, nextBtnStyle
+    };
+  }
+}
+</script>
+</body>
+</html>

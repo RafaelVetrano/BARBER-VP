@@ -1,0 +1,18 @@
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+.git
+.gitignore
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+BARBER VP
+agentes
+README.md
+Makefile
+docker-compose*.yml
+**/Dockerfile*
+.dockerignore
