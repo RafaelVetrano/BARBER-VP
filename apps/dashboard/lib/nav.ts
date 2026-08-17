@@ -36,7 +36,7 @@ export const NAV_DEFS: NavDef[] = [
     key: 'comissoes',
     label: 'Comissões',
     href: '/comissoes',
-    ready: false,
+    ready: true,
   },
   { key: 'fidelidade', label: 'Fidelidade', href: '/fidelidade', ready: false },
   { key: 'whatsapp', label: 'WhatsApp', href: '/whatsapp', ready: false, roles: ['OWNER', 'MANAGER'] },
