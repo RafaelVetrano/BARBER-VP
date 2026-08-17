@@ -51,7 +51,7 @@ export const NAV_DEFS: NavDef[] = [
     key: 'relatorios',
     label: 'Relatórios',
     href: '/relatorios',
-    ready: false,
+    ready: true,
     roles: ['OWNER', 'MANAGER'],
   },
   {
