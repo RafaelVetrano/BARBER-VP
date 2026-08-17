@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button, CheckIcon, LockIcon, Modal } from '@barbervp/ui';
+import { Button, LockIcon } from '@barbervp/ui';
+import { UpgradeModal } from './upgrade-modal';
 
 export interface FeatureLockedProps {
   title: string;
@@ -14,11 +14,10 @@ export interface FeatureLockedProps {
 
 /**
  * Upsell discreto quando um recurso está fora do plano — NUNCA some o botão
- * sem explicação (`SPEC.md`/enunciado da fase 07): mostra o motivo na hora
- * e um CTA claro para o upgrade, no padrão `openUpgradeModal` do protótipo.
+ * sem explicação (enunciado da fase 07): mostra o motivo na hora e um CTA
+ * claro para o upgrade, no padrão `openUpgradeModal` do protótipo.
  */
 export function FeatureLocked({ title, description, benefits, minPlanLabel }: FeatureLockedProps) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
@@ -32,33 +31,7 @@ export function FeatureLocked({ title, description, benefits, minPlanLabel }: Fe
         Ver benefícios do plano {minPlanLabel}
       </Button>
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={`Disponível no plano ${minPlanLabel}`}
-        footer={
-          <div className="flex w-full gap-2">
-            <Button variant="outline" fullWidth onClick={() => setOpen(false)}>
-              Agora não
-            </Button>
-            <Button fullWidth onClick={() => router.push('/configuracoes?tab=plano')}>
-              Fazer upgrade
-            </Button>
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-fg-muted">{description}</p>
-          <ul className="flex flex-col gap-2">
-            {benefits.map((benefit) => (
-              <li key={benefit} className="flex items-start gap-2 text-sm text-fg">
-                <CheckIcon size={16} className="mt-0.5 shrink-0 text-success" />
-                {benefit}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Modal>
+      <UpgradeModal open={open} onClose={() => setOpen(false)} minPlanLabel={minPlanLabel} description={description} benefits={benefits} />
     </div>
   );
 }
