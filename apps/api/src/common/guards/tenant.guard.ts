@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { TenantStatus } from '@prisma/client';
 import { TENANT_HEADER } from '@barbervp/types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiException } from '../errors/api.exception';
@@ -69,10 +70,17 @@ export class TenantGuard implements CanActivate {
     if (principal?.activeTenantId) {
       const tenant = await this.prisma.tenant.findFirst({
         where: { id: principal.activeTenantId, deletedAt: null },
-        select: { id: true, slug: true },
+        select: { id: true, slug: true, status: true },
       });
       if (tenant) {
-        return { ...tenant, source: 'jwt' };
+        // Backstop da suspensão (fase 08): pega o caso de um token emitido
+        // ANTES de o super admin suspender — sem isto, a sessão continuaria
+        // válida por até 15min (a duração do access token) depois da
+        // suspensão. `SUPER_ADMIN` atravessa (é ele quem suspende/reativa).
+        if (tenant.status === TenantStatus.SUSPENDED && !principal.isSuperAdmin) {
+          throw ApiException.tenantSuspended();
+        }
+        return { id: tenant.id, slug: tenant.slug, source: 'jwt' };
       }
     }
 

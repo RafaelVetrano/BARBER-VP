@@ -50,6 +50,9 @@ export interface AppConfig {
     mail: Env['MAIL_DRIVER'];
     aiAssistant: Env['AI_ASSISTANT_DRIVER'];
   };
+  billing: {
+    maxFailedAttempts: number;
+  };
 }
 
 const stripTrailingSlash = (url: string): string => url.replace(/\/+$/, '');
@@ -105,6 +108,9 @@ export function buildConfig(env: Env): AppConfig {
       payment: env.PAYMENT_DRIVER,
       mail: env.MAIL_DRIVER,
       aiAssistant: env.AI_ASSISTANT_DRIVER,
+    },
+    billing: {
+      maxFailedAttempts: env.BILLING_MAX_FAILED_ATTEMPTS,
     },
   };
 }

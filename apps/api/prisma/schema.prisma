@@ -315,6 +315,9 @@ model TenantSubscription {
   currentPeriodStart DateTime           @db.Timestamptz(3)
   currentPeriodEnd   DateTime           @db.Timestamptz(3)
   canceledAt         DateTime?          @db.Timestamptz(3)
+  /// Cobranças SEGUIDAS recusadas (fase 08) — zera a cada aprovação, dispara
+  /// suspensão automática do tenant ao bater `BILLING_MAX_FAILED_ATTEMPTS`.
+  failedAttempts     Int                @default(0)
   /// Id no gateway (Asaas) — `null` enquanto o driver for mock.
   externalId         String?
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
@@ -337,6 +340,10 @@ model SaasInvoice {
   subscriptionId String
   amountCents    Int
   status         SaasInvoiceStatus @default(PAID)
+  /// Id da cobrança no `PaymentAdapter` (fase 08 — ciclo de billing via
+  /// `PAYMENT_ADAPTER`) — `null` nas faturas antigas da fase 07, que nunca
+  /// passaram pelo adapter (mudança direta de plano aprova na hora).
+  externalId     String?
   issuedAt       DateTime          @default(now()) @db.Timestamptz(3)
   paidAt         DateTime?         @db.Timestamptz(3)
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)

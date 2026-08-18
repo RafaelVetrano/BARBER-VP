@@ -18,6 +18,9 @@ export const ErrorCode = {
   PLAN_LIMIT_REACHED: 'PLAN_LIMIT_REACHED',
   ACCOUNT_NOT_VERIFIED: 'ACCOUNT_NOT_VERIFIED',
   ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
+  /// Tenant suspenso pelo super admin (fase 08) — distinto de `ACCOUNT_DISABLED`
+  /// (que é sobre o `User`, não sobre a barbearia).
+  TENANT_SUSPENDED: 'TENANT_SUSPENDED',
   // 404 / 409
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',

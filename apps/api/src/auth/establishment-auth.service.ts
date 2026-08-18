@@ -372,11 +372,14 @@ export class EstablishmentAuthService {
   ): Promise<IssuedAuth> {
     const membership = await this.prisma.membership.findFirst({
       where: { userId: principal.id, tenantId, active: true, tenant: { deletedAt: null } },
-      select: { id: true },
+      select: { id: true, tenant: { select: { status: true } } },
     });
 
     if (!membership && !principal.isSuperAdmin) {
       throw ApiException.tenantMismatch();
+    }
+    if (membership?.tenant.status === TenantStatus.SUSPENDED && !principal.isSuperAdmin) {
+      throw ApiException.tenantSuspended();
     }
 
     // A troca de contexto rotaciona o refresh junto: a sessão inteira passa a
@@ -752,6 +755,13 @@ export class EstablishmentAuthService {
    * respeita o `tenantId` pedido e, na falta dele, devolve `null` para a app
    * mostrar o seletor de contexto.
    */
+  /**
+   * Suspensão bloqueia login NAQUELE tenant (fase 08 — `Tenant.status =
+   * SUSPENDED` pelo super admin): pedido explícito de um tenant suspenso, ou
+   * o único tenant do usuário estar suspenso, vira 403 `TENANT_SUSPENDED`
+   * aqui mesmo — antes de emitir qualquer token, não depois. `SUPER_ADMIN`
+   * atravessa (é ele quem administra a suspensão).
+   */
   private pickTenant(user: UserWithMemberships, requested?: string): string | null {
     const ids = user.memberships.map((membership) => membership.tenant.id);
 
@@ -759,10 +769,20 @@ export class EstablishmentAuthService {
       if (!ids.includes(requested) && !user.isSuperAdmin) {
         throw ApiException.tenantMismatch();
       }
+      const membership = user.memberships.find((item) => item.tenant.id === requested);
+      if (membership?.tenant.status === TenantStatus.SUSPENDED && !user.isSuperAdmin) {
+        throw ApiException.tenantSuspended();
+      }
       return requested;
     }
 
-    return ids.length === 1 ? ids[0]! : null;
+    if (ids.length !== 1) {
+      return null;
+    }
+    if (user.memberships[0]!.tenant.status === TenantStatus.SUSPENDED) {
+      throw ApiException.tenantSuspended();
+    }
+    return ids[0]!;
   }
 
   private invalidCredentials(): ApiException {

@@ -75,6 +75,9 @@ export const envSchema = z.object({
   MAIL_DRIVER: z.enum(['mock']).default('mock'),
   /** Provedor de LLM do Assistente IA ("Navalha") — só `mock` nesta fase (SPEC → fora de escopo). */
   AI_ASSISTANT_DRIVER: z.enum(['mock']).default('mock'),
+
+  /** Cobranças recusadas SEGUIDAS até o super admin suspender o tenant automaticamente (fase 08). */
+  BILLING_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(3),
 });
 
 /** Todas as chaves de ambiente conhecidas — derivadas do próprio schema. */

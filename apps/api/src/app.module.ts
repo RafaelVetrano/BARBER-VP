@@ -26,6 +26,7 @@ import { WhatsappConfigModule } from './whatsapp-config/whatsapp-config.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
+import { AdminModule } from './admin/admin.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -68,6 +69,7 @@ import { FeatureGuard } from './common/guards/feature.guard';
     AssistantModule,
     ReportsModule,
     SettingsModule,
+    AdminModule,
   ],
   providers: [
     {

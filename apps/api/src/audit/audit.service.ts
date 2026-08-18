@@ -91,6 +91,19 @@ export const AuditAction = {
   PLAN_CHANGED: 'settings.plan_changed',
   PREFERENCES_UPDATED: 'settings.preferences_updated',
   MY_PAGE_UPDATED: 'settings.my_page_updated',
+  // Fase 08 — super admin.
+  ADMIN_PLAN_UPSERTED: 'admin.plan_upserted',
+  ADMIN_PLAN_ARCHIVED: 'admin.plan_archived',
+  ADMIN_TENANT_SUSPENDED: 'admin.tenant_suspended',
+  ADMIN_TENANT_REACTIVATED: 'admin.tenant_reactivated',
+  ADMIN_TENANT_PLAN_CHANGED: 'admin.tenant_plan_changed',
+  /// Ação mais sensível do projeto — auditoria "pesada" de propósito: quem
+  /// impersonou, qual tenant, qual OWNER alvo, sempre com IP/user-agent
+  /// (o `AuditService.record` já grava os dois em toda entrada).
+  ADMIN_TENANT_IMPERSONATED: 'admin.tenant_impersonated',
+  ADMIN_BILLING_CYCLE_RUN: 'admin.billing_cycle_run',
+  ADMIN_INVOICE_APPROVED: 'admin.invoice_approved',
+  ADMIN_INVOICE_REJECTED: 'admin.invoice_rejected',
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

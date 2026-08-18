@@ -51,6 +51,13 @@ export class ApiException extends HttpException {
     });
   }
 
+  static tenantSuspended(): ApiException {
+    return new ApiException(HttpStatus.FORBIDDEN, {
+      code: ErrorCode.TENANT_SUSPENDED,
+      message: 'Esta barbearia está suspensa. Fale com o suporte do BarberVP.',
+    });
+  }
+
   static featureNotInPlan(feature: string): ApiException {
     return new ApiException(HttpStatus.FORBIDDEN, {
       code: ErrorCode.FEATURE_NOT_IN_PLAN,
