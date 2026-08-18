@@ -1,7 +1,8 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-17 — fase 07 (Dashboard II) concluída:
-backend + front-end das 9 telas, testado e commitado.
+Atualizado por último: 2026-08-17 — fase 08 (Super Admin) concluída:
+`apps/admin` completo (planos/tenants/billing/métricas), impersonação
+OWNER↔SUPER_ADMIN, testado e commitado.
 
 ## Status das fases
 
@@ -14,7 +15,7 @@ backend + front-end das 9 telas, testado e commitado.
 | 05 | Área do cliente | ✅ |
 | 06 | Dashboard I | ✅ |
 | 07 | Dashboard II | ✅ |
-| 08 | Super Admin | ⬜ |
+| 08 | Super Admin | ✅ |
 | 09 | Integrações & Hardening (GATE) | ⬜ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
@@ -295,6 +296,26 @@ atrás de `calculadoraPreco` (Avançado); o resto liberado em todo plano.
 | POST | `/settings/price-calculator` | Puro cálculo, sem persistência. |
 | GET \| PATCH | `/my-page` | Slug (valida com `SlugService`, mesma trava de reservados do onboarding), sobre, Instagram, endereço, toggles. |
 | POST \| DELETE | `/my-page/photos(/:id)` | Galeria — URL simples, mesma convenção de `logoUrl`/`coverUrl` (sem upload real). |
+
+### Super Admin (`/api/v1/admin`) — fase 08
+
+`@Roles('SUPER_ADMIN')` + `@TenantOptional()` em todo controller — nenhuma
+rota daqui pertence a um tenant, `RolesGuard` deixa passar pelo bypass
+`isSuperAdmin` mesmo sem `Membership` nenhum.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET \| POST | `/admin/plans` | Lista/cria `SaasPlan`; `POST` rejeita `features` com chave fora de `FEATURE_KEYS` (400). |
+| PATCH | `/admin/plans/:id` \| `/:id/archive` | Edita; arquivar não afeta tenants já assinantes. |
+| GET | `/admin/tenants` | Busca/paginação + uso agregado (barbeiros, agendamentos do mês) via 2 `groupBy`, sem N+1. |
+| GET | `/admin/tenants/:id` | Detalhe com `Membership[]`, plano, métricas. |
+| PATCH | `/admin/tenants/:id/suspend` \| `/reactivate` | Suspender bloqueia login de TODOS os `Membership` do tenant na hora (ver decisões). |
+| PATCH | `/admin/tenants/:id/plan` | Troca manual de plano — reflete no `FeatureGuard` na PRÓXIMA requisição, sem precisar de novo login. |
+| POST | `/admin/tenants/:id/impersonate` | Sessão real de OWNER (sem cookie de refresh), `AuditLog` pesado. 409 se o tenant está suspenso. |
+| GET | `/admin/billing/invoices` | Lista `SaasInvoice` paginado. |
+| POST | `/admin/billing/run-cycle` | Gera fatura `PENDING` pra cada tenant com `currentPeriodEnd` vencido (gateway mock). |
+| POST | `/admin/billing/invoices/:id/approve` \| `/reject` | Aprovar avança o mock em DOIS passos (`CONFIRMED`→`RECEIVED`); recusar soma `failedAttempts` e suspende automaticamente ao atingir `BILLING_MAX_FAILED_ATTEMPTS` (env, padrão 3). |
+| GET | `/admin/metrics` | MRR, tenants por plano, novos tenants do mês, churn do mês. |
 
 ## O que a fase 01 entregou
 
@@ -580,7 +601,7 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   unit + 78 e2e + 36 isolamento, todos verdes.
 - **Sem dependência nova.**
 
-## O que a fase 07 entregou (backend — front-end ainda pendente)
+## O que a fase 07 entregou
 
 - **Quase todo o modelo de dados desta fase já existia desde a migration
   inicial da fase 01** (`Order`/`OrderItem`/`Payment`, `CommissionRule`/
@@ -709,6 +730,85 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   `next dev`. **Sem captura de tela** — mesmo padrão de verificação da fase
   06 (ver dívida "verificação visual" abaixo).
 
+## O que a fase 08 entregou
+
+- **Sem `.dc.html` de referência nesta fase** — fidelidade foi ao design
+  SYSTEM (`packages/ui`: `AppShell`, `Drawer`, `ResponsiveTable`, `Card`,
+  `StatCard`, `Badge`, `Tabs`), não a um layout de protótipo específico. As 4
+  telas (`/tenants`, `/planos`, `/billing`, `/metricas`) seguem a mesma
+  gramática visual das telas de `apps/dashboard`.
+- **Schema**: `TenantSubscription.failedAttempts Int @default(0)` (contador
+  de recusa de cobrança pro auto-suspend) e `SaasInvoice.externalId
+  String?` (referência ao `PAYMENT_ADAPTER` mock). Migration à mão
+  `20260818000000_super_admin`, mesmo motivo de sempre (auto-diff quebra a
+  coluna gerada `Appointment.timeRange`).
+- **`packages/types/src/admin.ts`** (novo): todos os contratos do super
+  admin — `AdminPlanItem`, `AdminTenantListItem`/`Detail`, `ImpersonateResultDto`,
+  `AdminInvoiceItem`, `AdminMetricsResponse`, etc.
+- **`TENANT_SUSPENDED`** — código de erro novo (`packages/types/src/errors.ts`)
+  e `ApiException.tenantSuspended()`. Enforçado em TRÊS pontos, porque
+  suspender precisa bloquear tanto quem ainda não tem token quanto quem já
+  tem um válido: `EstablishmentAuthService.pickTenant()` (login novo, com ou
+  sem `tenantId` explícito), `.switchContext()` (troca de contexto de quem já
+  está logado em outra barbearia do mesmo usuário) e `TenantGuard.resolveTenant()`
+  (token JÁ emitido antes da suspensão — backstop pra sessão não sobreviver
+  até expirar sozinha).
+- **Módulo novo** (`apps/api/src/admin/`): `plans/`, `tenants/`, `billing/`,
+  `metrics/` — cada um com seu `.service.ts`/`.controller.ts`, registrados em
+  `admin.module.ts` (importa `AuthModule` só por causa de
+  `EstablishmentAuthService`, reusado pela impersonação).
+- **Impersonação reusa `EstablishmentAuthService.issueSessionForUser()`** —
+  o MESMO método que a fase 06 já usa pra logar o convite de funcionário
+  aceito direto. Devolve `{ session, refreshToken, refreshExpiresAt }`; a
+  impersonação expõe só `session` (que carrega o `accessToken` de vida
+  curta) e DESCARTA `refreshToken` deliberadamente — sessão de impersonação
+  nunca deveria sobreviver a um refresh, só ao tempo do token.
+- **Hand-off entre origens** (`apps/admin` :3003 → `apps/dashboard` :3002,
+  sem cookie compartilhado): query string pro que não é sensível
+  (`?tenant=&slug=`) + FRAGMENTO da URL (`#token=`) pro `accessToken` — nunca
+  vai pra log de servidor nem `Referer`. `apps/dashboard/app/impersonar/page.tsx`
+  lê o fragmento no client, chama `/auth/me` com um `createApiClient()`
+  AVULSO (não o client do provider — evitar corrida com o refresh silencioso
+  que o `EstablishmentAuthProvider` já dispara ao montar) e só então `adopt()`
+  a sessão.
+- **Banner de impersonação é estado de UI, não semântica do JWT** — o token
+  emitido é IDÊNTICO ao de um login normal de OWNER (deliberado: nenhuma
+  rota do dashboard precisa saber que está impersonando). O "estou
+  impersonando" mora só em `sessionStorage` (`apps/dashboard/lib/
+  impersonation.ts`), lido por `components/impersonation-banner.tsx` — barra
+  fixa com "Sair da impersonação" (desloga + redireciona pro admin).
+- **`AuditService`**: 9 ações novas (`ADMIN_PLAN_UPSERTED/ARCHIVED`,
+  `ADMIN_TENANT_SUSPENDED/REACTIVATED/PLAN_CHANGED/IMPERSONATED`,
+  `ADMIN_BILLING_CYCLE_RUN/INVOICE_APPROVED/REJECTED`). Impersonar grava
+  `targetOwnerUserId`/`targetOwnerName` no `metadata`.
+- **`site` (`apps/site`) ganha o desvio de login**: `login-form.tsx`, depois
+  do `adopt(session)`, checa `session.user.isSuperAdmin` e redireciona pra
+  `NEXT_PUBLIC_ADMIN_URL` — super admin nunca vê o painel de uma barbearia
+  pelo fluxo de login normal.
+- **Front-end** (`apps/admin`, novo app Next.js): `admin-guard.tsx` (checa
+  `isSuperAdmin`, não reusa `RequireEstablishmentAuth` do dashboard porque a
+  regra é outra), `admin-shell.tsx` (nav Tenants/Planos/Billing/Métricas),
+  `lib/api/{plans,tenants,billing,metrics}.ts` (TanStack Query, mesmo padrão
+  de `apps/dashboard`), `tenant-detail-drawer.tsx` (suspender/reativar/trocar
+  plano/impersonar num só `Drawer`), `plan-modal.tsx` (checkbox por
+  `FEATURE_KEYS`, tier, `maxBarbers`/ilimitado). `/` redireciona pra
+  `/tenants` — sem visão geral própria.
+- **Testes novos**: `test/admin.e2e-spec.ts` (8 casos — acesso só
+  `SUPER_ADMIN`, troca de plano refletindo em `FeatureGuard` na hora,
+  suspender bloqueia login de TODOS os `Membership`, impersonar gera
+  identidade real de OWNER sem cookie + `AuditLog`, não impersona tenant
+  suspenso, CRUD de plano rejeita feature desconhecida, recusar cobrança 3x
+  suspende automaticamente, aprovar reseta `failedAttempts` e avança o
+  período). Total do projeto: 80 unit + 91 e2e + 52 isolamento, todos verdes.
+- **Verificação ao vivo desta fase** (além dos testes automatizados): com
+  `db`+`redis`+`api`+`admin`+`dashboard` de pé, confirmado por `curl` —
+  login super admin, as 4 rotas do admin respondendo 200, troca de plano
+  derrubando `GET /commissions/rules` de 200 pra 403 na hora (e voltando ao
+  restaurar o plano), suspender tenant derrubando login do OWNER com
+  `TENANT_SUSPENDED` (403) e reativar devolvendo o acesso, impersonar
+  devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
+  reseedado ao final.
+
 ## Decisões tomadas
 
 - 2026-08-14 — Design system unificado no tema de produto (`#0F1115` +
@@ -724,6 +824,46 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   mantida a exigência de OTP do `system-map.md` por segurança, com
   calibração de rate limit a decidir pelo agente 04. Ver `SPEC.md` →
   Decisões tomadas.
+
+### Fase 08 — decisões técnicas
+
+- **Por que impersonar reusa `issueSessionForUser` em vez de emitir um JWT
+  "de impersonação" com um claim extra**: manter o token semanticamente
+  idêntico ao de um login normal significa ZERO código condicional em
+  qualquer rota do dashboard pra tratar "sessão impersonada" — todo o guard
+  chain, todo `@CurrentTenant()`, todo `FeatureGuard` funcionam sem saber que
+  a sessão nasceu de um clique no admin. O preço dessa simplicidade é que a
+  UI de aviso (banner) precisa de um canal PARALELO (`sessionStorage`) — ver
+  acima.
+- **Por que NÃO setar o refresh cookie na impersonação**: `apps/admin` e
+  `apps/dashboard` rodam em origens/portas diferentes, mas se algum dia
+  compartilharem domínio (subdomínio comum em produção), um cookie de
+  refresh de impersonação correria o risco de colidir ou sobrescrever a
+  sessão própria do super admin no navegador dele. Sessão de impersonação
+  morre com o `accessToken` (900s) — suficiente pra inspecionar o painel,
+  curto o bastante pra não precisar de revogação explícita.
+- **Por que a troca de plano não exige logout/login pra refletir**: o
+  `FeatureGuard` lê `SaasPlan.features` do tenant ATIVO a cada requisição
+  (nunca do JWT) — plano é dado de tenant, não claim de token. O critério de
+  aceite "muda na hora" já vinha de graça da arquitetura da fase 07
+  (`FeatureGuard`/`@RequireFeature()`), esta fase só precisava expor o
+  `PATCH` que troca `Tenant.planId`.
+- **Aprovar fatura precisa de DOIS `simulateTransition`, não um**: o
+  `MockPaymentDriver.ALLOWED_TRANSITIONS` (já existente desde a fase 05, com
+  comentário próprio antecipando "aprovação/recusa disparada manualmente
+  pelo super admin") só permite `PENDING→CONFIRMED→RECEIVED`, nunca
+  `PENDING→RECEIVED` direto. `approveInvoice()` respeita o contrato do
+  driver em vez de o driver ser afrouxado pra fase 08 — a máquina de estado
+  do mock continua representando um gateway real de verdade.
+- **Auto-suspend por falha de cobrança é por `TenantSubscription.
+  failedAttempts`, não por `Tenant.updatedAt` nem por contagem ad-hoc de
+  faturas `FAILED`**: contador dedicado, incrementado a cada `reject`,
+  resetado a cada `approve` — direto, sem depender de reconstituir histórico
+  a cada checagem. Limite em env (`BILLING_MAX_FAILED_ATTEMPTS`, padrão 3),
+  não hardcoded.
+- **Sem visão geral própria em `apps/admin`** — `/` redireciona pra
+  `/tenants` porque é ali que o super admin passa a maior parte do tempo
+  (suporte/operação), e `/metricas` já cobre o que uma "home" mostraria.
 
 ### Fase 07 — decisões técnicas
 
@@ -1714,6 +1854,48 @@ todos verdes.
   alfabeto ou reduzir o `n` do teste para descolar da margem exata do
   paradoxo do aniversário.
 
+### Dívidas novas da fase 08
+
+- **Anomalia intermitente do ambiente de dev, NÃO raiz-causada**: em algum
+  momento desta fase o banco perdeu TODAS as linhas de `Tenant`/`User`/
+  `Order` (tabelas vazias, sem erro visível). Investigado e descartado como
+  causa: o boot normal de `docker compose up -d api` (testado explicitamente
+  — rebaselinar 7 migrations, confirmar contagem, reiniciar `api` normal,
+  confirmar contagem igual), o mount do volume `barbervp-db-data` (conferido
+  correto), e o entrypoint do `Dockerfile.dev` (sem lógica de reset). Outros
+  volumes Docker órfãos de projetos antigos foram encontrados na máquina mas
+  não são o volume montado por este compose. Contornado operacionalmente
+  (reseed + verificação imediata) todas as vezes que aconteceu; se voltar a
+  acontecer, vale medir se há relação com o host ficar sem RAM/trocar pra
+  swap (a mesma sessão que viu isso também viu o VSCode fechar por RAM) —
+  hipótese não testada.
+- **`next build` de produção continua falhando** nas 4 apps (dívida herdada
+  da fase 06, não desta fase) — `outputFileTracingRoot` foi corrigido para
+  dentro de `experimental` (era ignorado silenciosamente fora dali, bug real
+  que esta fase consertou), mas isso NÃO resolveu a falha de prerender; três
+  outras hipóteses já descartadas com evidência (ver dívida da fase 06). Sem
+  causa raiz identificada ainda — `next dev` funciona normalmente em todas as
+  4 apps, então não bloqueia verificação nem uso, só `next build`/deploy.
+- **Impersonação não é revogável antes dos 900s.** Não existe "encerrar
+  sessão de impersonação à força" do lado do super admin — só o próprio
+  fluxo (banner → "Sair da impersonação") ou o token expirar sozinho. Pra um
+  MVP com sessão curta e sem refresh já é baixo risco, mas se o produto
+  precisar de um kill-switch (ex.: revogar em massa por incidente), falta um
+  endpoint que invalide `AuthSession.id` da sessão de impersonação
+  especificamente.
+- **Sem paginação em `/admin/tenants` além do básico já existente** — a
+  fase reusa o padrão de paginação das fases anteriores (`page`/`perPage`),
+  suficiente pro volume de tenants de um MVP; se a base de tenants crescer
+  muito, os 2 `groupBy` de uso agregado (barbeiros/agendamentos do mês)
+  passam a rodar sobre a base inteira antes de paginar — vale revisar se
+  virar centenas de tenants.
+- **Teste ao vivo do login redirect do `site` (`isSuperAdmin` →
+  `NEXT_PUBLIC_ADMIN_URL`) foi só por leitura de código + `tsc`/`eslint`
+  limpos, não pelo navegador** — mudança de 3 linhas, baixo risco, mas sem
+  verificação em runtime nesta sessão (RAM não permitiu manter `site` +
+  `admin` + `dashboard` de pé ao mesmo tempo). Conferir na próxima sessão que
+  mexer em `apps/site`.
+
 ## Como retomar
 
 Abrir sessão nova do Claude Code → colar o conteúdo do próximo
@@ -1889,4 +2071,49 @@ painel). `docker compose stop` entre uma coisa e outra.
    redimensione a janela abaixo de 1024px: a coluna da comanda vira uma
    barra fixa embaixo com o subtotal, que abre como bottom-sheet.
 7. **`docker compose stop` ao terminar** — não deixar a stack de pé sem
+   necessidade.
+
+### Como conferir a fase 08 rodando
+
+**Mesmo cuidado com RAM da fase 07**: suba só o que for usar
+(`docker compose up -d db redis api` pro backend; `admin`/`dashboard` juntos
+só se for testar a impersonação de ponta a ponta) e `docker compose stop`
+entre uma coisa e outra.
+
+1. **Login super admin** (só precisa de `db`+`redis`+`api`):
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:3333/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email":"admin@barbervp.com.br","password":"BarberVP@2026"}' \
+     | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).accessToken))")
+   curl -s http://localhost:3333/api/v1/admin/tenants -H "Authorization: Bearer $TOKEN"
+   curl -s http://localhost:3333/api/v1/admin/metrics -H "Authorization: Bearer $TOKEN"
+   ```
+2. **Plano muda gate na hora** (sem novo login): troque o plano do tenant
+   demo pra `essencial` via `PATCH /admin/tenants/:id/plan` — `GET
+   /commissions/rules` do dono vira 403 `FEATURE_NOT_IN_PLAN` imediatamente;
+   volte pra `avancado` e o 403 some sem o dono precisar relogar.
+3. **Suspender bloqueia login**: `PATCH /admin/tenants/:id/suspend` — login
+   do dono (`POST /auth/login`) passa a responder 403 `TENANT_SUSPENDED`.
+   `PATCH .../reactivate` devolve o acesso. **Restaure o tenant demo pro
+   status `ACTIVE` e plano `avancado` ao terminar** (ou rode `make seed`).
+4. **Impersonar**: `POST /admin/tenants/:id/impersonate` devolve um
+   `accessToken` que resolve em `GET /auth/me` como o OWNER de verdade (não
+   como o super admin) — confira `AuditLog` (`ADMIN_TENANT_IMPERSONATED`)
+   gravado com `targetOwnerUserId`.
+5. **Front-end completo** (suba `admin` + `dashboard` juntos):
+   `http://localhost:3003` (login super admin) → `/tenants` → clique num
+   tenant → drawer com suspender/reativar/trocar plano/"Impersonar dono" —
+   o botão redireciona pro `dashboard` já logado como o OWNER, com a barra
+   de aviso de impersonação fixa no topo e "Sair da impersonação" voltando
+   pro admin. `/planos` (criar/editar plano, checkbox de feature) e
+   `/billing` ("Rodar ciclo de cobrança" → aprovar/recusar fatura pendente)
+   também navegáveis.
+6. **Testes**: `make test` (80 unit), `pnpm --filter @barbervp/api test:e2e`
+   (91), `make test-isolation` (52). Todos verdes na última rodada desta
+   sessão.
+7. **`make seed` de novo ao terminar** — a verificação ao vivo desta fase
+   mexe em status/plano de tenant real; reseedar garante que o próximo
+   agente encontra `Barbearia Central` como `ACTIVE`/`avancado`.
+8. **`docker compose stop` ao terminar** — não deixar a stack de pé sem
    necessidade.
