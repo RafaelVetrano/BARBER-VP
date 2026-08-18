@@ -27,6 +27,7 @@ import {
 import type { Role } from '@barbervp/types';
 import { navForRole } from '../lib/nav';
 import { DashboardGuard } from './dashboard-guard';
+import { ImpersonationBanner } from './impersonation-banner';
 
 const ICONS: Record<string, ReactNode> = {
   dashboard: <GridIcon size={19} />,
@@ -82,6 +83,7 @@ export function DashboardChrome({ activeKey, children, topbarActions }: Dashboar
 
   return (
     <DashboardGuard>
+      <ImpersonationBanner />
       <AppShell
         activeKey={activeKey}
         nav={nav}

@@ -16,7 +16,7 @@ import {
   establishmentApi,
   useEstablishmentAuth,
 } from '@barbervp/ui';
-import { BOOKING_URL, DASHBOARD_URL } from '../../lib/urls';
+import { ADMIN_URL, BOOKING_URL, DASHBOARD_URL } from '../../lib/urls';
 
 const schema = z.object({
   email: z.string().trim().min(1, 'Informe seu e-mail.').email('E-mail inválido.'),
@@ -54,6 +54,13 @@ export function LoginForm() {
     try {
       const session = await establishmentApi.login(client, values);
       adopt(session);
+
+      // `SUPER_ADMIN` (fase 08) não tem `Membership` nenhum — não faz sentido
+      // mandar pro seletor de barbearia, o destino é sempre `apps/admin`.
+      if (session.user.isSuperAdmin) {
+        window.location.assign(ADMIN_URL);
+        return;
+      }
 
       const membership = session.memberships.find(
         (item) => item.tenantId === session.activeTenantId,

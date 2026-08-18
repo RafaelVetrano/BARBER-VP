@@ -1,14 +1,13 @@
-import { ApiStatus, PlaceholderScreen } from '@barbervp/ui';
+'use client';
 
-export default function Page() {
-  return (
-    <PlaceholderScreen
-      appName="apps/admin"
-      title="Super Admin"
-      description="Tenants, planos do SaaS, billing e impersonação auditada."
-      nextPhase="fase 08"
-    >
-      <ApiStatus />
-    </PlaceholderScreen>
-  );
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+/** Sem visão geral própria — Tenants é a tela de entrada do super admin. */
+export default function HomePage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/tenants');
+  }, [router]);
+  return null;
 }
