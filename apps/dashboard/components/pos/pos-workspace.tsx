@@ -15,8 +15,13 @@ export interface PosWorkspaceProps {
 /**
  * Catálogo + comanda em duas colunas (`lg:`). No mobile o catálogo ocupa a
  * tela inteira e a comanda vira bottom-sheet — uma barra fixa embaixo mostra
- * o subtotal sempre visível, e abrir a folha reusa o MESMO `ComandaPanel`
- * dentro de um `Modal` (que já é bottom-sheet nativo abaixo de 768px).
+ * o subtotal sempre visível, e abrir a folha reusa o MESMO par
+ * `ComandaContent`/`ComandaFooter` dentro de um `Modal` (que já é
+ * bottom-sheet nativo abaixo de 768px).
+ *
+ * `key={order.id}` no `ComandaContent` é necessário: ele guarda o desconto
+ * digitado em estado local, e sem a chave trocar de comanda carregaria o
+ * valor da anterior.
  */
 export function PosWorkspace({ orderId, onBack }: PosWorkspaceProps) {
   const { toast } = useToast();
@@ -131,7 +136,7 @@ export function PosWorkspace({ orderId, onBack }: PosWorkspaceProps) {
         {/* Comanda — coluna fixa ≥ lg, com rodapé (totais + Fechar) SEMPRE fora da rolagem. */}
         <Card className="hidden lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:sticky lg:top-4">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <ComandaContent order={order} />
+            <ComandaContent key={order.id} order={order} />
           </div>
           <div className="shrink-0 border-t border-border pt-3">
             <ComandaFooter order={order} onRequestClose={() => setCloseModalOpen(true)} />
@@ -154,7 +159,7 @@ export function PosWorkspace({ orderId, onBack }: PosWorkspaceProps) {
         title={`Comanda #${order.number}`}
         footer={<ComandaFooter order={order} onRequestClose={() => setCloseModalOpen(true)} />}
       >
-        <ComandaContent order={order} />
+        <ComandaContent key={order.id} order={order} />
       </Modal>
 
       <CloseOrderModal

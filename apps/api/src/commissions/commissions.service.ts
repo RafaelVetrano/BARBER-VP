@@ -140,7 +140,11 @@ export class CommissionsService {
     });
 
     const summaries: CommissionBarberSummary[] = [];
-    let anyClosed = false;
+    // O período só está fechado quando TODO barbeiro com lançamento está
+    // fechado. Com `some`, um barbeiro fechado marcaria o mês inteiro como
+    // fechado e o botão "Fechar período" sumiria da tela — deixando os demais
+    // travados em PENDING para sempre.
+    let allClosed = true;
     let anyEntry = false;
 
     for (const barber of barbers) {
@@ -174,7 +178,7 @@ export class CommissionsService {
       const closed = entries.length > 0 && entries.every((entry) => entry.status === CommissionEntryStatus.PAID);
       if (entries.length > 0) {
         anyEntry = true;
-        anyClosed = anyClosed || closed;
+        allClosed = allClosed && closed;
       }
 
       summaries.push({
@@ -199,7 +203,7 @@ export class CommissionsService {
 
     return {
       month,
-      closed: anyEntry ? anyClosed : false,
+      closed: anyEntry ? allClosed : false,
       barbers: summaries,
     };
   }

@@ -57,7 +57,10 @@ export class MyPageService {
       if (!availability.available) {
         throw ApiException.conflict('Este link já está em uso.', 'SLUG_TAKEN');
       }
-      await this.prisma.tenant.update({ where: { id: tenantId }, data: { slug: this.slugs.normalize(dto.slug) } });
+      // Grava o slug JÁ NORMALIZADO que a checagem aprovou — normalizar de
+      // novo aqui abriria espaço para gravar algo diferente do que foi
+      // verificado como livre.
+      await this.prisma.tenant.update({ where: { id: tenantId }, data: { slug: availability.slug } });
     }
 
     await this.prisma.tenantSettings.upsert({

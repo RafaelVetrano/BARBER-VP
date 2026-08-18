@@ -1509,11 +1509,38 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   standalone quebra. Como o `Dockerfile.dev`/`docker-compose.yml` rodam
   tudo em `next dev`, isto não bloqueou a verificação desta fase, mas
   **bloqueia `docker-compose.prod.yml`, que usa `next build`** — precisa de
-  investigação antes da fase 09 (hardening/deploy). Sem tempo nesta sessão
-  para isolar a causa raiz (candidatos: `output: 'standalone'` +
-  `transpilePackages` resolvendo `react`/`react-dom` duplicados via
-  `outputFileTracingRoot`, ou uma dependência do design system importando
-  `react` fora do `peerDependencies`).
+  investigação antes da fase 09 (hardening/deploy).
+
+  **Atualização (revisão da fase 07): três hipóteses DESCARTADAS com
+  evidência** — não repetir estas buscas:
+  1. *Duas cópias de React* (era a suspeita principal registrada aqui):
+     **falso**. `ls /app/node_modules/.pnpm/react@*` devolve UMA única
+     `react@18.3.1`, e `readlink -f node_modules/react` a partir de
+     `apps/dashboard`, de `packages/ui` e da raiz aponta todos para o MESMO
+     caminho real.
+  2. *Componente de `packages/ui` usando hook sem `'use client'`*:
+     **falso**. Varredura de todo arquivo com `useState|useEffect|
+     useContext|useRef|useMemo|createContext` — todos têm a diretiva.
+  3. *Artefato velho de `next dev` reaproveitado pelo `next build`*
+     (o stack trace mistura `app-page.runtime.prod.js` e
+     `...dev.js`, o que sugeria isso): **falso**. Com o dev parado e o
+     conteúdo de `.next` apagado, o build falha igual.
+
+  **Corrigido de fato nesta revisão** (não resolve o build, mas era um bug
+  real e silencioso): `outputFileTracingRoot` estava na RAIZ do
+  `next.config.mjs` das 4 apps. No Next 14 essa chave vive sob
+  `experimental` (só virou top-level no Next 15) — o Next avisava
+  "Unrecognized key(s) in object: 'outputFileTracingRoot'" a cada boot e
+  IGNORAVA a configuração, o que por si só quebraria o tracing do
+  standalone no monorepo mesmo depois de o erro de prerender ser resolvido.
+  Movido para `experimental` nas 4 apps; o aviso sumiu e o `next dev`
+  segue normal.
+
+  Próximos candidatos a investigar: `next/font/google` no `layout.tsx` (o
+  prerender busca a fonte pela rede — sem saída de internet no build, o
+  erro pode aparecer disfarçado), ou algum export do barrel
+  `packages/ui/src/index.ts` (que NÃO tem `'use client'`) sendo arrastado
+  para o grafo de servidor.
 - **Sem `e2e-spec.ts` dedicado para os módulos desta fase.** A fase 06 ganhou
   a suíte de isolamento (`dashboard-operation.isolation-spec.ts`, 11 casos —
   tenant + papel, é o critério de aceite explícito da fase) mas, diferente
@@ -1560,8 +1587,80 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   catálogo de centenas de produtos aparecer, trocar por `$queryRaw` com
   `WHERE stock <= "estoqueMin"`.
 
+### Revisão da fase 07 — bugs encontrados e corrigidos
+
+Revisão linha a linha feita ao fim da fase (sessão separada, modelo maior).
+Cinco defeitos reais, todos corrigidos e cobertos por teste onde fazia
+sentido:
+
+1. **`POST /orders/:id/reopen` não desfazia NADA** — era o mais grave.
+   Reabrir só virava `status: OPEN`, e como `close()` só exige `OPEN`, fechar
+   de novo aplicava tudo pela segunda vez: estoque baixado 2×,
+   `CommissionEntry` e `Payment` duplicados, pontos de fidelidade creditados
+   2×, `visitCount`/`totalSpentCents` somados 2×, quota de assinatura
+   consumida 2×. Dinheiro e estoque errados a partir de um botão que a UI
+   oferece normalmente. Agora `reopen` roda em transação única e é o par
+   simétrico de `close()`: devolve estoque, devolve a quota de assinatura,
+   apaga comissões e pagamentos, apaga a movimentação de caixa, estorna as
+   linhas de `LoyaltyPoints` daquela comanda, desfaz o efeito no
+   `ClientProfile` e volta o `Appointment` de `DONE` para `CONFIRMED`.
+   **Trava nova**: comanda cujo período de comissão já foi fechado
+   (`CommissionEntry.status = PAID`) não pode mais ser reaberta — a comissão
+   virou obrigação com o barbeiro e não pode sumir. Coberto por
+   `dashboard-ii.e2e-spec.ts` → "reabrir estorna o fechamento; fechar de
+   novo não duplica nada".
+2. **Estoque insuficiente virava 500 sem explicação.** `addItem` lia
+   `product.stock` e não usava; o fechamento fazia `decrement` cru e só a
+   CHECK `product_stock_non_negative` (fase 01) segurava — mas violação de
+   CHECK não tem `case` no `AllExceptionsFilter`, então caía no 500
+   genérico. Agora: `addItem` recusa com 400 explicativo, e o fechamento
+   baixa estoque com `UPDATE ... WHERE stock >= quantity` conferindo as
+   linhas afetadas (pega o caso de outra comanda ter levado a última unidade
+   no meio do caminho). Coberto por teste.
+3. **Financeiro e Comissões faziam bloqueio silencioso.** As duas telas
+   ignoravam o 403 `FEATURE_NOT_IN_PLAN`: um tenant Essencial via "Nenhuma
+   conta a pagar" e "Nenhuma comissão neste período" — mentira, e exatamente
+   o que o enunciado proíbe ("upsell discreto, não bloqueio silencioso").
+   Agora as duas usam `FeatureLocked` como Fidelidade e Relatórios já
+   faziam, os botões de criar somem quando bloqueado, e as queries com gate
+   ganharam `retry: false` (403 não é falha transitória).
+4. **"Período fechado" com lógica invertida.** `CommissionsService.period`
+   marcava o mês como fechado se QUALQUER barbeiro estivesse fechado
+   (`anyClosed = anyClosed || closed`). Com dois barbeiros, fechar um sumia
+   com o botão "Fechar período" e travava o outro em `PENDING` para sempre.
+   Agora é `allClosed`.
+5. **Estado obsoleto ao trocar de comanda no POS.** `ComandaContent` guarda
+   o desconto digitado em estado local e não remontava ao trocar de comanda
+   — carregava o valor da anterior. Resolvido com `key={order.id}`.
+
+Também: `MyPageService.update` passou a gravar o slug já normalizado que a
+checagem de disponibilidade aprovou, em vez de normalizar de novo (mesma
+função determinística, mas fecha a porta para divergência).
+
+Total após a revisão: 80 unit + **83 e2e** (2 casos novos) + 52 isolamento,
+todos verdes.
+
 ### Dívidas novas da fase 07
 
+- **N+1 em `GET /commissions/period`**: o extrato roda 3 queries por
+  barbeiro (lançamentos, produtos, vales) dentro de um `for`. Com o volume
+  de uma barbearia (4–10 barbeiros) são ~30 queries rápidas, sem impacto
+  perceptível — e o "não N+1" do enunciado era requisito explícito só dos
+  Relatórios (que usam `$queryRaw` com `GROUP BY`, e estão corretos). Vale
+  reescrever como `groupBy` único se o número de barbeiros crescer.
+- **`revenueByBarber` do relatório avançado usa `INNER JOIN Barber`**, então
+  comanda sem barbeiro definido (walk-in no balcão) fica de fora do
+  detalhamento — a soma por barbeiro pode não bater com o faturamento total
+  do resumo. Igualmente, o faturamento é atribuído pelo `Order.barberId`
+  (barbeiro "principal" da comanda), não rateado por item: comanda com
+  serviços de dois barbeiros conta inteira para um só.
+- **Resgate de pontos não é protegido contra concorrência.** Duas comandas
+  abertas do MESMO cliente, ambas com `useLoyalty`, fechando ao mesmo
+  tempo, podem resgatar o mesmo saldo duas vezes (o saldo é a soma do
+  ledger, sem `SELECT ... FOR UPDATE` nem constraint de não-negativo).
+  Diferente da quota de assinatura, que TEM débito atômico e CHECK. Caso de
+  borda improvável no balcão (o mesmo cliente com duas comandas abertas
+  simultâneas), mas é uma inconsistência real de tratamento.
 - **Nenhuma verificação VISUAL de responsividade — só estrutural.** O
   "checklist de responsividade, atenção especial ao POS" foi conferido lendo
   as classes Tailwind (`hidden lg:flex`/`lg:hidden`, `grid lg:grid-cols-

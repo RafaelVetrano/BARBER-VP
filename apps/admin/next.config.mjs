@@ -12,7 +12,13 @@ const nextConfig = {
   output: 'standalone',
   // Sem isto o tracing do standalone para no diretório da app e deixa de fora
   // os pacotes do workspace instalados na raiz do monorepo.
-  outputFileTracingRoot: monorepoRoot,
+  //
+  // No Next 14 esta chave vive sob `experimental` (só virou top-level no
+  // Next 15) — solta na raiz ela é IGNORADA, e o Next avisa
+  // "Unrecognized key(s) in object: 'outputFileTracingRoot'" no boot.
+  experimental: {
+    outputFileTracingRoot: monorepoRoot,
+  },
   poweredByHeader: false,
   eslint: { ignoreDuringBuilds: false },
   typescript: { ignoreBuildErrors: false },

@@ -19,6 +19,7 @@ export function useCommissionRulesQuery() {
       const { data } = await client.get<CommissionRuleItem[]>('/commissions/rules');
       return data;
     },
+    retry: false,
   });
 }
 
@@ -44,6 +45,8 @@ export function useCommissionPeriodQuery(month: string) {
       const { data } = await client.get<CommissionPeriodResponse>(`/commissions/period?month=${month}`);
       return data;
     },
+    // 403 de plano não é falha transitória — repetir 3× só atrasa o upsell.
+    retry: false,
   });
 }
 
@@ -67,6 +70,7 @@ export function useValesQuery() {
       const { data } = await client.get<ValeItem[]>('/commissions/vales');
       return data;
     },
+    retry: false,
   });
 }
 

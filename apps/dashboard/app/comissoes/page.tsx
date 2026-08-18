@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Badge, Button, Card, CardHeader, EmptyState, PlusIcon, Skeleton, useToast } from '@barbervp/ui';
 import { formatBRL } from '@barbervp/types';
 import { DashboardChrome } from '../../components/dashboard-chrome';
+import { FeatureLocked } from '../../components/feature-locked';
+import { isFeatureGateError } from '../../lib/feature-error';
 import { RuleModal } from '../../components/commissions/rule-modal';
 import { useClosePeriodMutation, useCommissionPeriodQuery, useCommissionRulesQuery } from '../../lib/api/commissions';
 import { useBarbersQuery } from '../../lib/api/team';
@@ -36,6 +38,29 @@ export default function ComissoesPage() {
       toast({ message: error instanceof Error ? error.message : 'Não foi possível fechar o período.', tone: 'danger' });
     }
   };
+
+  // Comissões inteira depende de `comissoes` (Profissional+) — sem tratar o
+  // 403, um tenant Essencial veria "Nenhuma comissão neste período", que é
+  // falso e esconde o motivo real.
+  if (isFeatureGateError(periodQuery.error)) {
+    return (
+      <DashboardChrome activeKey="comissoes">
+        <div className="flex flex-col gap-5">
+          <h1 className="font-display text-xl font-bold text-fg">Comissões</h1>
+          <FeatureLocked
+            title="Comissões automáticas"
+            description="Regra por barbeiro (percentual único ou faixas por faturamento), extrato do período e fechamento com desconto de vales — disponível a partir do plano Profissional."
+            benefits={[
+              'Comissão calculada sozinha a cada comanda fechada',
+              'Faixas por faturamento (ex.: 40% até R$5.000, 50% acima)',
+              'Vales descontados automaticamente no fechamento do mês',
+            ]}
+            minPlanLabel="Profissional"
+          />
+        </div>
+      </DashboardChrome>
+    );
+  }
 
   return (
     <DashboardChrome

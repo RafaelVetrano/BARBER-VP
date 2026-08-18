@@ -3,6 +3,7 @@ import {
   AppointmentStatus,
   CashMovementType,
   CashRegisterStatus,
+  CommissionEntryStatus,
   DiscountType,
   LoyaltyPointsKind,
   OrderItemKind,
@@ -261,6 +262,14 @@ export class OrdersService {
       if (!product) {
         throw ApiException.notFound('Produto não encontrado.');
       }
+      // Sem esta checagem o erro só apareceria no fechamento, como violação da
+      // CHECK `product_stock_non_negative` — um 500 sem explicação, depois de
+      // o cliente já estar no caixa.
+      if (quantity > product.stock) {
+        throw ApiException.badRequest(
+          `Estoque insuficiente de ${product.name}: restam ${product.stock} unidade(s).`,
+        );
+      }
 
       await this.prisma.orderItem.create({
         data: {
@@ -470,13 +479,23 @@ export class OrdersService {
       const now = new Date();
       const referenceMonth = monthStart(now);
 
-      // Baixa de estoque dos produtos vendidos.
+      // Baixa de estoque dos produtos vendidos. O estoque é reconferido AQUI
+      // (e não só no `addItem`) porque outra comanda pode ter levado a última
+      // unidade no meio do caminho — sem isto, a CHECK
+      // `product_stock_non_negative` derrubaria a transação com um 500 sem
+      // explicação em vez de um 400 que diz o que houve.
       for (const item of order.items) {
         if (item.kind === OrderItemKind.PRODUCT && item.productId) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { decrement: item.quantity } },
-          });
+          const updatedRows = await tx.$executeRaw`
+            UPDATE "Product"
+            SET "stock" = "stock" - ${item.quantity}, "updatedAt" = NOW()
+            WHERE "id" = ${item.productId} AND "stock" >= ${item.quantity}
+          `;
+          if (updatedRows !== 1) {
+            throw ApiException.badRequest(
+              `Estoque insuficiente de ${item.description} para fechar a comanda.`,
+            );
+          }
         }
       }
 
@@ -612,7 +631,18 @@ export class OrdersService {
     return this.toDetail(tenantId, closed);
   }
 
-  /** Reabertura — só `MANAGER+` (garantido pelo `@Roles` do controller), sempre auditada. */
+  /**
+   * Reabertura — só `MANAGER+` (garantido pelo `@Roles` do controller), sempre
+   * auditada, e **em transação única que DESFAZ todos os efeitos do
+   * fechamento**.
+   *
+   * Sem essa reversão, reabrir e fechar de novo contaria tudo duas vezes:
+   * estoque baixado 2×, `CommissionEntry` duplicado, `Payment` duplicado,
+   * pontos creditados 2×, `visitCount` incrementado 2×, quota de assinatura
+   * consumida 2×. Reabrir precisa devolver a comanda ao MESMO estado em que
+   * ela estava antes do fechamento — é o par simétrico de `close()`, passo a
+   * passo, na ordem inversa.
+   */
   async reopen(
     tenantId: string,
     orderId: string,
@@ -620,18 +650,94 @@ export class OrdersService {
     actorUserId: string,
     request: RequestContext,
   ): Promise<OrderDetail> {
-    const order = await this.prisma.order.findFirst({ where: { id: orderId, tenantId, deletedAt: null } });
-    if (!order) {
+    const existing = await this.prisma.order.findFirst({
+      where: { id: orderId, tenantId, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
       throw ApiException.notFound('Comanda não encontrada.');
     }
-    if (order.status !== OrderStatus.CLOSED) {
+    if (existing.status !== OrderStatus.CLOSED) {
       throw ApiException.conflict('Só é possível reabrir uma comanda fechada.', 'ORDER_NOT_CLOSED');
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.OPEN, closedAt: null },
-      include: ORDER_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { items: true },
+      });
+      if (order.status !== OrderStatus.CLOSED) {
+        throw ApiException.conflict('Só é possível reabrir uma comanda fechada.', 'ORDER_NOT_CLOSED');
+      }
+
+      // 1. Devolve o estoque dos produtos vendidos.
+      for (const item of order.items) {
+        if (item.kind === OrderItemKind.PRODUCT && item.productId) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+        // 2. Devolve a quota de assinatura consumida no fechamento.
+        if (item.coveredBySubscription && item.subscriptionUsageId) {
+          await this.coverage.refund(tx, item.subscriptionUsageId);
+        }
+      }
+
+      // 3. Apaga as comissões geradas por este fechamento. `PAID` significa
+      // período já fechado — aí a comissão virou obrigação com o barbeiro e
+      // não pode sumir por uma reabertura de comanda.
+      const paidCommission = await tx.commissionEntry.count({
+        where: { tenantId, orderId, status: CommissionEntryStatus.PAID },
+      });
+      if (paidCommission > 0) {
+        throw ApiException.conflict(
+          'Esta comanda pertence a um período de comissão já fechado e não pode ser reaberta.',
+          'COMMISSION_PERIOD_CLOSED',
+        );
+      }
+      await tx.commissionEntry.deleteMany({ where: { tenantId, orderId } });
+
+      // 4. Apaga pagamentos e a movimentação de caixa que eles geraram.
+      await tx.cashMovement.deleteMany({ where: { tenantId, orderId } });
+      await tx.payment.deleteMany({ where: { tenantId, orderId } });
+
+      // 5. Estorna os pontos de fidelidade (ganhos E resgatados) desta comanda.
+      // Apagar as linhas do ledger é o estorno correto aqui: o saldo é a SOMA
+      // das linhas, e `orderId` amarra exatamente as que este fechamento criou.
+      await tx.loyaltyPoints.deleteMany({ where: { tenantId, orderId } });
+
+      // 6. Desfaz o efeito no perfil do cliente.
+      if (order.clientId) {
+        const profile = await tx.clientProfile.findUnique({
+          where: { tenantId_clientId: { tenantId, clientId: order.clientId } },
+          select: { visitCount: true, totalSpentCents: true },
+        });
+        if (profile) {
+          await tx.clientProfile.update({
+            where: { tenantId_clientId: { tenantId, clientId: order.clientId } },
+            data: {
+              visitCount: Math.max(0, profile.visitCount - 1),
+              totalSpentCents: Math.max(0, profile.totalSpentCents - order.totalCents),
+            },
+          });
+        }
+      }
+
+      // 7. O agendamento volta de DONE para CONFIRMED — o atendimento
+      // aconteceu (o cliente esteve lá), só a comanda voltou a ficar aberta.
+      if (order.appointmentId) {
+        await tx.appointment.update({
+          where: { id: order.appointmentId },
+          data: { status: AppointmentStatus.CONFIRMED },
+        });
+      }
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.OPEN, closedAt: null },
+        include: ORDER_INCLUDE,
+      });
     });
 
     await this.audit.record(

@@ -232,6 +232,79 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
     expect(report.body.revenueCents).toBeGreaterThanOrEqual(9_000);
   });
 
+  /**
+   * Regressão: reabrir DESFAZ os efeitos do fechamento, e fechar de novo NÃO
+   * conta tudo em dobro. Sem a reversão, o segundo fechamento baixava estoque
+   * 2×, duplicava `CommissionEntry`/`Payment`, creditava pontos 2× e somava
+   * `visitCount` 2× — dinheiro e estoque errados a partir de um clique que a
+   * UI oferece normalmente.
+   */
+  it('reabrir estorna o fechamento; fechar de novo não duplica nada', async () => {
+    const stockBefore = (await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } })).stock;
+    const profileBefore = await prisma.clientProfile.findFirstOrThrow({ where: { tenantId, clientId } });
+    const pointsBefore = await prisma.loyaltyPoints.aggregate({ where: { tenantId, clientId }, _sum: { points: true } });
+
+    const opened = await asOwner().post('/orders').send({ clientId, barberId }).expect(201);
+    const orderId = opened.body.id as string;
+    await asOwner().post(`/orders/${orderId}/items`).send({ kind: 'SERVICE', serviceId, barberId }).expect(201);
+    await asOwner().post(`/orders/${orderId}/items`).send({ kind: 'PRODUCT', productId, barberId }).expect(201);
+    // 5.000 (serviço) + 2.000 (produto)
+    await asOwner().post(`/orders/${orderId}/close`).send({ payments: [{ method: 'PIX', amountCents: 7_000 }] }).expect(201);
+
+    const afterFirstClose = {
+      stock: (await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } })).stock,
+      commissions: await prisma.commissionEntry.count({ where: { tenantId, orderId } }),
+      payments: await prisma.payment.count({ where: { tenantId, orderId } }),
+      points: (await prisma.loyaltyPoints.aggregate({ where: { tenantId, clientId }, _sum: { points: true } }))._sum.points ?? 0,
+      profile: await prisma.clientProfile.findFirstOrThrow({ where: { tenantId, clientId } }),
+    };
+    expect(afterFirstClose.stock).toBe(stockBefore - 1);
+    expect(afterFirstClose.commissions).toBe(1);
+    expect(afterFirstClose.payments).toBe(1);
+
+    // ── Reabertura: tudo volta ao estado anterior ao fechamento ──
+    await asOwner().post(`/orders/${orderId}/reopen`).send({ reason: 'conferência' }).expect(201);
+
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } })).stock).toBe(stockBefore);
+    expect(await prisma.commissionEntry.count({ where: { tenantId, orderId } })).toBe(0);
+    expect(await prisma.payment.count({ where: { tenantId, orderId } })).toBe(0);
+    expect((await prisma.loyaltyPoints.aggregate({ where: { tenantId, clientId }, _sum: { points: true } }))._sum.points ?? 0).toBe(
+      pointsBefore._sum.points ?? 0,
+    );
+    const profileAfterReopen = await prisma.clientProfile.findFirstOrThrow({ where: { tenantId, clientId } });
+    expect(profileAfterReopen.visitCount).toBe(profileBefore.visitCount);
+    expect(profileAfterReopen.totalSpentCents).toBe(profileBefore.totalSpentCents);
+
+    // ── Fechar de novo: resultado IDÊNTICO ao primeiro fechamento ──
+    await asOwner().post(`/orders/${orderId}/close`).send({ payments: [{ method: 'PIX', amountCents: 7_000 }] }).expect(201);
+
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } })).stock).toBe(afterFirstClose.stock);
+    expect(await prisma.commissionEntry.count({ where: { tenantId, orderId } })).toBe(afterFirstClose.commissions);
+    expect(await prisma.payment.count({ where: { tenantId, orderId } })).toBe(afterFirstClose.payments);
+    expect((await prisma.loyaltyPoints.aggregate({ where: { tenantId, clientId }, _sum: { points: true } }))._sum.points ?? 0).toBe(
+      afterFirstClose.points,
+    );
+    const profileAfterSecond = await prisma.clientProfile.findFirstOrThrow({ where: { tenantId, clientId } });
+    expect(profileAfterSecond.visitCount).toBe(afterFirstClose.profile.visitCount);
+    expect(profileAfterSecond.totalSpentCents).toBe(afterFirstClose.profile.totalSpentCents);
+  });
+
+  it('recusa item de produto sem estoque com 400 explicativo, não 500', async () => {
+    const semEstoque = await prisma.product.create({
+      data: { tenantId, name: `Sem estoque ${run}`, priceCents: 1_000, stock: 1, estoqueMin: 0 },
+      select: { id: true },
+    });
+
+    const opened = await asOwner().post('/orders').send({ clientId, barberId }).expect(201);
+    const orderId = opened.body.id as string;
+
+    const response = await asOwner()
+      .post(`/orders/${orderId}/items`)
+      .send({ kind: 'PRODUCT', productId: semEstoque.id, quantity: 3 })
+      .expect(400);
+    expect(response.body.message).toContain('Estoque insuficiente');
+  });
+
   it('reabertura de comanda fechada só MANAGER+ e fica auditada', async () => {
     const opened = await asOwner().post('/orders').send({ clientId, barberId }).expect(201);
     const orderId = opened.body.id as string;

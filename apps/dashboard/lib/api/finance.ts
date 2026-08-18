@@ -74,6 +74,8 @@ export function usePayablesQuery(query: AccountListQuery) {
       return data;
     },
     placeholderData: (previous) => previous,
+    // 403 de plano não é falha transitória — repetir 3× só atrasa o upsell.
+    retry: false,
   });
 }
 
@@ -110,6 +112,7 @@ export function useReceivablesQuery(query: AccountListQuery) {
       return data;
     },
     placeholderData: (previous) => previous,
+    retry: false,
   });
 }
 
@@ -147,6 +150,7 @@ export function useBankAccountsQuery() {
       const { data } = await client.get<BankAccountItem[]>('/finance/bank-accounts');
       return data;
     },
+    retry: false,
   });
 }
 
@@ -174,5 +178,6 @@ export function useCashFlowQuery(months = 6) {
       const { data } = await client.get<CashFlowResponse>(`/finance/cash-flow?months=${months}`);
       return data;
     },
+    retry: false,
   });
 }
