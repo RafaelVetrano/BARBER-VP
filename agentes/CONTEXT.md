@@ -1,7 +1,7 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-17 — fase 07 (Dashboard II) EM ANDAMENTO:
-backend completo, testado e commitado; front-end ainda não iniciado.
+Atualizado por último: 2026-08-17 — fase 07 (Dashboard II) concluída:
+backend + front-end das 9 telas, testado e commitado.
 
 ## Status das fases
 
@@ -13,7 +13,7 @@ backend completo, testado e commitado; front-end ainda não iniciado.
 | 04 | Booking público | ✅ |
 | 05 | Área do cliente | ✅ |
 | 06 | Dashboard I | ✅ |
-| 07 | Dashboard II | 🟨 backend ✅ testado · front-end ⬜ |
+| 07 | Dashboard II | ✅ |
 | 08 | Super Admin | ⬜ |
 | 09 | Integrações & Hardening (GATE) | ⬜ |
 
@@ -648,19 +648,66 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   reabertura só `MANAGER+`, auditada) e
   `test/isolation/dashboard-ii.isolation-spec.ts` (16 casos — os 403 de
   feature flag do critério de aceite, um tenant Essencial e um Profissional
-  de verdade, mais isolamento de tenant em `/orders`). Total do projeto: 79
-  unit (1 flaky pré-existente, ver dívidas) + 81 e2e + 52 isolamento, todos
-  verdes.
+  de verdade, mais isolamento de tenant em `/orders`). Total do projeto: 80
+  unit (1 é probabilístico — colisão rara de `bookingCode` em 2000 sorteios,
+  ver dívidas) + 81 e2e + 52 isolamento, todos verdes na última rodada.
 - **Dependência nova**: nenhuma (o Assistente IA usa só o padrão de
   adapter já existente).
-- **NÃO entregue nesta fase ainda — ver dívidas**: front-end das 9 telas
-  (Comandas, Financeiro, Comissões, Fidelidade, WhatsApp, Assistente IA,
-  Relatórios, Configurações, Minha Página). O backend foi verificado
-  manualmente ponta a ponta via HTTP (login real, abrir comanda, fechar,
-  conferir `CommissionEntry`/estoque/relatório, trocar de plano via SQL pra
-  bater os 403) além da suíte automatizada — mas a fase 07 só pode virar ✅
-  quando o "Checklist de responsividade aplicado, com atenção especial ao
-  POS" do critério de aceite também estiver satisfeito, e isso é front-end.
+
+### Front-end (9 telas, `apps/dashboard`)
+
+- **`lib/api/`**: um arquivo de hooks TanStack Query por domínio —
+  `pos.ts`, `finance.ts`, `commissions.ts`, `loyalty.ts`, `whatsapp.ts`,
+  `assistant.ts`, `reports.ts`, `settings.ts`, `my-page.ts` — mesmo padrão
+  de `catalog.ts`/`agenda.ts`/`clients.ts` da fase 06 (query key por
+  domínio, `invalidateQueries` no `onSuccess` da mutation).
+- **Comandas (POS)** (`app/comandas/`, `components/pos/`): lista Abertas/
+  Fechadas → abrir comanda (cliente cadastrado ou walk-in, mesmo padrão do
+  "Novo agendamento") → `PosWorkspace` com catálogo + comanda em
+  `lg:grid-cols-[1fr_380px]`. `ComandaContent`/`ComandaFooter` são
+  DELIBERADAMENTE dois componentes separados: o rodapé (subtotal/desconto/
+  total/"Fechar comanda") nunca fica dentro da área que rola — no desktop é
+  um bloco `shrink-0` fixo no `Card`, no mobile é o `footer` do `Modal`
+  (que já é bottom-sheet nativo abaixo de 768px). É o "subtotal sempre
+  visível" do critério de aceite, verificado pela ESTRUTURA do layout
+  (`overflow-y-auto` só no conteúdo, nunca envolvendo o rodapé), não por
+  captura de tela — ver dívida sobre verificação visual.
+- **Financeiro** (`app/financeiro/`, `components/finance/`): 6 sub-abas
+  (Caixa/Contas a pagar/Contas a receber/Vales/Contas bancárias/Fluxo de
+  caixa) num `Tabs` só. `CashFlowChart` é SVG puro (sem lib de gráfico,
+  legenda abaixo, `overflow-x-auto` no container — regra 1).
+- **Comissões** (`app/comissoes/`): seletor de mês, cards expansíveis por
+  barbeiro com extrato, `RuleModal` (FIXED/TIERED com editor de faixas),
+  "Fechar período" com `confirm()` (é uma ação que trava o cálculo — vale a
+  fricção de uma confirmação nativa em vez de um modal próprio, dado o
+  tempo da sessão).
+- **Fidelidade** (`app/fidelidade/`): Pontos/Sorteios/Assinaturas.
+  Assinaturas usa `FeatureLocked` (Avançado).
+- **WhatsApp**: card por automação, `Switch` + template editável;
+  automações avançadas mostram cadeado e abrem `UpgradeModal` se o toggle
+  vier 403.
+- **Assistente IA**: chat simples com contador "X/limite mensagens este
+  mês", input desabilitado ao bater o limite.
+- **Relatórios**: `summary` sempre visível (StatCards + barra de forma de
+  pagamento); `advanced` atrás de `FeatureLocked`.
+- **Configurações** (`app/configuracoes/`): 5 sub-abas — Barbearia (dados +
+  horário de funcionamento editável), Unidades (`FeatureLocked`,
+  Avançado), Plano (cards comparativos + trocar + faturas), Preferências,
+  **Calculadora de preço** (`FeatureLocked`, Avançado). A calculadora mora
+  aqui e NÃO em Serviços & Produtos — ver decisão técnica.
+- **Minha Página**: link público + copiar, slug editável, sobre, 4 toggles
+  reais (serviços/avaliações/fotos/horário), galeria de fotos (URL simples,
+  sem upload).
+- **`components/feature-locked.tsx` + `components/upgrade-modal.tsx`**: o
+  padrão `openUpgradeModal` do protótipo, novo nesta fase (nenhuma tela
+  anterior precisava) — ver decisão técnica sobre como ele detecta o gate.
+- **`lib/nav.ts`**: as 9 rotas desta fase viraram `ready: true` — as 13
+  rotas de fases 06+07 do dashboard estão todas clicáveis, só falta o
+  Super Admin (fase 08, app separado).
+- **Verificação**: `tsc --noEmit` e `eslint` limpos em TODO `apps/dashboard`
+  (não só os arquivos novos), as 9 rotas responderam 200 sem erro no log do
+  `next dev`. **Sem captura de tela** — mesmo padrão de verificação da fase
+  06 (ver dívida "verificação visual" abaixo).
 
 ## Decisões tomadas
 
@@ -795,6 +842,50 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   `AI_ASSISTANT_DRIVER`), exatamente como o enunciado pediu. O limite mensal
   por plano é real (conta `AiChatMessage` do mês corrente), só a
   "inteligência" da resposta é mock.
+- **`FeatureLocked`/`UpgradeModal` detectam o gate pela RESPOSTA REAL da
+  API (403 `FEATURE_NOT_IN_PLAN`), não por um mapa de features calculado no
+  cliente.** O dashboard não tem hoje nenhum jeito de saber o plano/features
+  do tenant sem perguntar (o `EstablishmentAuthState` não carrega isso) — dá
+  pra buscar via `GET /settings/plan`, mas isso adicionaria uma chamada
+  extra em toda tela só para decidir se mostra ou esconde algo que o
+  PRÓPRIO endpoint de dados já vai dizer com o mesmo 403 de qualquer jeito.
+  `isFeatureGateError(query.error)` (novo em `lib/feature-error.ts`, lê
+  `ApiError.code`) troca o conteúdo normal da seção por `FeatureLocked`
+  sem round-trip a mais. Único ponto cego: um `Switch` que já está LIGADO
+  mostra estado errado até o usuário tentar mexer (o `GET /whatsapp-config`
+  já resolve isso devolvendo `requiresFullFeature` explícito por evento,
+  mas o padrão genérico não teria essa saída sem o endpoint cooperar).
+- **Calculadora de preço mora em Configurações, não em Serviços & Produtos**
+  — decisão consciente contra o que o protótipo desenha (`spTabCalculadora`
+  é a 3ª aba de `ServicosProdutos.dc.html`, não de `Configurações`). Mexer
+  na tela de Serviços & Produtos (fase 06, já ✅) para acrescentar uma aba
+  arriscaria a fase anterior por um ganho de fidelidade visual que o
+  enunciado desta fase não pediu explicitamente (o texto da tarefa lista a
+  calculadora dentro do bullet de Configurações). Se a fidelidade exata ao
+  protótipo importar mais que o isolamento de mudança entre fases, mover é
+  trabalho de front-end puro — o endpoint (`POST /settings/price-
+  calculator`) não muda de lugar.
+- **`ComandaContent`/`ComandaFooter` são dois componentes, não um.** A
+  primeira tentativa colocava tudo (itens + totais + botão "Fechar") dentro
+  do `ComandaPanel` único — só que o `children` do `Modal` de `packages/ui`
+  já é `overflow-y-auto` por padrão (é o corpo que rola), e o `footer` é a
+  ÚNICA área garantidamente fixa. Um painel só, incluindo o botão de fechar,
+  ficaria escondido atrás do teclado/scroll numa comanda com muitos itens —
+  exatamente o oposto do "subtotal sempre visível" do critério de aceite.
+  Resolvido separando conteúdo (rola) de rodapé (fixo) e passando o rodapé
+  pelo prop `footer` do `Modal` no mobile / um bloco `shrink-0` manual no
+  `Card` do desktop.
+- **Split de pagamento da comanda não usa `PaymentMethod.SUBSCRIPTION`/
+  `LOYALTY` no front** (documentado no backend também) — o `CloseOrderModal`
+  só mostra Pix/Dinheiro/Débito/Crédito, exatamente os botões do protótipo;
+  cobertura por assinatura e resgate de pontos aparecem como REDUÇÃO do
+  total a dividir, não como mais um método na lista.
+- **Nenhuma captura de tela — verificação por `tsc`/`eslint`/`curl` +
+  leitura da estrutura de classes responsivas**, mesmo padrão que a fase 06
+  já tinha adotado (ver dívida "sem teste de frontend automatizado" de
+  lá). Não há Playwright/Storybook configurado no projeto ainda; instalar
+  isso é decisão maior que cabe à fase 09 (hardening) ou a uma fase de
+  qualidade dedicada, não a um agente de feature.
 
 ### Fase 06 — decisões técnicas
 
@@ -1471,19 +1562,22 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
 
 ### Dívidas novas da fase 07
 
-- **FRONT-END NÃO ENTREGUE NESTA SESSÃO.** É a dívida principal: as 9 telas
-  (Comandas/POS, Financeiro, Comissões, Fidelidade, WhatsApp, Assistente IA,
-  Relatórios, Configurações, Minha Página) ainda são o placeholder da fase
-  06 (`ready: false` em `apps/dashboard/lib/nav.ts`). O backend foi
-  verificado ponta a ponta via HTTP real e suíte automatizada (79 unit + 81
-  e2e + 52 isolamento), mas a fase só pode virar ✅ com o "checklist de
-  responsividade, atenção especial ao POS" do critério de aceite — que é
-  front-end puro. Próxima sessão: seguir literalmente o `agente-07-
-  dashboard-ii.md` → "Tarefas frontend", reaproveitando `ResponsiveTable`/
-  `Tabs`/`Modal`/`Card`/`StatCard` de `packages/ui` (fase 02) — os contratos
-  de `packages/types` (`pos.ts`/`finance.ts`/`commissions.ts`/`loyalty.ts`/
-  `whatsapp-config.ts`/`reports.ts`/`settings.ts`/`assistant.ts`) já estão
-  prontos, é só consumir.
+- **Nenhuma verificação VISUAL de responsividade — só estrutural.** O
+  "checklist de responsividade, atenção especial ao POS" foi conferido lendo
+  as classes Tailwind (`hidden lg:flex`/`lg:hidden`, `grid lg:grid-cols-
+  [1fr_380px]`, o `footer` do `Modal` fora da área `overflow-y-auto`) e
+  confiando no comportamento já testado do `Modal`/`Drawer` (bottom-sheet
+  nativo < 768px, fase 02) — não em captura de tela em 360/768/1440px nem
+  interação real de usuário. Não há Playwright/Storybook no projeto ainda
+  (mesma dívida da fase 06). Se algo escapou da leitura de código, só
+  aparece testando ao vivo (`docker compose up dashboard` — sozinho, sem a
+  stack inteira, para não estourar RAM numa máquina mais modesta).
+- **`FeatureLocked` de uma seção só aparece DEPOIS da tentativa de
+  requisição falhar** (é reativo ao 403 real, não a um estado pré-calculado
+  — ver decisão técnica) — a primeira renderização de uma tela gated sempre
+  mostra o `Skeleton` de carregamento por uma fração de segundo antes do
+  cadeado, mesmo sabendo de antemão (pelo menos para quem já viu a tela)
+  que vai ser bloqueada. Cosmético, não bloqueia nada.
 - **Sem marcar `NO_SHOW` pela Comandas.** O fechamento de comanda marca o
   `Appointment` vinculado como `DONE` (regra do enunciado), mas não existe
   NENHUM caminho — nem na Agenda (fase 06), nem em Comandas (fase 07) — para
@@ -1649,12 +1743,16 @@ Com a stack de pé (`make up && make seed`):
    `make test-isolation` (36 — os 25 de antes + os 11 desta fase, incluindo
    os dois casos de papel do critério de aceite).
 
-### Como conferir a fase 07 rodando (backend — sem UI própria ainda)
+### Como conferir a fase 07 rodando
 
-Sem tela no dashboard ainda (nav continua `ready: false` nestas rotas) — a
-verificação é via API direta, com a stack de pé (`make up && make seed`):
+**Cuidado com RAM**: a stack completa (`make up`, 4 apps Next.js + api + db +
+redis) já derrubou o VSCode numa máquina com 7.5GB de RAM. Prefira
+`docker compose up -d db redis api` (só o backend) para os passos 1–2 abaixo,
+e suba `dashboard` separadamente só se for olhar a UI (`docker compose up -d
+dashboard`, sozinho — não precisa de `site`/`booking`/`admin` para ver o
+painel). `docker compose stop` entre uma coisa e outra.
 
-1. **Login + ciclo completo**:
+1. **Login + ciclo completo** (só precisa de `db`+`redis`+`api`):
    ```bash
    TOKEN=$(curl -s -X POST http://localhost:3333/api/v1/auth/login \
      -H 'Content-Type: application/json' \
@@ -1678,10 +1776,18 @@ verificação é via API direta, com a stack de pé (`make up && make seed`):
    ```
 3. **Swagger**: `http://localhost:3333/api/docs` — todos os endpoints desta
    fase já documentados (`@ApiOperation`), inclusive os gates de feature.
-4. **Testes**: `make test` (79 unit — 1 flaky pré-existente, ver dívidas),
-   `make test test:e2e` equivalente via `pnpm --filter @barbervp/api test:e2e`
-   (81 — os 78 de antes + `dashboard-ii.e2e-spec.ts`), `make test-isolation`
-   (52 — os 36 de antes + `dashboard-ii.isolation-spec.ts`).
+4. **Testes**: `make test` (80 unit — 1 é probabilístico, ver dívidas),
+   `pnpm --filter @barbervp/api test:e2e` (81), `make test-isolation` (52).
+   Todos verdes na última rodada desta sessão.
 5. **`make seed` de novo ao terminar** — os testes/smoke rodam contra o
    banco de dev; reseedar deixa os dados como o próximo agente espera
    encontrar.
+6. **Front-end** (suba só `dashboard`, sem as outras 3 apps): login em
+   `http://localhost:3002` com `dono@barbeariacentral.com.br` /
+   `BarberVP@2026` — as 9 rotas desta fase estão no nav (Comandas,
+   Financeiro, Comissões, Fidelidade, WhatsApp, Assistente IA, Relatórios,
+   Configurações, Minha Página). No POS (`/comandas`), abra uma comanda e
+   redimensione a janela abaixo de 1024px: a coluna da comanda vira uma
+   barra fixa embaixo com o subtotal, que abre como bottom-sheet.
+7. **`docker compose stop` ao terminar** — não deixar a stack de pé sem
+   necessidade.
