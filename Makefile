@@ -5,10 +5,10 @@ COMPOSE := docker compose
 API := $(COMPOSE) exec -T api pnpm --filter @barbervp/api exec
 
 .DEFAULT_GOAL := help
-.PHONY: help env install up down logs ps migrate migrate-create seed reset test test-isolation lint typecheck build prod-build sh psql redis-cli
+.PHONY: help env install up down logs ps migrate migrate-create seed reset test test-e2e test-isolation responsive lint typecheck build prod-build sh psql redis-cli
 
 help: ## Lista os alvos disponíveis
-	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 env: ## Cria .env a partir de .env.example (não sobrescreve)
 	@[ -f .env ] || cp .env.example .env && echo "✓ .env pronto"
@@ -49,8 +49,15 @@ reset: ## Derruba tudo COM volumes, sobe, migra e semeia do zero
 test: ## Roda a suíte completa (unit + e2e)
 	pnpm turbo run test
 
+test-e2e: ## Roda a suíte e2e da API (precisa do banco de pé)
+	pnpm --filter @barbervp/api test:e2e
+
 test-isolation: ## Roda apenas a suíte de isolamento de tenant
 	pnpm --filter @barbervp/api test:isolation
+
+responsive: ## Varredura responsiva das apps NO AR, nos 5 tamanhos de referência
+	@echo "Varre só o que estiver de pé — suba as apps que quiser conferir."
+	node scripts/responsive-sweep.mjs
 
 lint: ## Lint em todo o monorepo
 	pnpm turbo run lint

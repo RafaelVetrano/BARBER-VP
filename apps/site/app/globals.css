@@ -1,1 +1,28 @@
 @import '@barbervp/ui/styles.css';
+
+/**
+ * A landing de vendas é a única superfície CLARA do produto (decisão da fase
+ * 10). O `body` global é escuro (`packages/ui/src/styles.css`) e continua assim
+ * para `/entrar`, `/cadastro` e `/recuperar-senha`.
+ *
+ * O wrapper da landing já pinta o próprio fundo, mas o `body` aparece no
+ * "estica e volta" do scroll (iOS/macOS) e atrás de `position:fixed` —
+ * uma faixa preta piscando no topo de uma página branca. `:has()` resolve sem
+ * tocar no layout raiz, que é compartilhado com as telas de auth.
+ *
+ * Navegador sem `:has()` cai no fundo escuro só nessa faixa de overscroll: a
+ * página inteira continua correta, então não vale um script de hidratação.
+ */
+body:has(#bvp-landing) {
+  background: #fafafa;
+  color-scheme: light;
+}
+
+/**
+ * Âncoras da landing sem precisar de JS: o `scroll-margin` compensa a nav
+ * sticky quando o usuário chega por `/#bvp-plans` ou clica num link do rodapé
+ * (o `scrollTo` da nav trata só os cliques dentro da própria nav).
+ */
+#bvp-landing :is([id^='bvp-']) {
+  scroll-margin-top: 80px;
+}

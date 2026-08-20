@@ -1,0 +1,12 @@
+-- Fase 10 (landing de vendas) — cópia de marketing dos planos do SaaS.
+--
+-- Escrita à mão, como todas as outras (ver 20260818120000_hardening_indexes).
+--
+-- Coluna separada de `features` de propósito: `AdminPlansService.upsert`
+-- reconstrói `features` chave a chave a partir de `FEATURE_KEYS` toda vez que
+-- o super admin salva um plano, então qualquer texto guardado lá seria apagado
+-- no primeiro salvamento. `features` é permissão, `marketing` é conteúdo.
+--
+-- Nullable e sem default: plano sem cópia simplesmente não rende bullets na
+-- landing. O seed preenche os três planos com os textos do bundle.
+ALTER TABLE "SaasPlan" ADD COLUMN "marketing" JSONB;

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { json, urlencoded } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { REQUEST_ID_HEADER, TENANT_HEADER } from '@barbervp/types';
 import helmet from 'helmet';
@@ -26,6 +27,11 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     // O CORS explícito é configurado abaixo, com a lista do env.
     cors: false,
+    // O parser padrão do Nest é registrado ANTES de qualquer `app.use`, então
+    // um `json({ limit })` acrescentado depois nunca veria um corpo grande —
+    // o padrão de 100kb já teria recusado. Desligado aqui e registrado abaixo
+    // com o limite explícito.
+    bodyParser: false,
   });
 
   app.useLogger(app.get(Logger));
@@ -44,6 +50,18 @@ async function bootstrap(): Promise<void> {
       hsts: config.isProduction ? { maxAge: 31_536_000, includeSubDomains: true } : false,
     }),
   );
+
+  /**
+   * Teto de payload explícito.
+   *
+   * O padrão do body-parser (100kb) já é conservador, mas depende de uma
+   * versão de dependência — deixar implícito significa que um upgrade pode
+   * afrouxá-lo sem ninguém perceber. 256kb cobre com folga o maior corpo real
+   * da API (uma comanda cheia, ou os 6 templates de WhatsApp de uma vez) e
+   * ainda recusa o upload acidental de um arquivo no lugar de um JSON.
+   */
+  app.use(json({ limit: '256kb' }));
+  app.use(urlencoded({ extended: true, limit: '256kb' }));
 
   // O refresh token viaja em cookie httpOnly — sem o parser, `request.cookies`
   // fica vazio e todo `/refresh` responde 401.

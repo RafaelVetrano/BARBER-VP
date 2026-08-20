@@ -17,10 +17,11 @@ import { PAYMENT_ADAPTER, type PaymentAdapter } from '../../adapters/payment/pay
 /**
  * Billing das barbearias — ciclo simulado via `PAYMENT_ADAPTER` mock.
  *
- * `runCycle()` é a "lógica de renovação testável isoladamente" no MESMO
- * espírito de `SubscriptionRenewalService` da fase 05: um método público sem
- * `@Cron`, pronto para o worker BullMQ da fase 09 chamar sem mudar uma linha
- * — não existe fila real ainda (mesma dívida de sempre).
+ * `runCycle()` roda por dois caminhos: o botão "Rodar ciclo" do super admin
+ * (com ator e requisição) e o job diário da fila (fase 09), que não tem
+ * nenhum dos dois — daí os parâmetros opcionais. O `AuditLog` sai com
+ * `actorUserId: null` quando quem rodou foi o relógio, o que é justamente
+ * como se distingue uma cobrança automática de uma disparada à mão.
  */
 @Injectable()
 export class AdminBillingService {
@@ -61,7 +62,10 @@ export class AdminBillingService {
   }
 
   /** Gera uma fatura PENDING (via `PAYMENT_ADAPTER`) para todo tenant cujo ciclo venceu. */
-  async runCycle(actorUserId: string, request: RequestContext): Promise<RunBillingCycleResult> {
+  async runCycle(
+    actorUserId: string | null = null,
+    request?: RequestContext,
+  ): Promise<RunBillingCycleResult> {
     const due = await this.prisma.tenantSubscription.findMany({
       where: { status: SubscriptionStatus.ACTIVE, currentPeriodEnd: { lte: new Date() } },
       include: { tenant: true, plan: true },
@@ -98,7 +102,12 @@ export class AdminBillingService {
     }
 
     await this.audit.record(
-      { action: AuditAction.ADMIN_BILLING_CYCLE_RUN, entity: 'TenantSubscription', actorUserId, metadata: { charged } },
+      {
+        action: AuditAction.ADMIN_BILLING_CYCLE_RUN,
+        entity: 'TenantSubscription',
+        actorUserId,
+        metadata: { charged, trigger: actorUserId ? 'admin' : 'schedule' },
+      },
       request,
     );
 

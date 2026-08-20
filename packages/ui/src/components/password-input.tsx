@@ -57,7 +57,8 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
           aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'}
           aria-pressed={visible}
           className={cn(
-            'absolute right-1 grid size-10 place-items-center rounded-control text-fg-muted',
+            // 44px no dedo, 40px no mouse (fase 09 — varredura responsiva).
+            'absolute right-1 grid size-11 place-items-center rounded-control text-fg-muted md:size-10',
             'transition-colors hover:text-fg',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold',
           )}

@@ -57,7 +57,10 @@ export function buttonClasses({
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
     'disabled:pointer-events-none disabled:active:translate-y-0',
 
-    size === 'sm' && 'h-10 rounded-control px-4 text-[13px]',
+    // 44px abaixo de `md` e a altura do protótipo a partir dali: `md` é onde
+    // o ponteiro deixa de ser o dedo. Abaixo disso, 40px reprova o mínimo de
+    // alvo de toque das WCAG (fase 09 — varredura responsiva).
+    size === 'sm' && 'h-11 md:h-10 rounded-control px-4 text-[13px]',
     size === 'md' && 'h-12 rounded-xl px-5 text-[15px]',
     size === 'lg' && 'h-[52px] rounded-xl px-6 text-base',
 
@@ -130,7 +133,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       variant={variant}
       className={cn(
         'shrink-0 rounded-full p-0',
-        size === 'sm' && 'size-9',
+        // Mesma regra do `Button` pequeno: 44px no dedo, 36px no mouse.
+        size === 'sm' && 'size-11 md:size-9',
         size === 'md' && 'size-11',
         size === 'lg' && 'size-12',
         className,

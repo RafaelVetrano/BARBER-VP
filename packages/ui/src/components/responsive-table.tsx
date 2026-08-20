@@ -134,7 +134,10 @@ export function ResponsiveTable<Row>({
                         <button
                           type="button"
                           onClick={() => onRowClick(row)}
-                          className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                          // O card só existe abaixo de `md`, ou seja, sempre
+                          // no dedo: o título precisa do alvo inteiro, não da
+                          // altura da linha de texto.
+                          className="flex min-h-11 w-full items-center rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
                         >
                           {titleColumn.render(row)}
                         </button>

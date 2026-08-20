@@ -1,8 +1,9 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-17 — fase 08 (Super Admin) concluída:
-`apps/admin` completo (planos/tenants/billing/métricas), impersonação
-OWNER↔SUPER_ADMIN, testado e commitado.
+Atualizado por último: 2026-08-18 — fase 09 (Integrações & Hardening)
+concluída: filas BullMQ ligadas de verdade, suíte de isolamento dobrada
+(52 → 106 casos), hardening, varredura responsiva automatizada e o build de
+produção das 4 apps DESBLOQUEADO. **As 9 fases estão fechadas.**
 
 ## Status das fases
 
@@ -16,7 +17,8 @@ OWNER↔SUPER_ADMIN, testado e commitado.
 | 06 | Dashboard I | ✅ |
 | 07 | Dashboard II | ✅ |
 | 08 | Super Admin | ✅ |
-| 09 | Integrações & Hardening (GATE) | ⬜ |
+| 09 | Integrações & Hardening (GATE) | ✅ |
+| 10 | Landing de vendas | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
@@ -76,6 +78,21 @@ Todo `PUT` devolve o `OnboardingState` completo.
 | PUT | `/onboarding/team` | Passo 5 — `Barber` em lote (pulável); o dono é preservado. |
 | PUT | `/onboarding/business-hours` | Passo 6 — `TenantBusinessHour` + propaga para `WorkSchedule`. |
 | POST | `/onboarding/complete` | Marca `onboardingDoneAt`. |
+
+### Planos públicos (`/api/v1/public/saas-plans`) — fase 10
+
+`@Public()` **e** `@TenantOptional()` — é a única rota de `/public` que não fala
+de uma barbearia, e sim do produto. Sem `@TenantOptional()` o `TenantGuard`
+global devolveria 403 `TENANT_REQUIRED`.
+
+**Ordem de registro importa**: `PublicPlansModule` entra ANTES do
+`BookingModule` no `AppModule`. `PublicBookingController` é
+`@Controller('public/:slug')` com `@Get()` na raiz, então `/public/saas-plans`
+casaria com ele como `slug = "saas-plans"`. Express casa na ordem de registro.
+
+| Método | Rota | Rate limit | Observações |
+|---|---|---|---|
+| GET | `/public/saas-plans` | global | Planos ativos por preço asc. Resposta igual para todos e sem dado de sessão: `cache-control: public, max-age=300, stale-while-revalidate=1800`. `id` é o `code` do plano (não o cuid) — é ele que vai no `/cadastro?plano=`. |
 
 ### Booking público (`/api/v1/public/:slug`) — fase 04
 
@@ -316,6 +333,18 @@ rota daqui pertence a um tenant, `RolesGuard` deixa passar pelo bypass
 | POST | `/admin/billing/run-cycle` | Gera fatura `PENDING` pra cada tenant com `currentPeriodEnd` vencido (gateway mock). |
 | POST | `/admin/billing/invoices/:id/approve` \| `/reject` | Aprovar avança o mock em DOIS passos (`CONFIRMED`→`RECEIVED`); recusar soma `failedAttempts` e suspende automaticamente ao atingir `BILLING_MAX_FAILED_ATTEMPTS` (env, padrão 3). |
 | GET | `/admin/metrics` | MRR, tenants por plano, novos tenants do mês, churn do mês. |
+
+### Filas e mensagens (`/api/v1/admin`) — fase 09
+
+Mesmas regras do resto do super admin (`SUPER_ADMIN` + `@TenantOptional()`).
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/admin/queues` | Resumo das 4 filas: contagens por estado e próximo disparo de cada cron. |
+| GET | `/admin/queues/:name` | Últimos jobs da fila (padrão 20, teto 100) com o resumo que o processor devolveu. |
+| POST | `/admin/queues/:name/run` | Dispara o job agora, fora do cron. `attempts: 1` — rodada manual não fica repetindo sozinha. |
+| POST | `/admin/queues/:name/jobs/:jobId/retry` | Reenfileira um job que falhou depois de esgotar as tentativas. 404 se o job não existe. |
+| GET | `/admin/outbox` | "Mensagens enviadas" — `NotificationOutbox` + `MailOutbox` unidos, filtro por `kind`/`status`/`tenantId`. Destinatário sai MASCARADO. |
 
 ## O que a fase 01 entregou
 
@@ -809,6 +838,87 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
 
+## O que a fase 10 entregou
+
+- **A landing de vendas** (`apps/site/app/page.tsx`) — última tela do bundle
+  pendente, que era um `PlaceholderScreen` de 14 linhas desde a fase 01. Dez
+  seções na ordem do protótipo: nav sticky, hero com mock de dashboard, 4
+  stats, 7 funcionalidades, 4 passos, planos, 3 depoimentos, FAQ, CTA final e
+  rodapé. Server Component com **ISR de 1h**; só nav (drawer mobile + scroll
+  suave) e FAQ (accordion) são ilhas client.
+- **`GET /public/saas-plans`** — preço e bullets saem do banco, nunca do
+  frontend. Mudar o preço no super admin aparece na landing na revalidação
+  seguinte, sem deploy.
+- **Coluna `SaasPlan.marketing`** (`PlanMarketing`: `baseLabel` + bullets),
+  migration `20260818140000_saas_plan_marketing`, semeada com os textos exatos
+  do protótipo para os três planos.
+- **SEO**: `metadataBase` + canonical absoluto, OG/Twitter, e JSON-LD
+  `SoftwareApplication` (com as ofertas dos 3 planos) + `FAQPage` com as 6
+  perguntas — tudo da mesma fonte que a tela renderiza.
+- **Varredura responsiva verde** nos 5 tamanhos (`node
+  scripts/responsive-sweep.mjs --app=site`), incluindo as três telas de auth,
+  que não regrediram.
+
+## O que a fase 09 entregou
+
+- **Filas BullMQ de verdade** (`apps/api/src/queue/`) — fecha as dívidas
+  "BullMQ continua desligado" das fases 04, 05 e 08. Quatro filas, uma por
+  natureza de trabalho, para que uma renovação travada não segure o lembrete
+  de ninguém: `outbox` (varre a cada 60s), `subscriptions` (03h),
+  `billing` (04h) e `maintenance` (05h), todas com `attempts: 3` e backoff
+  exponencial a partir de 30s. `QueueSchedulerService` registra os cron no
+  boot com `jobId` fixo por fila e **remove os agendamentos anteriores antes**
+  — mudar a hora no env não deixa o cron velho vivo ao lado do novo.
+- **Painel de jobs próprio** (`/admin/queues` + tela `/filas`), não
+  bull-board: o bull-board traria um Express paralelo com autenticação própria,
+  fora do `JwtAuthGuard`/`RolesGuard` que protegem todo o resto — um segundo
+  portão para manter seguro em troca de uma tabela que o design system já sabe
+  desenhar. O painel mostra o RESUMO que cada processor devolve (quantas
+  mensagens saíram, quantas assinaturas renovaram), não só verde/vermelho.
+- **`dispatchDue()` entrou nos contratos** de `NotificationAdapter` e
+  `MailAdapter`. É o que permite o job entregar o lembrete agendado sem
+  conhecer driver concreto: um provedor com agendamento nativo já entregou e
+  devolve zeros; o driver mock varre o próprio outbox. A entrega reivindica
+  cada linha (`updateMany` no `attempts` antes de entregar), então dois
+  workers na mesma rodada não enviam a mesma mensagem duas vezes.
+- **Faxina de dados** (`MaintenanceService`) — dívida da fase 03. Retenções
+  deliberadamente diferentes: OTP 7 dias, sessão 30, outbox 30, `AuditLog`
+  365 (registro de conformidade, não dado operacional).
+- **Tela "Mensagens enviadas"** (`/mensagens`) — a trilha dos dois outboxes,
+  com destinatário mascarado: quem opera a plataforma precisa saber que a
+  mensagem saiu e com que corpo, não ler o telefone do cliente de outra
+  empresa.
+- **Suíte de isolamento COMPLETA (o gate): 52 → 106 casos.** O arquivo novo
+  `full-coverage.isolation-spec.ts` (54 casos) varre a MATRIZ — para cada
+  recurso de negócio das fases 01–08, uma leitura e uma escrita cruzadas com o
+  token do tenant errado. O fixture passou a criar um registro de CADA recurso
+  nos dois tenants, e os dois nascem no plano Avançado de propósito: sem isso,
+  metade dos endpoints responderia 403 por feature gate e um 403 de plano seria
+  confundido com um 403 de isolamento — o teste passaria sem provar nada.
+- **E2E dos 3 fluxos críticos** (`critical-flows.e2e-spec.ts`, 17 casos):
+  cadastro → onboarding → 1º serviço → agendamento público com corrida de slot
+  → comanda → fechamento → comissão (valor conferido: 40% da regra criada) →
+  relatório; cliente com OTP → assinatura → agendamento coberto → uso
+  decrementa → exportação LGPD; super admin troca o plano e o gate do tenant
+  muda com o MESMO token, sem novo login.
+- **Hardening**: rate limit contado no **Redis** (dívida da fase 03 — em
+  memória, N réplicas davam a cada uma o seu teto), com
+  `throttle-redis.e2e-spec.ts` provando que duas instâncias compartilham o
+  contador; teto de payload explícito de 256kb; violação de CHECK deixou de
+  virar 500; corpo grande demais era **500 e agora é 413**; 4 índices novos
+  nas consultas de relatório.
+- **Varredura responsiva AUTOMATIZADA** (`scripts/responsive-sweep.mjs`,
+  `make responsive`) — fecha a dívida "sem teste de frontend" arrastada desde
+  a fase 02. Abre cada tela num Chrome de verdade e mede rolagem horizontal,
+  alvo de toque e erro de console nos 5 tamanhos. **Achou 8 defeitos reais**
+  de alvo de toque (`IconButton`/`Button` pequenos, título do card da
+  `ResponsiveTable`, olho da senha, links isolados das telas de auth, rótulo
+  de checkbox), todos corrigidos mantendo a densidade do protótipo no desktop
+  (`h-11 md:h-10`). As 4 apps passam limpas.
+- **CI** (`.github/workflows/ci.yml`) — dívida da fase 01. Dois jobs:
+  estático (lint + typecheck + build) e testes com Postgres e Redis de
+  serviço, com a suíte de isolamento por último, explicitamente como gate.
+
 ## Decisões tomadas
 
 - 2026-08-14 — Design system unificado no tema de produto (`#0F1115` +
@@ -824,6 +934,117 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   mantida a exigência de OTP do `system-map.md` por segurança, com
   calibração de rate limit a decidir pelo agente 04. Ver `SPEC.md` →
   Decisões tomadas.
+
+### Fase 10 — decisões técnicas
+
+- **A landing é a única superfície CLARA do produto — de propósito.** O
+  protótipo expunha 4 paletas por prop de editor, com a escolha em
+  `localStorage('bvp-palette')`. Isso é ferramenta de exploração de design, não
+  feature: em produção só a **"Light SaaS"** (o default) entra, como tokens
+  fixos em `components/landing/palette.ts`, sem seletor e sem storage. Quem lê
+  a landing é um dono decidindo se compra; quem usa o painel escuro já é
+  cliente e passa horas na tela. Consequência prática: a landing **não usa os
+  componentes de `packages/ui`** — eles carregam os tokens escuros e ficariam
+  ilegíveis sobre `#FAFAFA`.
+- **`body:has(#bvp-landing)` em `globals.css`** para o fundo claro. O `body`
+  global é escuro e continua assim para `/entrar`, `/cadastro` e
+  `/recuperar-senha`, que dividem o mesmo layout raiz. O wrapper da landing já
+  pinta o próprio fundo, mas o `body` aparece no overscroll do iOS/macOS — uma
+  faixa preta piscando no topo de uma página branca. Navegador sem `:has()`
+  perde só essa faixa; não vale um script de hidratação.
+- **`SaasPlan.marketing` é coluna própria, não chave dentro de `features`.**
+  O agente da fase pedia os textos no `features Json`, mas
+  `AdminPlansService.upsert` valida chave a chave contra `FEATURE_KEYS` e
+  **reconstrói** o Json — o texto de marketing seria apagado no primeiro
+  salvamento de plano no super admin. `features` é permissão, `marketing` é
+  conteúdo: mudam por motivos diferentes, em telas diferentes.
+- **Duas respostas do FAQ são montadas a partir da API** (`buildFaqs`). O
+  protótipo cita "Essencial (R$ 49), Profissional (R$ 89) e Avançado (R$ 139)"
+  e "atende até 2 barbeiros e o Profissional até 4" — texto fixo ali era
+  repetir dado de negócio no frontend, e a landing mostraria um preço no card e
+  outro no FAQ no dia em que alguém mexesse no admin. Com os planos semeados o
+  texto sai palavra por palavra igual ao protótipo. Foi por isso que
+  `maxBarbers` entrou no DTO público.
+- **`fetchSaasPlans` devolve `[]` em vez de estourar** quando a API não
+  responde. A página é 90% conteúdo estático; derrubar hero, features,
+  depoimentos e FAQ porque a API piscou seria trocar uma seção degradada por
+  zero visitantes. A seção de planos mostra o próprio aviso e manda para o
+  cadastro, que não depende de escolher plano antes.
+- **Link "Ver o marketplace" do rodapé removido** — a tela não existe e não
+  está em nenhuma fase. O rodapé ficou © 2026 BarberVP + Entrar / Planos /
+  Dúvidas.
+
+### Fase 09 — decisões técnicas
+
+- **O `next build` das 4 apps foi DESBLOQUEADO — e a causa não era nenhuma das
+  hipóteses anteriores.** A dívida da fase 06 dizia que o build falhava em
+  TODAS as rotas de todas as apps com `Cannot read properties of null (reading
+  'useContext')`, e três hipóteses já tinham sido descartadas com evidência.
+  A causa real, encontrada nesta fase, é **`useSearchParams()` sem limite de
+  `<Suspense>`** em `apps/dashboard`: `/configuracoes` (a aba inicial vem de
+  `?tab=`) e `/impersonar`. O hook tira a rota da renderização estática e o
+  Next 14 aborta o prerender. Corrigido embrulhando as duas em `<Suspense>`
+  com fallback equivalente. `site`, `booking` e `admin` buildavam depois de
+  limpar o cache — o erro `useContext` que aparecia antes vinha de artefato
+  velho, não do código. **`pnpm turbo run build` roda 6/6 verde.**
+- **O EACCES do `pnpm build` da API era cache incremental dessincronizado, não
+  permissão.** Sintoma enganoso: `mkdir dist/... EACCES` mesmo com o diretório
+  pertencendo ao usuário. Duas mudanças desta fase se combinaram para expor o
+  problema: o container passou a rodar como uid 1000 e `apps/api/dist` deixou
+  de ser volume anônimo, então host e container passaram a COMPARTILHAR `dist`
+  pelo bind mount — mas cada um tem o seu `node_modules`, e o
+  `tsconfig.tsbuildinfo` morava lá. Um build de um lado deixava o outro
+  achando que a saída estava atualizada. Resolvido movendo o
+  `tsBuildInfoFile` para DENTRO de `dist`, junto do que ele descreve. O motivo
+  original de tirá-lo dali (o container escrevia como root) deixou de existir.
+- **Container de desenvolvimento roda como `node` (uid 1000)** — fecha a
+  dívida da fase 02. O usuário `node` da imagem oficial tem exatamente o uid
+  do dono do checkout, então nada que o container escreve pelo bind mount
+  nasce root-owned. `apps/api/dist` deixou de precisar ser volume anônimo e
+  `pnpm clean` voltou a funcionar do host.
+- **`QueueModule` é dinâmico (`register()`), não estático.** Um `@Processor`
+  vira `Worker` no instante em que é registrado como provider, então a decisão
+  de ligar ou não os workers precisa ser tomada na MONTAGEM do módulo —
+  `@Module({})` estático não consegue consultar o env. O `register()` usa o
+  MESMO `validateEnv` do resto do boot, não um `process.env` cru.
+- **`THROTTLE_STORAGE` existe por dois motivos legítimos, não só pelo teste.**
+  Produção precisa de `redis` (com N réplicas, contagem em memória multiplica
+  o teto real por N). `memory` serve a uma instância única sem Redis e à
+  suíte, onde um contador compartilhado entre os arquivos de spec derrubaria
+  por 429 logins que os testes precisam fazer. O caminho Redis tem cobertura
+  própria em `throttle-redis.e2e-spec.ts`, que sobe DUAS aplicações e prova
+  que o teto gasto numa vale na outra.
+- **`MALFORMED_JSON` foi criado e removido no mesmo dia.** O plano era dar
+  código próprio ao JSON quebrado, mas ele chega ao filtro já embrulhado em
+  `BadRequestException`, sem o `type` do body-parser que o distinguiria de uma
+  validação de DTO. Emitir um código que nunca sai seria pior que não tê-lo:
+  ficou 400 `BAD_REQUEST`, que é a resposta correta de qualquer forma. O
+  `PAYLOAD_TOO_LARGE` ficou, porque esse o filtro reconhece de fato — e era um
+  bug real (500 em vez de 413).
+- **A varredura responsiva navega UMA vez por rota e redimensiona.**
+  Recarregar a cada tamanho fazia 30 navegações em segundos por app; o provider
+  de auth dispara um `/auth/refresh` por montagem e a rajada estourava o rate
+  limit — a varredura passava a medir a tela de erro do Next em vez do layout.
+  Redimensionar também é mais fiel: o que se quer verificar é o reflow por
+  breakpoint, e o layout é CSS (Tailwind `md:`/`lg:`), não JavaScript de
+  largura.
+- **A régua de alvo de toque tem duas exceções, ambas corretas.** Caixa de
+  seleção e rádio são medidos pelo `<label>` (é ele que recebe o toque), e link
+  no meio de uma frase é dispensado pela exceção "inline" das WCAG 2.5.8 — um
+  `<a>` dentro de "aceito os termos de uso" não tem como crescer sem quebrar o
+  parágrafo. Sem essas duas exceções a varredura reprovaria padrões corretos.
+- **`/playground` entra na varredura só pelo layout.** É a galeria de
+  componentes da fase 02, não uma tela de produto: ela renderiza os primitives
+  isolados e em estados de demonstração (inclusive tamanhos pequenos de
+  propósito), então a régua de alvo de toque não se aplica ali.
+- **O teste intermitente do código de reserva foi corrigido na raiz.** Ele
+  exigia ZERO colisão em 2 mil sorteios de um espaço de 30^5; pelo paradoxo do
+  aniversário isso é falso em ~8% das execuções. Não era "flaky", era uma
+  asserção errada para a propriedade que se queria medir. Agora afirma o que a
+  entropia permite (no máximo 2 colisões, o que por acaso é < 0,001%) e ganhou
+  um par que confere que os 30 caracteres do alfabeto realmente aparecem — a
+  regressão que importa (alfabeto encolhido ou sorteio enviesado) passaria
+  despercebida pelo teste de colisão sozinho.
 
 ### Fase 08 — decisões técnicas
 
@@ -1854,6 +2075,72 @@ todos verdes.
   alfabeto ou reduzir o `n` do teste para descolar da margem exata do
   paradoxo do aniversário.
 
+### Dívidas RESOLVIDAS na fase 09
+
+Riscadas onde apareceram, resumidas aqui:
+
+- ~~**Sem CI**~~ (fase 01) — `.github/workflows/ci.yml`, com a suíte de
+  isolamento como gate explícito.
+- ~~**Suíte de isolamento roda só o arnês**~~ (fase 01) — 106 casos, matriz
+  completa por recurso.
+- ~~**`apps/api/dist` root-owned bloqueia o build local**~~ (fase 02) —
+  container roda como uid 1000.
+- ~~**`packages/ui` sem teste automatizado / sem ferramenta de frontend**~~
+  (fases 02/04/05/06/07) — `scripts/responsive-sweep.mjs` + `make responsive`,
+  Chrome de verdade nos 5 tamanhos.
+- ~~**`OtpCode`/`AuthSession` expiradas nunca são limpas**~~ (fase 03) — job
+  `maintenance`.
+- ~~**Rate limit por IP em memória**~~ (fase 03) — storage Redis.
+- ~~**BullMQ desligado: lembretes existem mas ninguém envia**~~ (fase 04) —
+  fila `outbox`, verificada ao vivo entregando um lembrete vencido.
+- ~~**Renovação de assinatura sem quem a agende**~~ (fase 05) — fila
+  `subscriptions` chamando o `runOnce()` que já existia.
+- ~~**Ciclo de billing sem quem o dispare**~~ (fase 08) — fila `billing`;
+  `runCycle()` aceita rodar sem ator e grava `trigger: 'schedule'` no
+  `AuditLog`.
+- ~~**`next build` de produção falha nas 4 apps**~~ (fases 06/08) — era
+  `useSearchParams()` sem `<Suspense>` em duas telas do dashboard. `make build`
+  roda 6/6.
+- ~~**Violação de CHECK vira 500**~~ (fase 07) — 409 com o contrato de erro.
+
+### Dívidas novas da fase 09
+
+- **A varredura responsiva precisa de `--delay` e das apps já no ar.** Ela
+  simula um padrão de acesso que nenhum usuário produz (dezenas de telas em
+  segundos) e, sem folga entre as rotas, estoura o rate limit da API e passa a
+  medir a tela de erro do Next. O padrão (2,5s) serve para `site`, `booking` e
+  `admin`; o `dashboard` precisa de `--delay=6000` porque cada tela dispara
+  várias consultas. Automatizar isso no CI exigiria subir as 4 apps e afrouxar
+  o throttle — não foi feito, a varredura é um alvo de `make`, rodado à mão.
+- **A varredura cobre as telas, não os fluxos dentro delas.** Ela abre cada
+  rota e mede o layout renderizado; modal aberto, drawer, wizard no passo 3 e
+  tabela com muitas linhas não são exercitados. Um transbordamento que só
+  aparece com o `Modal` aberto passaria. Cobrir isso é Playwright com
+  interação, uma decisão de ferramenta maior que esta fase.
+- **Só as telas públicas de `site` e `booking` entram na varredura.** As
+  telas atrás de login dessas duas apps (a conta do cliente, o wizard de
+  agendamento) exigiriam uma sessão de CLIENTE, que é outro fluxo de auth; as
+  do dashboard e do admin são varridas logadas. As telas de cliente usam os
+  MESMOS primitives já exercitados, mas a afirmação "todas as telas" tem essa
+  ressalva.
+- **`AdminOutboxService` une as duas tabelas em memória.** Busca `skip + take`
+  de cada lado, junta, ordena e corta. Correto e barato para o volume de uma
+  página, mas é O(skip) — numa página muito profunda carregaria bem mais linhas
+  do que devolve. Trocar por `UNION ALL` em `$queryRaw` se o volume pedir.
+- **Uma réplica de worker é o suficiente, e isso não é imposto.** Os quatro
+  jobs são agendamentos repetíveis; duas réplicas com
+  `QUEUE_WORKERS_ENABLED=true` dividem o mesmo trabalho sem duplicar efeito (o
+  dreno reivindica cada linha antes de entregar), mas é desperdício. Está
+  documentado em `docs/DEPLOY.md`, não travado por código.
+- **Impersonação continua sem kill-switch** (dívida da fase 08, não resolvida
+  aqui) — segue sem endpoint que revogue a sessão antes dos 900s.
+- **O disco da máquina de desenvolvimento estava 100% cheio** durante esta
+  sessão (2,1 GB livres de 233 GB), com ~19 GB só de cache de build do Docker.
+  Foi limpo (`docker builder prune -af`), mas **não é a causa** de nenhum dos
+  bugs desta fase — foi investigado e descartado. Vale registrar porque a
+  anomalia do banco vazio da fase 08 segue sem causa raiz, e disco cheio
+  continua sendo uma hipótese não testada para ela.
+
 ### Dívidas novas da fase 08
 
 - **Anomalia intermitente do ambiente de dev, NÃO raiz-causada**: em algum
@@ -1895,6 +2182,32 @@ todos verdes.
   verificação em runtime nesta sessão (RAM não permitiu manter `site` +
   `admin` + `dashboard` de pé ao mesmo tempo). Conferir na próxima sessão que
   mexer em `apps/site`.
+
+## Fechamento do produto v1 — o que ficou fora e por onde entra
+
+As 9 fases estão concluídas. O que segue NÃO é dívida acidental: é escopo
+declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
+
+| Fora do v1 | Estado hoje | Caminho documentado |
+|---|---|---|
+| **WhatsApp oficial** | `MockNotificationDriver` completo: grava em `NotificationOutbox`, entrega os agendados pela fila, aparece na tela "Mensagens" | `docs/INTEGRACOES.md` — 3 passos (driver ao lado do mock, enum do env, `case` na factory). **Validado seguindo os próprios passos nesta fase**: um driver de sondagem foi escrito, plugado e conferido no log de boot, sem tocar em módulo de negócio nenhum. |
+| **Asaas** | `MockPaymentDriver` simula o ciclo inteiro (criar, confirmar, receber, estornar) com aprovação/recusa manual pelo super admin | `docs/INTEGRACOES.md` — mesmos 3 passos, **mais** um controller de webhook (`POST /webhooks/asaas`) que chame os MESMOS serviços que a tela de billing chama. `simulateTransition` deve responder 501 no driver real. Acréscimo, não refatoração. |
+| **Google OAuth do cliente** | Botão existe em `ClienteAuth` e responde "Em breve" — não finge autenticar | Mesmo padrão de adapter. É a única funcionalidade desenhada no protótipo que não ficou funcional. |
+| **Provedor real do Assistente IA** | `MockAiAssistantDriver` responde por regras; histórico persiste em `AiChatMessage` | `AI_ASSISTANT_ADAPTER`, mesma factory de `adapters.module.ts`. |
+| **Upload de logo e capa** | Campo de URL digitada (`TenantSettings.logoUrl`/`coverUrl`) | Precisa de storage (S3/R2) ANTES do seletor de arquivo. O schema não muda; quando o domínio das imagens passar a ser conhecido, o `next/image` entra junto (hoje é `<img>` cru por causa da allowlist de domínio). |
+| **Multi-unidade de fato** | O modelo `Unit` existe, tem CRUD e isolamento testado; o motor de grade ainda ignora `unitId` | Filtro por unidade em `AvailabilityService` — o campo já existe em `Appointment` e `Barber`. |
+
+### Números finais
+
+| Suíte | Casos |
+|---|---|
+| Unitários | 81 |
+| E2E | 129 |
+| Isolamento de tenant (gate) | 106 |
+| **Total** | **316** |
+
+`pnpm turbo run lint typecheck` 17/17 · `pnpm turbo run build` 6/6 ·
+varredura responsiva sem pendências nas 4 apps nos 5 tamanhos.
 
 ## Como retomar
 

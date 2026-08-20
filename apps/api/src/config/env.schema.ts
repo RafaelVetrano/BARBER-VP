@@ -32,6 +32,16 @@ export const envSchema = z.object({
 
   THROTTLE_TTL: z.coerce.number().int().positive().default(60),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(120),
+  /**
+   * Onde o rate limit conta.
+   *
+   * `redis` (padrão) é o único correto em produção: com N réplicas, contagem
+   * em memória dá a cada uma o seu próprio teto, e o limite real vira N × o
+   * configurado. `memory` existe para dois casos legítimos — uma instância só
+   * sem Redis, e a suíte de teste, onde um contador compartilhado entre os
+   * arquivos de spec derrubaria por 429 um login que o teste precisa fazer.
+   */
+  THROTTLE_STORAGE: z.enum(['redis', 'memory']).default('redis'),
 
   // Auth — limites agressivos por rota, acima do throttle global.
   /** Janela de validade do código OTP de 6 dígitos. */
@@ -78,6 +88,29 @@ export const envSchema = z.object({
 
   /** Cobranças recusadas SEGUIDAS até o super admin suspender o tenant automaticamente (fase 08). */
   BILLING_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(3),
+
+  // Filas BullMQ (fase 09).
+  /**
+   * Liga os WORKERS. Desligado, a API continua enfileirando e o painel de jobs
+   * continua lendo a fila — só ninguém consome. É assim que se separa web de
+   * worker em produção (réplica de API com `false`, réplica de worker com
+   * `true`) e é assim que a suíte de teste evita que um worker de fundo mexa
+   * no banco no meio de um caso.
+   */
+  QUEUE_WORKERS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+  /** De quanto em quanto tempo o outbox de notificação é varrido (segundos). */
+  QUEUE_OUTBOX_INTERVAL_SECONDS: z.coerce.number().int().positive().default(60),
+  /** Hora local (0–23) do job diário de renovação de assinatura do cliente. */
+  QUEUE_SUBSCRIPTION_RENEWAL_HOUR: z.coerce.number().int().min(0).max(23).default(3),
+  /** Hora local (0–23) do job diário do ciclo de billing do SaaS. */
+  QUEUE_SAAS_BILLING_HOUR: z.coerce.number().int().min(0).max(23).default(4),
+  /** Hora local (0–23) da faxina de OTP/sessões expiradas. */
+  QUEUE_MAINTENANCE_HOUR: z.coerce.number().int().min(0).max(23).default(5),
+  /** Fuso usado pelos cron dos jobs diários. */
+  QUEUE_TIMEZONE: z.string().default('America/Sao_Paulo'),
 });
 
 /** Todas as chaves de ambiente conhecidas — derivadas do próprio schema. */

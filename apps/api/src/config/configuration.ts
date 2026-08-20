@@ -27,7 +27,7 @@ export interface AppConfig {
     otpMaxPerDestinationHour: number;
     passwordResetTtlMinutes: number;
   };
-  throttle: { ttl: number; limit: number };
+  throttle: { ttl: number; limit: number; storage: Env['THROTTLE_STORAGE'] };
   booking: {
     /** Teto de criação de agendamento por IP, por hora. */
     createHourlyLimit: number;
@@ -52,6 +52,15 @@ export interface AppConfig {
   };
   billing: {
     maxFailedAttempts: number;
+  };
+  queue: {
+    /** Workers ligados neste processo. Enfileirar e ler a fila independem disto. */
+    workersEnabled: boolean;
+    outboxIntervalSeconds: number;
+    subscriptionRenewalHour: number;
+    saasBillingHour: number;
+    maintenanceHour: number;
+    timezone: string;
   };
 }
 
@@ -84,7 +93,11 @@ export function buildConfig(env: Env): AppConfig {
       otpMaxPerDestinationHour: env.OTP_MAX_PER_DESTINATION_HOUR,
       passwordResetTtlMinutes: env.PASSWORD_RESET_TTL_MINUTES,
     },
-    throttle: { ttl: env.THROTTLE_TTL, limit: env.THROTTLE_LIMIT },
+    throttle: {
+      ttl: env.THROTTLE_TTL,
+      limit: env.THROTTLE_LIMIT,
+      storage: env.THROTTLE_STORAGE,
+    },
     booking: {
       createHourlyLimit: env.BOOKING_CREATE_HOURLY_LIMIT,
       guestIpHourlyLimit: env.BOOKING_GUEST_IP_HOURLY_LIMIT,
@@ -111,6 +124,14 @@ export function buildConfig(env: Env): AppConfig {
     },
     billing: {
       maxFailedAttempts: env.BILLING_MAX_FAILED_ATTEMPTS,
+    },
+    queue: {
+      workersEnabled: env.QUEUE_WORKERS_ENABLED,
+      outboxIntervalSeconds: env.QUEUE_OUTBOX_INTERVAL_SECONDS,
+      subscriptionRenewalHour: env.QUEUE_SUBSCRIPTION_RENEWAL_HOUR,
+      saasBillingHour: env.QUEUE_SAAS_BILLING_HOUR,
+      maintenanceHour: env.QUEUE_MAINTENANCE_HOUR,
+      timezone: env.QUEUE_TIMEZONE,
     },
   };
 }

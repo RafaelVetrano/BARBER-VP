@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createApiClient, useEstablishmentAuth } from '@barbervp/ui';
 import { SpinnerIcon } from '@barbervp/ui';
@@ -20,7 +20,7 @@ type MeResponse = AuthUser & { memberships: AuthMembership[] };
  * risco de o token da impersonação ser pisado por uma sessão antiga do
  * navegador antes de `adopt()` rodar.
  */
-export default function ImpersonarPage() {
+function ImpersonarContent() {
   const router = useRouter();
   const params = useSearchParams();
   const { adopt } = useEstablishmentAuth();
@@ -80,6 +80,31 @@ export default function ImpersonarPage() {
           <p className="text-sm text-fg-muted">Entrando como o dono da barbearia…</p>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * `useSearchParams()` obriga a um limite de Suspense.
+ *
+ * O hook faz a rota sair da renderização estática (ele só resolve no cliente),
+ * e sem o `<Suspense>` o `next build` falha no prerender — era o que quebrava
+ * o build de produção desta app. O fallback é o mesmo spinner do estado de
+ * carregamento, então visualmente nada muda.
+ */
+export default function ImpersonarPage() {
+  return (
+    <Suspense fallback={<ImpersonarFallback />}>
+      <ImpersonarContent />
+    </Suspense>
+  );
+}
+
+function ImpersonarFallback() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-bg px-6 text-center">
+      <SpinnerIcon size={28} className="animate-spin text-gold" />
+      <p className="text-sm text-fg-muted">Entrando como o dono da barbearia…</p>
     </div>
   );
 }

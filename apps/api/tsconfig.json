@@ -2,9 +2,17 @@
   "extends": "@barbervp/config/tsconfig/nest.json",
   "compilerOptions": {
     "outDir": "./dist",
-    // Fora de `dist`: o container do compose também escreve lá e o arquivo
-    // acabaria root-owned para o host.
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo",
+    // DENTRO de `dist`, junto do que ele descreve.
+    //
+    // Ficava em `node_modules/.cache` porque o container escrevia como root e
+    // o arquivo virava root-owned para o host. Desde a fase 09 o container roda
+    // como uid 1000 e `dist` deixou de ser volume anônimo — os dois lados agora
+    // COMPARTILHAM `dist` pelo bind mount, mas cada um tem o seu
+    // `node_modules`. Com o cache separado da saída, um build do container
+    // deixava o host achando que a saída estava atualizada (e vice-versa), e o
+    // tsc incremental falhava tentando escrever em diretórios que o outro lado
+    // já havia mexido. Cache e saída juntos não divergem.
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"]

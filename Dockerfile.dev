@@ -12,24 +12,39 @@ RUN apt-get update \
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 WORKDIR /app
+RUN chown node:node /app
+
+# Tudo daqui para baixo roda como `node`, que na imagem oficial é uid/gid
+# 1000 — o mesmo do dono do checkout no host.
+#
+# Sem isto, o container escreve como root ATRAVÉS do bind mount, e artefatos
+# de build (`packages/types/dist` no boot da api, por exemplo) nascem
+# root-owned no host: o `pnpm build` do desenvolvedor então falha com EACCES
+# em arquivos que ele mesmo acabou de mandar gerar. Era a dívida da fase 02.
+USER node
 
 # Camada de dependências — só invalida quando um manifesto muda.
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
-COPY packages/config/package.json packages/config/
-COPY packages/types/package.json packages/types/
-COPY packages/ui/package.json packages/ui/
-COPY apps/api/package.json apps/api/
-COPY apps/site/package.json apps/site/
-COPY apps/booking/package.json apps/booking/
-COPY apps/dashboard/package.json apps/dashboard/
-COPY apps/admin/package.json apps/admin/
+COPY --chown=node:node pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
+COPY --chown=node:node packages/config/package.json packages/config/
+COPY --chown=node:node packages/types/package.json packages/types/
+COPY --chown=node:node packages/ui/package.json packages/ui/
+COPY --chown=node:node apps/api/package.json apps/api/
+COPY --chown=node:node apps/site/package.json apps/site/
+COPY --chown=node:node apps/booking/package.json apps/booking/
+COPY --chown=node:node apps/dashboard/package.json apps/dashboard/
+COPY --chown=node:node apps/admin/package.json apps/admin/
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+COPY --chown=node:node . .
 
 # `@barbervp/types` é consumido compilado (CJS); o Prisma Client precisa existir
 # antes do primeiro `nest start`.
 RUN pnpm --filter @barbervp/types build \
   && pnpm --filter @barbervp/api exec prisma generate
+
+# Os diretórios de saída precisam EXISTIR na imagem. Um volume anônimo cujo
+# caminho não existe na imagem nasce pertencendo a root, e o processo (agora
+# `node`) não conseguiria escrever nele.
+RUN mkdir -p apps/site/.next apps/booking/.next apps/dashboard/.next apps/admin/.next
 
 ENV NODE_ENV=development

@@ -3,6 +3,8 @@
 > Fonte de verdade técnica: **[`agentes/SPEC.md`](agentes/SPEC.md)**.
 > Estado entre sessões: [`agentes/CONTEXT.md`](agentes/CONTEXT.md).
 > Execução do kit multi-agente: [`agentes/00-guia-de-uso.md`](agentes/00-guia-de-uso.md).
+> Deploy de produção: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+> Plugar WhatsApp/Asaas de verdade: [`docs/INTEGRACOES.md`](docs/INTEGRACOES.md).
 
 ## Rodando o projeto
 
@@ -26,6 +28,33 @@ make seed       # popula os 2 tenants com os dados do SPEC
 
 `make help` lista todos os alvos (`down`, `logs`, `reset`, `test`,
 `test-isolation`, `psql`, ...).
+
+### Verificando
+
+```bash
+make test            # unitários (81)
+make test-e2e        # e2e contra o banco real (129)
+make test-isolation  # GATE de isolamento de tenant (106) — reprovou, não fecha
+make lint typecheck  # 17/17
+make build           # 6/6, inclusive o standalone das 4 apps Next
+```
+
+Varredura responsiva (Chrome de verdade, 5 tamanhos, nas apps que estiverem
+no ar):
+
+```bash
+make responsive
+# o dashboard dispara muitas consultas por tela — dê folga ao rate limit:
+node scripts/responsive-sweep.mjs --app=dashboard --delay=6000
+```
+
+### Filas
+
+Quatro filas BullMQ (`apps/api/src/queue/`): `outbox` (lembretes e e-mail, a
+cada 60s), `subscriptions`, `billing` e `maintenance` (diárias). O super admin
+acompanha em `/filas` e vê o que os adapters geraram em `/mensagens`.
+`QUEUE_WORKERS_ENABLED=false` separa réplica de web de réplica de worker
+usando a mesma imagem — ver [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ### Layout do monorepo
 

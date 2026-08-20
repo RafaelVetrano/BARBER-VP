@@ -17,6 +17,14 @@ import type { RequestContext } from '../types/request-context';
 /** Nome da EXCLUDE constraint anti double-booking (ver migration inicial). */
 const DOUBLE_BOOKING_CONSTRAINT = 'no_double_booking';
 
+/**
+ * SQLSTATE de violação de CHECK. O schema tem 11 delas (estoque não-negativo,
+ * quota de assinatura, limites do OTP...) e elas são a última linha de defesa
+ * de invariante — mas violá-las é sempre um pedido inválido, nunca uma falha
+ * do servidor. Sem este caso, cada uma virava 500 genérico.
+ */
+const CHECK_VIOLATION = '23514';
+
 interface NormalizedError {
   status: number;
   body: ApiErrorBody;
@@ -71,6 +79,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    const bodyParserError = this.fromBodyParserError(exception);
+    if (bodyParserError) {
+      return bodyParserError;
+    }
+
     if (exception instanceof HttpException) {
       return this.fromHttpException(exception);
     }
@@ -91,6 +104,43 @@ export class AllExceptionsFilter implements ExceptionFilter {
           : { reason: exception instanceof Error ? exception.message : String(exception) },
       },
     };
+  }
+
+  /**
+   * Corpo grande demais.
+   *
+   * O erro nasce no body-parser, antes de qualquer guard ou pipe, e não é
+   * `HttpException` — é um `Error` com `status`/`type` próprios. Sem este
+   * caso ele caía no 500 genérico: a API respondia "erro interno" a um pedido
+   * que estava errado do lado do cliente, e o alerta de 5xx da operação
+   * dispararia por causa de um upload grande.
+   *
+   * JSON malformado NÃO passa por aqui: aquele chega ao filtro já embrulhado
+   * em `BadRequestException`, sem o `type` que o distinguiria de uma validação
+   * de DTO — e sai como 400 `BAD_REQUEST`, que é a resposta correta de todo
+   * jeito.
+   */
+  private fromBodyParserError(exception: unknown): NormalizedError | null {
+    if (!(exception instanceof Error)) {
+      return null;
+    }
+
+    const candidate = exception as Error & { status?: number; type?: string };
+
+    if (
+      candidate.type === 'entity.too.large' ||
+      candidate.status === HttpStatus.PAYLOAD_TOO_LARGE
+    ) {
+      return {
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        body: {
+          code: ErrorCode.PAYLOAD_TOO_LARGE,
+          message: 'Corpo da requisição grande demais.',
+        },
+      };
+    }
+
+    return null;
   }
 
   private fromHttpException(exception: HttpException): NormalizedError {
@@ -159,6 +209,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    if (this.violatesCheckConstraint(exception)) {
+      return {
+        status: HttpStatus.CONFLICT,
+        body: {
+          code: ErrorCode.CONFLICT,
+          message: 'A operação deixaria um registro em estado inválido.',
+        },
+      };
+    }
+
     if (exception instanceof Prisma.PrismaClientValidationError) {
       return {
         status: HttpStatus.BAD_REQUEST,
@@ -167,6 +227,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     return null;
+  }
+
+  /**
+   * O SQLSTATE chega em `meta.code` nos erros conhecidos do Prisma e no texto
+   * cru quando a query foi `$queryRaw`/`$executeRaw` — os dois caminhos
+   * existem no projeto, então os dois são conferidos.
+   */
+  private violatesCheckConstraint(exception: unknown): boolean {
+    if (
+      exception instanceof Prisma.PrismaClientKnownRequestError &&
+      exception.meta?.['code'] === CHECK_VIOLATION
+    ) {
+      return true;
+    }
+
+    return exception instanceof Error && exception.message.includes(CHECK_VIOLATION);
   }
 
   private mentionsDoubleBooking(exception: unknown): boolean {

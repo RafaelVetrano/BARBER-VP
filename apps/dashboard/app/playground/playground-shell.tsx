@@ -43,7 +43,7 @@ export function PlaygroundShell() {
                   aria-checked={selected}
                   onClick={() => setWidth(viewport.width)}
                   className={[
-                    'h-8 rounded-lg px-3 text-[13px] font-semibold transition-colors',
+                    'h-11 md:h-8 rounded-lg px-3 text-[13px] font-semibold transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold',
                     selected ? 'bg-gold text-bg' : 'text-fg-muted hover:text-fg',
                   ].join(' ')}
@@ -55,7 +55,7 @@ export function PlaygroundShell() {
           </div>
           <a
             href="/playground/shell"
-            className="ml-auto text-[13px] font-semibold text-gold underline"
+            className="ml-auto flex min-h-11 items-center text-[13px] font-semibold text-gold underline md:min-h-0"
           >
             Ver AppShell
           </a>

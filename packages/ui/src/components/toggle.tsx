@@ -49,7 +49,7 @@ export const Checkbox = forwardRef<HTMLInputElement, ToggleBaseProps>(function C
           />
         </span>
         {(label || description) && (
-          <label htmlFor={ids.id} className="cursor-pointer select-none text-[13px] leading-snug">
+          <label htmlFor={ids.id} className="flex min-h-11 cursor-pointer select-none flex-col justify-center text-[13px] leading-snug md:min-h-0 md:block">
             <span className="text-fg">{label}</span>
             {description && <span className="mt-0.5 block text-fg-muted">{description}</span>}
           </label>
@@ -86,7 +86,7 @@ export const Radio = forwardRef<HTMLInputElement, ToggleBaseProps>(function Radi
         <span className="pointer-events-none absolute left-1/2 top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold opacity-0 peer-checked:opacity-100" />
       </span>
       {(label || description) && (
-        <label htmlFor={ids.id} className="cursor-pointer select-none text-[13px] leading-snug">
+        <label htmlFor={ids.id} className="flex min-h-11 cursor-pointer select-none flex-col justify-center text-[13px] leading-snug md:min-h-0 md:block">
           <span className="text-fg">{label}</span>
           {description && <span className="mt-0.5 block text-fg-muted">{description}</span>}
         </label>
@@ -107,7 +107,7 @@ export const Switch = forwardRef<HTMLInputElement, ToggleBaseProps>(function Swi
   return (
     <div className={cn('flex items-center justify-between gap-4', className)}>
       {(label || description) && (
-        <label htmlFor={ids.id} className="min-w-0 cursor-pointer select-none text-[13px] leading-snug">
+        <label htmlFor={ids.id} className="flex min-h-11 min-w-0 cursor-pointer select-none flex-col justify-center text-[13px] leading-snug md:min-h-0 md:block">
           <span className="text-fg">{label}</span>
           {description && <span className="mt-0.5 block text-fg-muted">{description}</span>}
         </label>

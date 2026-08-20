@@ -34,6 +34,10 @@ export const ErrorCode = {
   OTP_EXPIRED: 'OTP_EXPIRED',
   OTP_MAX_ATTEMPTS: 'OTP_MAX_ATTEMPTS',
   OTP_COOLDOWN: 'OTP_COOLDOWN',
+  // 413
+  /// Corpo acima do teto do `main.ts`. O body-parser recusa antes de qualquer
+  /// controller, então nenhum módulo de negócio precisa se defender disso.
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   // 429
   RATE_LIMITED: 'RATE_LIMITED',
   // 500+

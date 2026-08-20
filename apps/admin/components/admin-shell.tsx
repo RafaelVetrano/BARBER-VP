@@ -6,6 +6,8 @@ import {
   Avatar,
   AppShell,
   BarChartIcon,
+  ChatIcon,
+  GridIcon,
   Menu,
   MoneyIcon,
   ReceiptIcon,
@@ -21,6 +23,9 @@ const NAV: Array<{ key: string; label: string; href: string; icon: ReactNode }> 
   { key: 'planos', label: 'Planos', href: '/planos', icon: <ReceiptIcon size={19} /> },
   { key: 'billing', label: 'Billing', href: '/billing', icon: <MoneyIcon size={19} /> },
   { key: 'metricas', label: 'Métricas', href: '/metricas', icon: <BarChartIcon size={19} /> },
+  // Fase 09 — operação da plataforma.
+  { key: 'filas', label: 'Filas', href: '/filas', icon: <GridIcon size={19} /> },
+  { key: 'mensagens', label: 'Mensagens', href: '/mensagens', icon: <ChatIcon size={19} /> },
 ];
 
 export interface AdminShellProps {

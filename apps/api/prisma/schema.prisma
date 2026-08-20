@@ -228,6 +228,9 @@ model SaasPlan {
   maxBarbers Int?
   /// Mapa de feature flags — ver `@barbervp/types` → `PlanFeatures`.
   features  Json
+  /// Cópia de marketing da landing (`PlanMarketing`): `baseLabel` + bullets.
+  /// Coluna separada de `features` de propósito — ver `PlanMarketing`.
+  marketing Json?
   isPopular Boolean  @default(false)
   active    Boolean  @default(true)
   sortOrder Int      @default(0)
@@ -1079,6 +1082,9 @@ model Order {
   @@index([tenantId, status])
   @@index([tenantId, openedAt])
   @@index([tenantId, barberId, closedAt])
+  /// Fase 09: as três queries de faturamento do relatório avançado filtram por
+  /// tenant + status + janela de `closedAt`.
+  @@index([tenantId, status, closedAt])
 }
 
 model OrderItem {
@@ -1108,6 +1114,8 @@ model OrderItem {
 
   @@index([tenantId, orderId])
   @@index([tenantId, barberId])
+  /// Fase 09: faturamento por serviço agrupa por `serviceId` filtrando `kind`.
+  @@index([tenantId, kind, serviceId])
 }
 
 /// Pagamento — vários por comanda quando há split ("Dividir" no protótipo).
@@ -1198,6 +1206,8 @@ model CommissionEntry {
 
   @@index([tenantId, barberId, referenceMonth])
   @@index([tenantId, status])
+  /// Fase 09: o extrato do período varre o mês inteiro do tenant, sem barbeiro.
+  @@index([tenantId, referenceMonth])
 }
 
 /// Adiantamento ao barbeiro, descontado da comissão do mês.
@@ -1612,6 +1622,8 @@ model NotificationOutbox {
 
   @@index([tenantId, status, createdAt])
   @@index([status, scheduledFor])
+  /// Fase 09: o dreno do outbox filtra por status + attempts + vencimento.
+  @@index([status, attempts, scheduledFor])
 }
 
 /// Fila de saída de e-mail transacional (`MockMailDriver`).

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Badge, Button, Card, CardHeader, EmptyState, Input, PlusIcon, Skeleton, Switch, Tabs, useToast } from '@barbervp/ui';
 import { WEEKDAY_LABELS, formatBRL, minutesToTime, timeToMinutes } from '@barbervp/types';
@@ -306,7 +306,7 @@ function CalculadoraTab() {
   );
 }
 
-export default function ConfiguracoesPage() {
+function ConfiguracoesContent() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as CfgTab | null) ?? 'barbearia';
   const [tab, setTab] = useState<CfgTab>(TABS.some((t) => t.value === initialTab) ? initialTab : 'barbearia');
@@ -321,6 +321,31 @@ export default function ConfiguracoesPage() {
         {tab === 'plano' && <PlanoTab />}
         {tab === 'preferencias' && <PreferenciasTab />}
         {tab === 'calculadora' && <CalculadoraTab />}
+      </div>
+    </DashboardChrome>
+  );
+}
+
+/**
+ * `useSearchParams()` (a aba inicial vem de `?tab=`) obriga a um limite de
+ * Suspense: o hook tira a rota da renderização estática e, sem ele, o
+ * `next build` falha no prerender — era o que quebrava o build de produção
+ * desta app. O fallback repete a casca da tela, então não há salto visual.
+ */
+export default function ConfiguracoesPage() {
+  return (
+    <Suspense fallback={<ConfiguracoesFallback />}>
+      <ConfiguracoesContent />
+    </Suspense>
+  );
+}
+
+function ConfiguracoesFallback() {
+  return (
+    <DashboardChrome activeKey="configuracoes">
+      <div className="flex flex-col gap-5">
+        <h1 className="font-display text-xl font-bold text-fg">Configurações</h1>
+        <Skeleton className="h-64" />
       </div>
     </DashboardChrome>
   );

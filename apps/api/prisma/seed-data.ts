@@ -42,6 +42,24 @@ export const SAAS_PLANS = [
     isPopular: false,
     sortOrder: 0,
     features: featuresForTier(PlanTier.ESSENCIAL),
+    // Bullets da landing (`BarberVP Vendas.dc.html` → PLANS). Não são as
+    // feature flags acima: aqui é o que o dono lê antes de assinar, lá é o que
+    // o backend libera depois. Um fala de venda, o outro de permissão.
+    marketing: {
+      baseLabel: null,
+      features: [
+        'Agenda inteligente',
+        'Até 2 barbeiros',
+        'Agendamentos ilimitados',
+        'Controle de clientes',
+        'Financeiro básico (caixa)',
+        'Relatórios essenciais',
+        'Link de agendamento',
+        'Notificações',
+        'WhatsApp básico',
+        'IA (50 msgs/mês)',
+      ],
+    },
   },
   {
     code: 'profissional',
@@ -52,6 +70,19 @@ export const SAAS_PLANS = [
     isPopular: true, // "★ Mais popular" na landing
     sortOrder: 1,
     features: featuresForTier(PlanTier.PROFISSIONAL),
+    marketing: {
+      baseLabel: 'Tudo do Essencial, mais:',
+      features: [
+        'Até 4 barbeiros',
+        'WhatsApp completo',
+        'Comissões automáticas',
+        'Contas a pagar/receber',
+        'Programa de fidelidade',
+        'Sorteio automático',
+        'Relatórios avançados',
+        'IA (200 msgs/mês)',
+      ],
+    },
   },
   {
     code: 'avancado',
@@ -62,6 +93,17 @@ export const SAAS_PLANS = [
     isPopular: false,
     sortOrder: 2,
     features: featuresForTier(PlanTier.AVANCADO),
+    marketing: {
+      baseLabel: 'Tudo do Profissional, mais:',
+      features: [
+        'Barbeiros ilimitados',
+        'Múltiplas unidades',
+        'Assinaturas de clientes',
+        'Calculadora de preço inteligente',
+        'Suporte prioritário',
+        'IA ilimitada',
+      ],
+    },
   },
 ] as const;
 

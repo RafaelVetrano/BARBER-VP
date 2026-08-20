@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsPositive, IsString, Matches, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsObject, IsOptional, IsPositive, IsString, Matches, Min, MinLength } from 'class-validator';
+import { OutboxStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 
 export class UpsertPlanDto {
@@ -73,4 +74,21 @@ export class AdminInvoiceListQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+}
+
+export class AdminOutboxQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ enum: ['notification', 'mail'] })
+  @IsOptional()
+  @IsIn(['notification', 'mail'])
+  kind?: 'notification' | 'mail';
+
+  @ApiPropertyOptional({ enum: OutboxStatus })
+  @IsOptional()
+  @IsEnum(OutboxStatus)
+  status?: OutboxStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
 }

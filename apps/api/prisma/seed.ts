@@ -147,6 +147,7 @@ async function seedSaasPlans(): Promise<Map<string, string>> {
         isPopular: plan.isPopular,
         sortOrder: plan.sortOrder,
         features: plan.features as unknown as Prisma.InputJsonValue,
+        marketing: plan.marketing as unknown as Prisma.InputJsonValue,
       },
       select: { id: true },
     });

@@ -106,7 +106,7 @@ export function LoginForm() {
         />
         <Link
           href="/recuperar-senha"
-          className="self-end text-[13px] font-semibold text-gold hover:text-gold-hover"
+          className="flex min-h-11 items-center self-end text-[13px] font-semibold text-gold hover:text-gold-hover md:min-h-0"
         >
           Esqueci a senha
         </Link>
@@ -143,7 +143,7 @@ export function LoginForm() {
       </Link>
 
       <p className="text-center text-[13px] text-fg-subtle">
-        <Link href={BOOKING_URL} className="hover:text-fg-muted">
+        <Link href={BOOKING_URL} className="inline-flex min-h-11 items-center hover:text-fg-muted md:min-h-0">
           ← Entrar como cliente
         </Link>
       </p>

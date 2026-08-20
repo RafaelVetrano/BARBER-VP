@@ -76,7 +76,7 @@ function RequestStep() {
         <CheckCircleIcon size={44} className="text-success" />
         <h2 className="font-display text-2xl font-bold text-fg">Confira seu e-mail</h2>
         <p className="text-[15px] leading-relaxed text-fg-muted">{sent}</p>
-        <Link href="/entrar" className="text-sm font-semibold text-gold hover:text-gold-hover">
+        <Link href="/entrar" className="inline-flex min-h-11 items-center text-sm font-semibold text-gold hover:text-gold-hover md:min-h-0">
           Voltar para o login
         </Link>
       </div>
@@ -112,7 +112,7 @@ function RequestStep() {
 
       <Link
         href="/entrar"
-        className="text-center text-[13px] font-semibold text-fg-muted hover:text-fg"
+        className="flex min-h-11 items-center justify-center text-center text-[13px] font-semibold text-fg-muted hover:text-fg md:min-h-0"
       >
         ← Voltar para o login
       </Link>
@@ -150,7 +150,7 @@ function ResetStep({ token }: { token: string }) {
         <p className="text-[15px] text-fg-muted">
           Sua senha foi atualizada e as outras sessões foram encerradas.
         </p>
-        <Link href="/entrar" className="text-sm font-semibold text-gold hover:text-gold-hover">
+        <Link href="/entrar" className="inline-flex min-h-11 items-center text-sm font-semibold text-gold hover:text-gold-hover md:min-h-0">
           Entrar com a senha nova
         </Link>
       </div>

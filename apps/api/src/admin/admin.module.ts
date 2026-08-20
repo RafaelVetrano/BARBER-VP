@@ -8,6 +8,8 @@ import { AdminBillingController } from './billing/admin-billing.controller';
 import { AdminBillingService } from './billing/admin-billing.service';
 import { AdminMetricsController } from './metrics/admin-metrics.controller';
 import { AdminMetricsService } from './metrics/admin-metrics.service';
+import { AdminOutboxController } from './outbox/admin-outbox.controller';
+import { AdminOutboxService } from './outbox/admin-outbox.service';
 
 /**
  * Super Admin (fase 08) — `apps/admin`. Importa `AuthModule` só pelo
@@ -17,7 +19,22 @@ import { AdminMetricsService } from './metrics/admin-metrics.service';
  */
 @Module({
   imports: [AuthModule],
-  controllers: [AdminPlansController, AdminTenantsController, AdminBillingController, AdminMetricsController],
-  providers: [AdminPlansService, AdminTenantsService, AdminBillingService, AdminMetricsService],
+  controllers: [
+    AdminPlansController,
+    AdminTenantsController,
+    AdminBillingController,
+    AdminMetricsController,
+    AdminOutboxController,
+  ],
+  providers: [
+    AdminPlansService,
+    AdminTenantsService,
+    AdminBillingService,
+    AdminMetricsService,
+    AdminOutboxService,
+  ],
+  // `AdminBillingService` sai daqui para o job diário da fila (fase 09) poder
+  // chamar `runCycle()` — o MESMO método do botão "Rodar ciclo" da tela.
+  exports: [AdminBillingService],
 })
 export class AdminModule {}

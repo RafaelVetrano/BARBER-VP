@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Um push novo cancela o job anterior do mesmo branch — CI de PR não precisa
+# terminar a execução de um commit que já foi substituído.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.33.0'
+
+jobs:
+  # Estático: não precisa de banco, então roda em paralelo com os testes.
+  static:
+    name: lint + typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # O Prisma Client é gerado, não versionado: sem isto o typecheck da API
+      # não encontra nenhum model.
+      - run: pnpm --filter @barbervp/api exec prisma generate
+
+      - run: pnpm turbo run lint
+      - run: pnpm turbo run typecheck
+      - run: pnpm turbo run build
+
+  tests:
+    name: unit + e2e + isolamento
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: barbervp
+          POSTGRES_PASSWORD: barbervp_ci
+          POSTGRES_DB: barbervp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U barbervp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://barbervp:barbervp_ci@localhost:5432/barbervp?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci_access_secret_com_mais_de_32_caracteres_ok
+      JWT_REFRESH_SECRET: ci_refresh_secret_com_mais_de_32_caracteres_ok
+      CORS_ORIGIN_SITE: http://localhost:3000
+      CORS_ORIGIN_BOOKING: http://localhost:3001
+      CORS_ORIGIN_DASHBOARD: http://localhost:3002
+      CORS_ORIGIN_ADMIN: http://localhost:3003
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `@barbervp/types` é consumido compilado pela API.
+      - run: pnpm --filter @barbervp/types build
+
+      - run: pnpm --filter @barbervp/api exec prisma migrate deploy
+      - run: pnpm --filter @barbervp/api exec prisma db seed
+
+      - name: Unit
+        run: pnpm --filter @barbervp/api test
+
+      - name: E2E
+        run: pnpm --filter @barbervp/api test:e2e
+
+      # O GATE do produto: reprovou, o merge não entra. Roda por último porque
+      # é o mais caro e o mais informativo quando falha.
+      - name: Isolamento de tenant (gate)
+        run: pnpm --filter @barbervp/api test:isolation

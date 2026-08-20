@@ -63,3 +63,48 @@ export function hasFeature(features: unknown, key: FeatureKey): boolean {
     (features as Record<string, unknown>)[key] === true
   );
 }
+
+/**
+ * Cópia de marketing do plano — coluna `SaasPlan.marketing`, não `features`.
+ *
+ * Mora numa coluna própria porque `features` é reconstruído chave a chave a
+ * partir de `FEATURE_KEYS` toda vez que o super admin salva um plano
+ * (`AdminPlansService.upsert`): texto guardado lá seria apagado no primeiro
+ * salvamento. Aqui é conteúdo editável, não flag de permissão — as duas coisas
+ * mudam por motivos diferentes e em telas diferentes.
+ *
+ * `null` na coluna = plano sem cópia de marketing; a landing simplesmente não
+ * mostra bullets para ele.
+ */
+export interface PlanMarketing {
+  /** Ex.: "Tudo do Essencial, mais:" — `null` no plano de entrada. */
+  baseLabel: string | null;
+  /** Bullets exibidos no card da landing, na ordem. */
+  features: string[];
+}
+
+/** Plano como a landing de vendas o vê — `GET /public/saas-plans`. */
+export interface PublicSaasPlan {
+  /** O `code` do plano (`essencial` | `profissional` | `avancado`). */
+  id: string;
+  name: string;
+  priceCents: number;
+  /** Espelha `isPopular` — o card ganha borda dourada e o selo "★ MAIS POPULAR". */
+  highlight: boolean;
+  baseLabel: string | null;
+  marketingFeatures: string[];
+  /** `null` = ilimitado. A landing usa no FAQ ("até N barbeiros"). */
+  maxBarbers: number | null;
+}
+
+export function planMarketingFrom(value: unknown): PlanMarketing | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const features = Array.isArray(raw['features'])
+    ? raw['features'].filter((item): item is string => typeof item === 'string')
+    : [];
+  const baseLabel = typeof raw['baseLabel'] === 'string' ? raw['baseLabel'] : null;
+  return { baseLabel, features };
+}

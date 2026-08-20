@@ -13,10 +13,6 @@ x-dev-volumes: &dev-volumes
   - ./:/app
   - /app/node_modules
   - /app/apps/api/node_modules
-  # `dist` também é volume: sem isso o build do container (root) deixaria os
-  # artefatos root-owned no host. Por ser volume, não pode ser apagado de
-  # dentro — daí `deleteOutDir: false` no nest-cli.json (use `pnpm clean`).
-  - /app/apps/api/dist
   - /app/apps/site/node_modules
   - /app/apps/site/.next
   - /app/apps/booking/node_modules
@@ -118,12 +114,29 @@ services:
       NOTIFICATION_DRIVER: ${NOTIFICATION_DRIVER:-mock}
       PAYMENT_DRIVER: ${PAYMENT_DRIVER:-mock}
       MAIL_DRIVER: ${MAIL_DRIVER:-mock}
+      AI_ASSISTANT_DRIVER: ${AI_ASSISTANT_DRIVER:-mock}
+      BILLING_MAX_FAILED_ATTEMPTS: ${BILLING_MAX_FAILED_ATTEMPTS:-3}
+      # Filas BullMQ (fase 09) — em dev a api é web E worker no mesmo processo.
+      QUEUE_WORKERS_ENABLED: ${QUEUE_WORKERS_ENABLED:-true}
+      QUEUE_OUTBOX_INTERVAL_SECONDS: ${QUEUE_OUTBOX_INTERVAL_SECONDS:-60}
+      QUEUE_SUBSCRIPTION_RENEWAL_HOUR: ${QUEUE_SUBSCRIPTION_RENEWAL_HOUR:-3}
+      QUEUE_SAAS_BILLING_HOUR: ${QUEUE_SAAS_BILLING_HOUR:-4}
+      QUEUE_MAINTENANCE_HOUR: ${QUEUE_MAINTENANCE_HOUR:-5}
+      QUEUE_TIMEZONE: ${QUEUE_TIMEZONE:-America/Sao_Paulo}
     ports:
       - '${API_PORT:-3333}:3333'
     volumes: *dev-volumes
     # Migrations aplicadas no boot: `make up` deixa o banco pronto sozinho.
+    #
+    # `prisma generate` entra AQUI, e não só no build da imagem: os
+    # `node_modules` são volumes anônimos, que o `docker compose down` destrói.
+    # Sem isto, todo `down` + `up` devolve o client gerado no build da imagem —
+    # que não conhece nenhuma coluna adicionada ao schema desde então, e a API
+    # sobe unhealthy com erro de tipo. Gerar no boot custa ~1s e faz a stack se
+    # curar sozinha.
     command: >
       sh -c "pnpm --filter @barbervp/types build
+      && pnpm --filter @barbervp/api exec prisma generate
       && pnpm --filter @barbervp/api exec prisma migrate deploy
       && pnpm --filter @barbervp/api dev"
     healthcheck:

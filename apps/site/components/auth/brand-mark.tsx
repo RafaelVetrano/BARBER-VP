@@ -13,7 +13,9 @@ export function BrandMark({ className, size = 'md' }: BrandMarkProps) {
     <Link
       href="/"
       className={cn(
-        'inline-flex items-center gap-2.5 rounded-control',
+        // `min-h-11` abaixo de `md`: é um link de navegação isolado, não um
+        // link no meio de uma frase, então vale o alvo de toque mínimo.
+        'inline-flex min-h-11 items-center gap-2.5 rounded-control md:min-h-0',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold',
         className,
       )}

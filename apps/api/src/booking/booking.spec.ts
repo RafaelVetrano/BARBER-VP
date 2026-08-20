@@ -58,9 +58,38 @@ describe('código de reserva', () => {
     }
   });
 
-  it('não repete em 2 mil sorteios (entropia suficiente para a colisão ser rara)', () => {
-    const seen = new Set(Array.from({ length: 2_000 }, () => generateBookingCode()));
-    expect(seen.size).toBe(2_000);
+  /**
+   * Colisão é RARA, não impossível — e a diferença importa.
+   *
+   * O espaço é 30^5 ≈ 24,3 milhões. Pelo paradoxo do aniversário, 2 mil
+   * sorteios colidem ao menos uma vez em ~8% das execuções: exigir zero
+   * colisões era afirmar algo que o acaso torna falso uma vez a cada doze
+   * rodadas, e foi de onde veio o teste intermitente registrado desde a fase
+   * 07. Com CI, esse tipo de teste treina o time a ignorar vermelho.
+   *
+   * O que se quer medir é a ENTROPIA, e ela se mede pela taxa: com λ ≈ 0,08
+   * colisão esperada, passar de duas é praticamente impossível por acaso
+   * (< 0,001%) e só acontece se o alfabeto encolher ou o sorteio enviesar —
+   * que é exatamente a regressão que este teste existe para pegar.
+   */
+  it('colide no máximo o que a entropia permite em 2 mil sorteios', () => {
+    const draws = 2_000;
+    const seen = new Set(Array.from({ length: draws }, () => generateBookingCode()));
+    const collisions = draws - seen.size;
+
+    expect(collisions).toBeLessThanOrEqual(2);
+  });
+
+  it('usa o espaço inteiro do alfabeto — nenhum caractere fica de fora', () => {
+    // Um gerador enviesado (ou um alfabeto truncado por engano) passaria no
+    // teste de colisão acima e falharia aqui.
+    const used = new Set(
+      Array.from({ length: 5_000 }, () => generateBookingCode())
+        .join('')
+        .replace(/AG-/g, ''),
+    );
+
+    expect(used.size).toBe(30);
   });
 
   it('normaliza o que o cliente digita', () => {

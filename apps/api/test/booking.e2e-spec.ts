@@ -41,12 +41,19 @@ describe('booking público (e2e)', () => {
   /** Serviço do tenant B — nenhuma rota de A pode aceitá-lo. */
   let foreignServiceId: string;
 
-  /** Dia de trabalho (seg–sáb) suficientemente à frente para caber na grade. */
+  /**
+   * Dia ÚTIL (seg–sex) suficientemente à frente para caber na grade.
+   *
+   * Sábado é pulado junto com domingo, e não por simetria: a barbearia do seed
+   * fecha 20:00 de seg–sex mas 18:00 no sábado, e os testes de grade abaixo
+   * afirmam o horário de dia útil ("o último início possível é 19:15"). A
+   * versão anterior pulava só domingo, então caía em sábado sempre que a suíte
+   * rodava numa quarta — e o 19:15 não existia naquele dia.
+   */
   const targetDate = (() => {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() + 3);
-    // Domingo é fechado nesta barbearia; empurra para segunda.
-    if (date.getUTCDay() === 0) {
+    while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
       date.setUTCDate(date.getUTCDate() + 1);
     }
     return date.toISOString().slice(0, 10);

@@ -127,3 +127,80 @@ export interface AdminMetricsResponse {
   churn: { period: { from: string; to: string }; canceled: number; rate: number };
   newTenantsThisMonth: number;
 }
+
+// ── Filas / jobs (fase 09) ───────────────────────────────────────────────
+
+export interface AdminQueueCounts {
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+  paused: number;
+}
+
+export interface AdminQueueSchedule {
+  /** Cron do BullMQ, nos jobs diários. `null` nos de intervalo fixo. */
+  pattern: string | null;
+  /** Intervalo em milissegundos, no job de intervalo fixo (o outbox). */
+  every: number | null;
+  nextRunAt: string | null;
+}
+
+export interface AdminQueueSummary {
+  name: string;
+  counts: AdminQueueCounts;
+  /** `null` quando o agendamento ainda não foi registrado (Redis fora no boot). */
+  schedule: AdminQueueSchedule | null;
+}
+
+export interface AdminQueueJobItem {
+  id: string;
+  name: string;
+  state: string;
+  attemptsMade: number;
+  createdAt: string;
+  processedAt: string | null;
+  finishedAt: string | null;
+  failedReason: string | null;
+  /** Resumo devolvido pelo processor (quantas mensagens saíram etc.). */
+  result: Record<string, unknown> | null;
+}
+
+export interface AdminQueuesResponse {
+  queues: AdminQueueSummary[];
+}
+
+export interface AdminQueueDetail extends AdminQueueSummary {
+  jobs: AdminQueueJobItem[];
+}
+
+// ── Outbox de mensagens (fase 09) ────────────────────────────────────────
+
+export type AdminOutboxKind = 'notification' | 'mail';
+
+export interface AdminOutboxItem {
+  id: string;
+  kind: AdminOutboxKind;
+  tenantId: string | null;
+  tenantName: string | null;
+  /** Telefone ou e-mail, MASCARADO — o painel não é lugar de PII completa. */
+  recipient: string;
+  /** `templateKey` na notificação, `subject` no e-mail. */
+  subject: string;
+  body: string;
+  status: string;
+  attempts: number;
+  scheduledFor: string | null;
+  sentAt: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface AdminOutboxListQuery extends PaginationQuery {
+  kind?: AdminOutboxKind;
+  status?: string;
+  tenantId?: string;
+}
+
+export type AdminOutboxListResponse = Paginated<AdminOutboxItem>;

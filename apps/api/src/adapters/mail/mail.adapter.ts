@@ -17,7 +17,25 @@ export interface SendMailResult {
   delivered: boolean;
 }
 
-/** Contrato de e-mail transacional. Driver real entra na fase 09. */
+export interface DispatchDueMailResult {
+  picked: number;
+  delivered: number;
+  failed: number;
+}
+
+/**
+ * Contrato de e-mail transacional. Nenhum módulo de negócio importa o driver
+ * concreto — só este símbolo.
+ */
 export interface MailAdapter {
   send(params: SendMailParams): Promise<SendMailResult>;
+
+  /**
+   * Reprocessa o que ficou para trás (`PENDING`, ou `FAILED` ainda dentro do
+   * teto de tentativas). E-mail não tem agendamento no contrato — o `send` é
+   * sempre imediato —, então aqui "vencido" quer dizer "não saiu e ainda vale
+   * tentar". Simétrico ao `dispatchDue` da notificação para que o worker
+   * trate os dois canais do mesmo jeito.
+   */
+  dispatchDue(params?: { now?: Date; limit?: number }): Promise<DispatchDueMailResult>;
 }

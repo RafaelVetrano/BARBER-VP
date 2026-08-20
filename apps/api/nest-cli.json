@@ -3,6 +3,7 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
+    "// deleteOutDir": "false de propósito: `nest start --watch` apaga o outDir a cada rebuild, e o tsc incremental escreve num diretório que acabou de sumir. Limpar é trabalho do `pnpm clean`, que desde a fase 09 funciona a partir do host (o dist deixou de ser volume anônimo e o container passou a rodar como uid 1000).",
     "deleteOutDir": false,
     "tsConfigPath": "tsconfig.build.json"
   }
