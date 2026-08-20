@@ -8,7 +8,7 @@ Guia de produção. Para desenvolvimento, `README.md` + `make help`.
 |---|---|---|
 | `api` | `apps/api/Dockerfile` | REST `/api/v1` — web |
 | `worker` | a MESMA imagem da `api` | consome as filas BullMQ |
-| `site` · `booking` · `dashboard` · `admin` | `apps/*/Dockerfile` | Next.js standalone |
+| `web` | `apps/web/Dockerfile` | Next.js standalone — as 4 superfícies (fase 11) |
 | `db` | `postgres:16` | precisa da extensão `btree_gist` |
 | `redis` | `redis:7` | filas, rate limit e cache |
 
@@ -36,6 +36,8 @@ worker".
    | `AUTH_COOKIE_DOMAIN` | `.seudominio.com.br`, para o refresh valer nos 4 subdomínios |
    | `CORS_ORIGIN_*` | as quatro origens reais; sem wildcard |
    | `PUBLIC_BOOKING_BASE_URL` | domínio público do booking |
+   | `HOST_SITE` · `HOST_BOOKING` · `HOST_APP` · `HOST_ADMIN` | os quatro hosts do `apps/web`; sem eles o roteamento por host e a guarda do super admin ficam desligados |
+   | `NEXT_PUBLIC_SITE_URL` · `_BOOKING_URL` · `_DASHBOARD_URL` · `_ADMIN_URL` | origem de cada superfície, para os links entre elas e o canonical do SEO |
    | `THROTTLE_STORAGE` | `redis` (padrão) — obrigatório com mais de uma réplica |
    | `QUEUE_WORKERS_ENABLED` | `false` na api, `true` no worker |
 
@@ -81,7 +83,7 @@ curl https://api.seudominio.com.br/api/v1/health
 200 com `database` e `redis` em `up`. 503 se qualquer um estiver fora — é o que
 o balanceador deve usar como health check.
 
-O painel de filas (`/filas` no admin) mostra o próximo disparo de cada job e o
+O painel de filas (`/admin/filas`) mostra o próximo disparo de cada job e o
 resultado dos últimos. `/mensagens` mostra o que os adapters geraram.
 
 ## Rate limit e réplicas

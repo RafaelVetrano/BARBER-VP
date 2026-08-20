@@ -42,6 +42,15 @@ jobs:
       - run: pnpm turbo run typecheck
       - run: pnpm turbo run build
 
+      # Vercel e Railway buildam UM pacote cada, não o monorepo inteiro: se o
+      # build isolado de um exigir o outro, o deploy quebra. Este passo é o que
+      # segura essa garantia.
+      - name: Build isolado do frontend (contrato da Vercel)
+        run: pnpm --filter @barbervp/web... build
+
+      - name: Build isolado do backend (contrato da Railway)
+        run: pnpm --filter @barbervp/api... build
+
   tests:
     name: unit + e2e + isolamento
     runs-on: ubuntu-latest
@@ -73,10 +82,12 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci_access_secret_com_mais_de_32_caracteres_ok
       JWT_REFRESH_SECRET: ci_refresh_secret_com_mais_de_32_caracteres_ok
+      # Frontend único (fase 11): uma origem só. A API valida as quatro
+      # variáveis, então todas continuam declaradas.
       CORS_ORIGIN_SITE: http://localhost:3000
-      CORS_ORIGIN_BOOKING: http://localhost:3001
-      CORS_ORIGIN_DASHBOARD: http://localhost:3002
-      CORS_ORIGIN_ADMIN: http://localhost:3003
+      CORS_ORIGIN_BOOKING: http://localhost:3000
+      CORS_ORIGIN_DASHBOARD: http://localhost:3000
+      CORS_ORIGIN_ADMIN: http://localhost:3000
 
     steps:
       - uses: actions/checkout@v4

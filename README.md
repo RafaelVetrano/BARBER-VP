@@ -11,7 +11,7 @@
 ```bash
 make env        # cria .env a partir de .env.example
 make install    # pnpm install no monorepo
-make up         # db + redis + api + as 4 webs (docker compose)
+make up         # db + redis + api + web (docker compose)
 make migrate    # aplica as migrations (inclui a EXCLUDE anti double-booking)
 make seed       # popula os 2 tenants com os dados do SPEC
 ```
@@ -21,10 +21,16 @@ make seed       # popula os 2 tenants com os dados do SPEC
 | API (`/api/v1`) | http://localhost:3333/api/v1 |
 | Swagger | http://localhost:3333/api/docs |
 | Health | http://localhost:3333/api/v1/health |
-| `apps/site` | http://localhost:3000 |
-| `apps/booking` | http://localhost:3001 |
-| `apps/dashboard` | http://localhost:3002 |
-| `apps/admin` | http://localhost:3003 |
+| Landing de vendas | http://localhost:3000/ |
+| Booking público | http://localhost:3000/{slug} (raiz: `/agendar`) |
+| Dashboard da barbearia | http://localhost:3000/app |
+| Super Admin | http://localhost:3000/admin |
+
+Desde a fase 11 é **um frontend só** (`apps/web`): as quatro superfícies são
+prefixos de rota do mesmo app Next. Em produção o `middleware.ts` resolve cada
+host (`barbervp.com`, `agendar.`, `app.`, `admin.`) para o seu prefixo, e
+`/admin/*` só responde no host do admin. Em desenvolvimento o prefixo é digitado
+direto na URL, sem host nenhum configurado.
 
 `make help` lista todos os alvos (`down`, `logs`, `reset`, `test`,
 `test-isolation`, `psql`, ...).
@@ -35,12 +41,14 @@ make seed       # popula os 2 tenants com os dados do SPEC
 make test            # unitários (81)
 make test-e2e        # e2e contra o banco real (129)
 make test-isolation  # GATE de isolamento de tenant (106) — reprovou, não fecha
-make lint typecheck  # 17/17
-make build           # 6/6, inclusive o standalone das 4 apps Next
+make lint typecheck  # 11/11
+make build           # 3/3, inclusive o standalone do `apps/web`
+make build-web       # build isolado do frontend (é o que a Vercel roda)
+make build-api       # build isolado do backend (é o que a Railway roda)
 ```
 
-Varredura responsiva (Chrome de verdade, 5 tamanhos, nas apps que estiverem
-no ar):
+Varredura responsiva (Chrome de verdade, 5 tamanhos, nas 4 superfícies — precisa
+do `web` e da `api` no ar):
 
 ```bash
 make responsive
@@ -52,7 +60,7 @@ node scripts/responsive-sweep.mjs --app=dashboard --delay=6000
 
 Quatro filas BullMQ (`apps/api/src/queue/`): `outbox` (lembretes e e-mail, a
 cada 60s), `subscriptions`, `billing` e `maintenance` (diárias). O super admin
-acompanha em `/filas` e vê o que os adapters geraram em `/mensagens`.
+acompanha em `/admin/filas` e vê o que os adapters geraram em `/admin/mensagens`.
 `QUEUE_WORKERS_ENABLED=false` separa réplica de web de réplica de worker
 usando a mesma imagem — ver [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
@@ -60,10 +68,11 @@ usando a mesma imagem — ver [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ```
 apps/api          NestJS 10 + Prisma + Postgres 16 + Redis
-apps/site         Next.js 14 — site institucional/vendas (SEO)
-apps/booking      Next.js 14 — booking público /{slug} + área do cliente (SEO)
-apps/dashboard    Next.js 14 — dashboard da barbearia (noindex)
-apps/admin        Next.js 14 — super admin do SaaS (noindex)
+apps/web          Next.js 14 — as 4 superfícies, uma por route group:
+                    app/(marketing)/      /  ·  /entrar  /cadastro  /recuperar-senha   (SEO)
+                    app/(booking)/        /{slug}  ·  /agendar                          (SEO)
+                    app/(dashboard)/app/  painel da barbearia                           (noindex)
+                    app/(admin)/admin/    super admin do SaaS                           (noindex)
 packages/config   tsconfig base + preset Tailwind (tokens do design system)
 packages/types    enums, contratos e tipos compartilhados api ↔ web
 packages/ui       cliente HTTP, provider do TanStack Query, primitivas de UI
@@ -117,7 +126,7 @@ Duas identidades visuais coexistem no bundle — ver decisão em `agentes/SPEC.m
   Acento`) — artefato de exploração de design, não o produto final.
 
 Decisão tomada para a build real: **unificar tudo no tema de produto**
-(`#0F1115` + Sora/Inter), inclusive `apps/site`, mantendo o toque editorial
+(`#0F1115` + Sora/Inter), inclusive a landing de vendas, mantendo o toque editorial
 (Playfair Display) apenas como opção tipográfica de destaque em headlines,
 não como sistema de cor paralelo. Detalhe completo em `agentes/SPEC.md`.
 

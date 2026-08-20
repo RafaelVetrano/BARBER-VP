@@ -1,5 +1,5 @@
 # Stack de produção — imagens multi-stage, sem bind mount e sem código-fonte.
-#   make prod-build   → constrói as 5 imagens
+#   make prod-build   → constrói as 2 imagens (web + api)
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Antes de subir, defina no `.env`: POSTGRES_PASSWORD, JWT_ACCESS_SECRET,
@@ -81,49 +81,25 @@ services:
     ports:
       - '${API_PORT:-3333}:3333'
 
-  site:
+  web:
     <<: *web-common
     build:
       context: .
-      dockerfile: apps/site/Dockerfile
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?defina NEXT_PUBLIC_API_URL}
-    image: barbervp/site:latest
+    image: barbervp/web:latest
+    environment:
+      NODE_ENV: production
+      # Roteamento por host (fase 11) — os quatro domínios apontam para ESTE
+      # container. Sem eles o app cai em prefixo direto (`/app`, `/admin`, …) e
+      # a guarda de host do super admin fica desligada.
+      HOST_SITE: ${HOST_SITE:?defina HOST_SITE}
+      HOST_BOOKING: ${HOST_BOOKING:?defina HOST_BOOKING}
+      HOST_APP: ${HOST_APP:?defina HOST_APP}
+      HOST_ADMIN: ${HOST_ADMIN:?defina HOST_ADMIN}
     ports:
-      - '${SITE_PORT:-3000}:3000'
-
-  booking:
-    <<: *web-common
-    build:
-      context: .
-      dockerfile: apps/booking/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    image: barbervp/booking:latest
-    ports:
-      - '${BOOKING_PORT:-3001}:3001'
-
-  dashboard:
-    <<: *web-common
-    build:
-      context: .
-      dockerfile: apps/dashboard/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    image: barbervp/dashboard:latest
-    ports:
-      - '${DASHBOARD_PORT:-3002}:3002'
-
-  admin:
-    <<: *web-common
-    build:
-      context: .
-      dockerfile: apps/admin/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    image: barbervp/admin:latest
-    ports:
-      - '${ADMIN_PORT:-3003}:3003'
+      - '${WEB_PORT:-3000}:3000'
 
 volumes:
   db-data:

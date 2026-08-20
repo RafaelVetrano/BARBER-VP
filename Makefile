@@ -5,7 +5,7 @@ COMPOSE := docker compose
 API := $(COMPOSE) exec -T api pnpm --filter @barbervp/api exec
 
 .DEFAULT_GOAL := help
-.PHONY: help env install up down logs ps migrate migrate-create seed reset test test-e2e test-isolation responsive lint typecheck build prod-build sh psql redis-cli
+.PHONY: help env install up down logs ps migrate migrate-create seed reset test test-e2e test-isolation responsive lint typecheck build build-web build-api prod-build sh psql redis-cli
 
 help: ## Lista os alvos disponíveis
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -16,9 +16,10 @@ env: ## Cria .env a partir de .env.example (não sobrescreve)
 install: ## Instala dependências do monorepo
 	pnpm install
 
-up: env ## Sobe db, redis, api e as 4 webs
+up: env ## Sobe db, redis, api e o frontend único
 	$(COMPOSE) up -d --build
-	@echo "✓ stack no ar — api :3333 · site :3000 · booking :3001 · dashboard :3002 · admin :3003"
+	@echo "✓ stack no ar — api :3333 · web :3000"
+	@echo "  landing /  ·  booking /agendar e /{slug}  ·  painel /app  ·  super admin /admin"
 
 down: ## Derruba a stack (mantém volumes)
 	$(COMPOSE) down
@@ -55,8 +56,8 @@ test-e2e: ## Roda a suíte e2e da API (precisa do banco de pé)
 test-isolation: ## Roda apenas a suíte de isolamento de tenant
 	pnpm --filter @barbervp/api test:isolation
 
-responsive: ## Varredura responsiva das apps NO AR, nos 5 tamanhos de referência
-	@echo "Varre só o que estiver de pé — suba as apps que quiser conferir."
+responsive: ## Varredura responsiva das 4 superfícies NO AR, nos 5 tamanhos de referência
+	@echo "Precisa do web de pé (docker compose up -d web) — e da api, para o login."
 	node scripts/responsive-sweep.mjs
 
 lint: ## Lint em todo o monorepo
@@ -68,7 +69,7 @@ typecheck: ## Typecheck em todo o monorepo
 build: ## Build de todos os pacotes/apps
 	pnpm turbo run build
 
-prod-build: ## Build das imagens de produção
+prod-build: ## Build das imagens de produção (web + api)
 	$(COMPOSE) -f docker-compose.prod.yml build
 
 sh: ## Shell dentro do container da api
@@ -79,3 +80,12 @@ psql: ## psql no banco do compose
 
 redis-cli: ## redis-cli no redis do compose
 	$(COMPOSE) exec redis redis-cli
+
+build-web: ## Build isolado do frontend (é o que a Vercel roda)
+	pnpm --filter @barbervp/types build
+	pnpm --filter @barbervp/web build
+
+build-api: ## Build isolado do backend (é o que a Railway roda)
+	pnpm --filter @barbervp/types build
+	pnpm --filter @barbervp/api exec prisma generate
+	pnpm --filter @barbervp/api build

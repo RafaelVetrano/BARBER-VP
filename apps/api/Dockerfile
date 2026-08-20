@@ -19,10 +19,7 @@ COPY packages/config/package.json packages/config/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
 COPY apps/api/package.json apps/api/
-COPY apps/site/package.json apps/site/
-COPY apps/booking/package.json apps/booking/
-COPY apps/dashboard/package.json apps/dashboard/
-COPY apps/admin/package.json apps/admin/
+COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile
 
 # ── build ────────────────────────────────────────────────────────────────────

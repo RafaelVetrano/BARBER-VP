@@ -1,9 +1,10 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-18 — fase 09 (Integrações & Hardening)
-concluída: filas BullMQ ligadas de verdade, suíte de isolamento dobrada
-(52 → 106 casos), hardening, varredura responsiva automatizada e o build de
-produção das 4 apps DESBLOQUEADO. **As 9 fases estão fechadas.**
+Atualizado por último: 2026-08-20 — fase 11 (Consolidação) concluída: as 4
+apps Next.js viraram UMA (`apps/web`), separadas por route group e roteadas por
+host no middleware. Resultado: **1 frontend + 1 backend**. Nenhuma mudança de
+comportamento — a suíte inteira ficou idêntica à baseline (81 unit · 133 e2e ·
+106 isolamento).
 
 ## Status das fases
 
@@ -19,6 +20,7 @@ produção das 4 apps DESBLOQUEADO. **As 9 fases estão fechadas.**
 | 08 | Super Admin | ✅ |
 | 09 | Integrações & Hardening (GATE) | ✅ |
 | 10 | Landing de vendas | ✅ |
+| 11 | Consolidação (4 apps → 1 frontend) | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
@@ -838,6 +840,160 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
 
+## O que a fase 11 entregou
+
+Refactor **estrutural e mecânico**: nada de comportamento mudou. As 4 apps
+Next.js (`site`, `booking`, `dashboard`, `admin`) viraram uma só, `apps/web`,
+com `apps/api` intacto. De 5 processos Node em dev para 2.
+
+### A nova árvore
+
+```
+apps/web/
+  middleware.ts                roteamento por host + cabeçalhos por superfície
+  app/
+    layout.tsx                 raiz mínima: <html>/<body>, fontes, globals.css
+    providers.tsx              EstablishmentProviders · ClientProviders
+    robots.ts                  um robots.txt, decidido pelo HOST
+    (marketing)/               ← de apps/site            INDEXADO
+      page.tsx                 /            landing de vendas (ISR 1h)
+      (auth)/                  /entrar · /cadastro · /recuperar-senha
+    (booking)/                 ← de apps/booking         INDEXADO
+      [slug]/                  /{slug}      página pública da barbearia
+      agendar/                 /agendar     raiz explicativa do booking
+    (dashboard)/app/           ← de apps/dashboard       noindex
+      page.tsx  agenda/  clientes/  comandas/  comissoes/  financeiro/
+      fidelidade/  relatorios/  whatsapp/  assistente-ia/  configuracoes/
+      minha-pagina/  equipe/  servicos-produtos/  configurar/
+      selecionar-barbearia/  aceitar-convite/  impersonar/  playground/
+    (admin)/admin/             ← de apps/admin           noindex
+      page.tsx  tenants/  planos/  billing/  metricas/  filas/  mensagens/
+  components/{marketing,booking,dashboard,admin}/    namespaced por superfície
+  lib/{marketing,booking,dashboard,admin}/           idem
+  lib/urls.ts                  o ÚNICO módulo compartilhado entre superfícies
+```
+
+`components/` e `lib/` foram namespaced por superfície porque `dashboard` e
+`admin` tinham, os dois, um `lib/api/` — juntá-los sem prefixo colidiria em 6
+arquivos. Os imports relativos frágeis (`../../components/x`) viraram alias
+`@/` em toda a árvore.
+
+### Mapa host → prefixo
+
+| Host (produção) | Prefixo | Superfície |
+|---|---|---|
+| `barbervp.com` | `/` | marketing (landing + auth) |
+| `agendar.barbervp.com` | `/agendar` e `/{slug}` | booking público |
+| `app.barbervp.com` | `/app` | painel da barbearia |
+| `admin.barbervp.com` | `/admin` | super admin |
+
+O middleware lê `HOST_SITE`/`HOST_BOOKING`/`HOST_APP`/`HOST_ADMIN`. **Sem essas
+variáveis o app roda em "prefixo direto"** — que é exatamente o modo de
+desenvolvimento: `localhost:3000/`, `/agendar`, `/{slug}`, `/app/*`, `/admin/*`.
+Verificado que o Next lê essas variáveis em RUNTIME no middleware (o build foi
+feito sem elas e o roteamento funcionou ao subir com elas), então o
+`docker-compose.prod.yml` pode passá-las por ambiente sem rebuild.
+
+A reescrita de host tolera as duas formas de URL: `app.barbervp.com/agenda`
+(URL antiga, de quando o painel tinha domínio só seu) e
+`app.barbervp.com/app/agenda` (a que os links internos usam) resolvem para a
+mesma rota — o `startsWith` do prefixo evita virar `/app/app/agenda`.
+
+### Guarda do super admin (obrigatória)
+
+`/admin/*` só responde no host do admin; em qualquer outro host o middleware
+devolve **404 seco**, antes de qualquer render. Isso compensa a perda da
+separação física em quatro deploys. A defesa REAL continua sendo o RBAC
+`SUPER_ADMIN` server-side, que não foi tocado. Só vale com `HOST_*` definidos —
+em dev o admin abre por `localhost:3000/admin`.
+
+Verificado ao vivo com `curl -H "Host: ..."`:
+
+| Host | `/admin/tenants` |
+|---|---|
+| `admin.barbervp.com` | 200 |
+| `app.barbervp.com` | **404** |
+| `barbervp.com` | **404** |
+| `agendar.barbervp.com` | **404** |
+
+### Providers, tema e SEO
+
+- **Um `QueryClientProvider` por route group**, não global. A landing continua
+  sem TanStack Query e sem `EstablishmentAuthProvider`: 89 kB de first-load
+  contra 181 kB das telas de auth do mesmo grupo. O grupo `(auth)` aninhado
+  dentro de `(marketing)` preserva exatamente o arranjo da fase 10.
+- **Duas audiências, dois providers**: `EstablishmentProviders` (marketing/auth,
+  painel, admin) e `ClientProviders` (booking). Como antes, o dono pode estar
+  logado no painel numa aba e agendando como cliente noutra.
+- **Tema**: o layout raiz declara `colorScheme: 'dark'`; a landing sobrescreve o
+  `viewport` na própria rota e o `body:has(#bvp-landing)` do `globals.css`
+  continua pintando o fundo claro. Fontes no raiz (Sora + Inter 400–900) — o
+  navegador só baixa a face que a página renderiza, então a landing não paga
+  pelo Sora que não usa.
+- **`robots.txt` é decidido pelo host**: `Disallow: /` nos hosts do painel e do
+  admin (como era em `apps/dashboard` e `apps/admin`), allow + disallow dos
+  prefixos internos nos hosts públicos.
+- **Canonical do booking virou absoluto** quando `NEXT_PUBLIC_BOOKING_URL` está
+  definida. É a única mitigação de SEO que o merge exigiu: a rota `/{slug}`
+  agora responde em qualquer host, e sem isso a página da barbearia poderia ser
+  indexada também sob o domínio de marketing. Sem a variável (dev), volta a ser
+  relativa — igual a antes.
+
+### `lib/urls.ts` — de origens para caminhos
+
+Antes cada app tinha o seu `urls.ts` com as origens das outras três, e navegar
+entre superfícies era `window.location.assign('http://localhost:3002')`. Agora é
+um módulo só, e por padrão os destinos são **caminhos relativos** (`/app`,
+`/admin`, `/entrar`, `/agendar`): funciona em `localhost:3000` sem configurar
+nada, e o visitante fica no host em que já estava. Definir os
+`NEXT_PUBLIC_*_URL` faz os links apontarem para o host de produção correto.
+`SITE_ORIGIN` e `BOOKING_ORIGIN` ficam separados porque `metadataBase` e o
+JSON-LD exigem URL absoluta.
+
+### Guardas de sessão
+
+Migrados como estavam, não reinventados: `DashboardGuard` (login, seletor de
+barbearia quando há mais de um `Membership`, wizard de onboarding pendente) e
+`AdminGuard` (`user.isSuperAdmin`). O único ajuste foi manter a ida ao login
+como navegação DURA — antes ela era dura por acidente (o login estava noutra
+origem, e o `navigate` do guard fazia `window.location` para qualquer URL
+absoluta); agora é dura por escolha explícita, para não mudar o ciclo de vida
+do provider de sessão.
+
+Ao verificar isso, descobriu-se que o caminho do anônimo já estava quebrado
+ANTES da fase 11, por um deadlock no interceptor de refresh de `packages/ui` —
+ver dívidas da fase 11. Não foi corrigido aqui: `packages/ui` está intacto, e
+consertar isso é mudança de lógica, que esta fase não podia fazer.
+
+### Infra
+
+- `turbo.json`, `Makefile`, `docker-compose.yml`, `docker-compose.prod.yml`,
+  `Dockerfile.dev`, `.env`/`.env.example` e o CI: onde havia 4 alvos de web,
+  passou a haver 1. `pnpm turbo run lint typecheck` foi de 17 para **11/11**;
+  `build`, de 6 para **3/3**.
+- **Build isolado garantido por CI**: dois passos novos rodam
+  `pnpm --filter @barbervp/web... build` e `pnpm --filter @barbervp/api... build`
+  separadamente. Vercel e Railway buildam UM pacote cada — se o build de um
+  passar a exigir o outro, o deploy quebra em silêncio, e agora o CI pega.
+  `make build-web` / `make build-api` rodam o mesmo contrato na mão.
+- `scripts/responsive-sweep.mjs` continua organizado por superfície (é assim que
+  se lê o resultado), mas as quatro apontam para a porta 3000 com os prefixos
+  novos.
+- `docker-compose.yml` da raiz **continua existindo** para desenvolvimento
+  local, como o agente 11 pede. Railway não o usa.
+- Dependência órfã removida: `zustand` estava nas 4 apps e não era importada em
+  lugar nenhum. Nenhuma colisão de chave de storage entre superfícies
+  (`bvp:guest` do booking, `bvp_impersonation` do painel, `bvp-palette` da
+  landing são todas distintas), então nada precisou ser prefixado.
+
+### Deploy alvo (configuração é do agente 12)
+
+- **Frontend `apps/web` → Vercel.** Next 14 roda sem ajuste. Definir `HOST_*` e
+  os `NEXT_PUBLIC_*_URL` nas variáveis do projeto, e apontar os quatro domínios
+  para o MESMO projeto.
+- **Backend `apps/api` + Postgres + Redis → Railway, plano Hobby.**
+- O `docker-compose.yml` da raiz segue sendo o ambiente local. Não remover.
+
 ## O que a fase 10 entregou
 
 - **A landing de vendas** (`apps/site/app/page.tsx`) — última tela do bundle
@@ -934,6 +1090,43 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   mantida a exigência de OTP do `system-map.md` por segurança, com
   calibração de rate limit a decidir pelo agente 04. Ver `SPEC.md` →
   Decisões tomadas.
+
+### Fase 11 — decisões técnicas
+
+- **`apps/web` nasceu de `git mv apps/dashboard apps/web`.** É a app mais
+  complexa (config, providers, guarda de sessão, 18 rotas), então herdar dela
+  custou menos do que montar do zero — e as 4 apps tinham `next.config.mjs`,
+  `tailwind.config.ts`, `tsconfig.json`, `postcss.config.mjs` e `.eslintrc.json`
+  BYTE-A-BYTE idênticos, o que tornou a unificação de config trivial. O único
+  arquivo de config que divergia era o `globals.css` do `site` (o bloco da
+  landing clara), acrescentado ao do `web`.
+- **O painel ficou em `/app/*` e o admin em `/admin/*`, inclusive nos hosts
+  próprios.** A alternativa era o painel responder em `/agenda` no host dele e
+  em `/app/agenda` em dev — dois formatos de link para o mesmo botão, que é
+  como se quebra navegação em produção sem ninguém perceber em dev. Com um
+  formato só, `router.push('/app/agenda')` vale em todo lugar; a URL antiga
+  (`app.barbervp.com/agenda`) continua funcionando pela reescrita do middleware.
+- **A raiz do booking virou `/agendar`.** `(marketing)/page.tsx` e a antiga
+  `(booking)/page.tsx` resolviam as duas para `/` — colisão que o Next recusa a
+  buildar. Em vez de descartar a tela explicativa ("cada barbearia tem o próprio
+  link"), ela ganhou caminho próprio, e o middleware manda `agendar.barbervp.com/`
+  para lá. `/{slug}` não precisou de nada: é dinâmica e não colide com `/`.
+- **Navegação entre superfícies passou a ser relativa por padrão.** Manter URL
+  absoluta obrigatória significaria que esquecer uma variável de ambiente em
+  produção mandaria o usuário para `localhost:3002`. Relativo é o fallback que
+  não pode dar errado: no pior caso o visitante fica no host em que já estava,
+  e a rota existe lá também.
+- **`window.location.assign` foi preservado onde já existia**, em vez de virar
+  `router.push` agora que é a mesma origem. Trocar por navegação soft mudaria o
+  ciclo de vida do provider de auth — exatamente o tipo de "melhoria" que a
+  regra número 1 desta fase proíbe.
+- **Os 4 `CORS_ORIGIN_*` da API continuam existindo**, apontando todos para a
+  mesma origem em dev. A API valida os quatro por Zod (`env.schema.ts`) e o
+  refactor não podia tocar em `apps/api` — colapsá-los seria mudança de
+  contrato do backend por conveniência do frontend.
+- **A guarda de host do admin devolve `404` puro, não a página de erro do
+  app.** Uma guarda de segurança que responde com HTML estilizado ainda conta
+  para quem sonda quais rotas existem; 404 seco antes do render não conta.
 
 ### Fase 10 — decisões técnicas
 
@@ -1680,6 +1873,100 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   limites em env (`BOOKING_GUEST_IP_HOURLY_LIMIT`, `BOOKING_GUEST_OPEN_LIMIT`,
   `BOOKING_CREATE_HOURLY_LIMIT`). Ver decisão da fase 04.
 
+### Dívidas novas da fase 11
+
+Nenhuma delas foi CAUSADA por este refactor. Foram encontradas ao verificar a
+app consolidada e existem em `main` do mesmo jeito — `packages/ui` e
+`apps/api` estão byte-a-byte idênticos (`git diff main -- apps/api packages/`),
+e nas telas só mudou o caminho do import. Estão aqui porque foi esta sessão que
+as viu. A primeira é a mais séria.
+
+- **Deadlock no interceptor de refresh: visitante ANÔNIMO em `/app` ou
+  `/admin` fica preso no skeleton "Carregando sua sessão…" para sempre, em vez
+  de ser mandado para `/entrar`.** Encontrado ao verificar os guardas desta
+  fase; o código é de `packages/ui`, byte-a-byte idêntico ao de `main`.
+
+  Mecanismo, em `packages/ui/src/lib/api-client.ts:120-131`: o bootstrap do
+  `EstablishmentAuthProvider` chama `establishmentApi.refresh(client)`, que faz
+  `POST /auth/refresh` **pelo mesmo cliente axios que tem o interceptor**. Sem
+  cookie válido isso dá 401; o interceptor então marca `_retried`, define
+  `refreshInFlight = options.refreshTokens()` e faz `await refreshInFlight`.
+  Só que `refreshTokens` é o MESMO `refresh` — ele dispara outro
+  `POST /auth/refresh`, toma outro 401, cai no interceptor de novo e, como
+  `refreshInFlight` já está preenchido, faz `await refreshInFlight` na promise
+  que só pode resolver quando ele próprio terminar. Ninguém rejeita, o `catch`
+  do provider nunca roda, `clearSession()` nunca é chamado e `status` fica em
+  `'loading'` — que é justamente o estado em que os guardas mostram skeleton e
+  não redirecionam. Assinatura no navegador: exatamente 2 `401 /auth/refresh`
+  por montagem (4 com o StrictMode ligado) e depois silêncio absoluto.
+
+  Não afeta quem TEM sessão (o refresh resolve no primeiro 401 do access
+  token), nem o logout (`window.location.assign` explícito, testado
+  funcionando), nem o RBAC — é só o caminho do anônimo.
+
+  Correção sugerida (uma linha de decisão, não refactor): fazer o
+  `establishmentApi.refresh`/`clientApi.refresh` usarem um axios CRU, sem
+  interceptor, ou pular o interceptor quando `config.url` já é a própria rota
+  de refresh. Precisa de teste cobrindo "anônimo em rota protegida vai para o
+  login" — hoje nada reprova isso.
+- **`DashboardGuard` foi mantido com navegação DURA para o login**
+  (`window.location.assign`), e não `router.replace`, mesmo agora que login e
+  painel são a mesma origem. Era o comportamento anterior (o login morava em
+  `apps/site`, outra origem) e trocá-lo mudaria o ciclo de vida do provider de
+  sessão. Se a dívida acima for corrigida, é aí que dá para reavaliar.
+- **`Tabs` de `packages/ui` reprova o alvo de toque de 44px.**
+  `packages/ui/src/components/tabs.tsx:117` usa `h-9` (36px), abaixo do mínimo
+  WCAG que a própria `scripts/responsive-sweep.mjs` cobra. Aparece em
+  `/app/servicos-produtos`, `/app/equipe`, `/app/comandas`, `/app/fidelidade` e
+  `/admin/mensagens` a 360 e 390px. **Só é detectável quando os dados já
+  carregaram** — com skeleton na tela as abas nem existem, e é por isso que a
+  varredura da fase 09 passou. Correção: `h-9` → `h-11` (ou `min-h-11`) naquela
+  linha, e reconferir o espaçamento das telas afetadas. Também há `input`s de
+  24px de altura em `/app/fidelidade` e `/app/whatsapp` (toggles) e um de 40px
+  em `/app/comissoes`.
+- **`notFound()` de `/{slug}` responde 200, não 404.** Slug inexistente
+  renderiza a tela "Barbearia não encontrada" certa, mas com status 200 — um
+  *soft 404* que o robô de busca pode indexar. O caminho de código é o mesmo de
+  `main` (página, `not-found.tsx` e formato do middleware idênticos), e o 404 do
+  Next funciona normalmente em rota sem match (`/app/rota-inexistente` → 404),
+  então é específico do `notFound()` desta rota dinâmica no Next 14.2.16.
+- **`make seed` deixa o onboarding PENDENTE** (`TenantSettings.onboardingDoneAt`
+  fica `null` nos dois tenants). Consequência: logo após um seed limpo, entrar
+  no painel cai em `/app/configurar`, e não no dashboard — o que contradiz os
+  roteiros de verificação das fases 06 e 07 deste arquivo. Para conferir o
+  painel é preciso completar o wizard, ou:
+  `UPDATE "TenantSettings" s SET "onboardingDoneAt"=now(), "onboardingStep"=6
+  FROM "Tenant" t WHERE t.id=s."tenantId" AND t.slug='barbearia-central';`
+- **`onboarding.service.ts:443` monta o link público como
+  `{base}/agendar/{slug}`, que não existe** — a página da barbearia é
+  `{base}/{slug}`, como `my-page.service.ts:35` faz certo. O link mostrado no
+  fim do wizard de configuração leva a um 404. É bug de `apps/api`, anterior a
+  esta fase e fora do escopo do refactor; a correção é remover `/agendar/` da
+  interpolação (uma linha) e ajustar
+  `components/dashboard/onboarding/onboarding-wizard.tsx:195`, que faz o
+  caminho inverso (`replace(/\/agendar\/.*$/, '')`).
+- **Título da landing duplica a marca**: sai
+  "BarberVP — Sistema de gestão para barbearias · BarberVP", porque o `title`
+  absoluto da rota ainda recebe o `template: '%s · BarberVP'` do layout.
+  Herdado da fase 10 (o `apps/site` fazia igual). Correção: usar
+  `title: { absolute: '...' }` na landing.
+- **A mesma rota `/{slug}` responde em TODOS os hosts.** Mitigado por canonical
+  absoluto (ver acima), não bloqueado: `barbervp.com/barbearia-central` ainda
+  renderiza a página da barbearia. Se isso incomodar, o lugar de resolver é o
+  middleware — mesma forma da guarda do admin, restringindo `/{slug}` ao host
+  do booking. Não foi feito porque exigiria uma allowlist das rotas de
+  marketing, frágil para rota nova.
+- **`/agendar` e as rotas de marketing são slugs reservados na prática.** Uma
+  barbearia com slug `entrar`, `cadastro`, `agendar` ou `recuperar-senha` nunca
+  abriria: no Next a rota estática ganha da dinâmica. Antes eram domínios
+  separados e isso não existia. Vale uma validação de slug no cadastro do
+  tenant (`apps/api`), com a lista de reservados vindo daqui.
+- **Nenhum teste automatizado do middleware.** A guarda de host e as reescritas
+  foram verificadas ao vivo com `curl -H "Host: ..."` (resultado na seção da
+  fase 11), mas não há teste que reprove no CI se alguém quebrar a guarda do
+  admin. É o candidato mais óbvio a teste de frontend, agora que existe uma app
+  só para configurar.
+
 ### Dívidas novas da fase 01
 
 - **Sem CI ainda.** O `SPEC.md` pede "CI mínimo (lint + typecheck + test +
@@ -2183,6 +2470,18 @@ Riscadas onde apareceram, resumidas aqui:
   `admin` + `dashboard` de pé ao mesmo tempo). Conferir na próxima sessão que
   mexer em `apps/site`.
 
+## Deploy alvo (fase 11 anotou, fase 12 configura)
+
+| Peça | Onde | Observação |
+|---|---|---|
+| `apps/web` | **Vercel** | Next 14 roda sem ajuste. Os quatro domínios apontam para o MESMO projeto; `HOST_*` e `NEXT_PUBLIC_*_URL` nas variáveis do projeto. |
+| `apps/api` + Postgres + Redis | **Railway**, plano Hobby | `QUEUE_WORKERS_ENABLED=false` na réplica web e `true` no worker, se separar. |
+| `docker-compose.yml` da raiz | continua existindo | É o ambiente de desenvolvimento local. Railway não o usa. **Não remover.** |
+
+Vercel e Railway buildam UM pacote cada, não o monorepo — `make build-web` e
+`make build-api` rodam esse contrato, e o CI o verifica em dois passos
+dedicados.
+
 ## Fechamento do produto v1 — o que ficou fora e por onde entra
 
 As 9 fases estão concluídas. O que segue NÃO é dívida acidental: é escopo
@@ -2202,12 +2501,20 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 | Suíte | Casos |
 |---|---|
 | Unitários | 81 |
-| E2E | 129 |
+| E2E | 133 |
 | Isolamento de tenant (gate) | 106 |
-| **Total** | **316** |
+| **Total** | **320** |
 
-`pnpm turbo run lint typecheck` 17/17 · `pnpm turbo run build` 6/6 ·
-varredura responsiva sem pendências nas 4 apps nos 5 tamanhos.
+`pnpm turbo run lint typecheck` 11/11 · `pnpm turbo run build` 3/3.
+
+> O total de e2e estava anotado como 129 desde a fase 09: os 4 casos de
+> `public-plans.e2e-spec.ts` (fase 10) nunca entraram na conta. São os mesmos
+> 133 antes e depois da fase 11 — `apps/api` está byte-a-byte idêntico ao que
+> era, conferido por `git diff main -- apps/api`.
+>
+> A varredura responsiva NÃO está mais "sem pendências": a fase 11 encontrou 12
+> alvos de toque abaixo de 44px que a varredura da fase 09 não viu porque mediu
+> telas em skeleton. Detalhe nas dívidas da fase 11.
 
 ## Como retomar
 
@@ -2218,6 +2525,101 @@ agente e acrescentar "continue de onde o CONTEXT.md indica".
 
 Para subir o ambiente: `make env && make install && make up && make seed`
 (ou `make reset` para zerar tudo). Detalhe no `README.md` da raiz.
+
+**Desde a fase 11 são só 2 processos**: `api` (:3333) e `web` (:3000). Com a
+restrição de RAM da máquina (7.5 GB), `docker compose up -d db redis api` +
+`docker compose up -d web` já é a stack inteira — não existe mais a escolha de
+"qual das 4 apps subir".
+
+### Como conferir a fase 11 rodando
+
+A stack toda cabe agora: `docker compose up -d db redis api web` (2 processos
+Node em vez de 5).
+
+1. **As quatro superfícies, uma porta** — `http://localhost:3000`:
+
+   | URL | O que abre |
+   |---|---|
+   | `/` | landing de vendas, paleta clara, preços vindos da API |
+   | `/agendar` | raiz explicativa do booking |
+   | `/barbearia-central` | página pública da barbearia |
+   | `/entrar` · `/cadastro` · `/recuperar-senha` | auth do estabelecimento |
+   | `/app` | painel (redireciona para `/app/configurar` se o onboarding
+     estiver pendente — ver dívidas) |
+   | `/admin` | super admin, que redireciona para `/admin/tenants` |
+
+2. **Login pela tela**, `dono@barbeariacentral.com.br` / `BarberVP@2026` → cai
+   em `/app`. Com `admin@barbervp.com.br` → cai em `/admin/tenants`. Com
+   `carlos@barbeariacentral.com.br` (BARBER) → `/app` com nav restrito
+   (Dashboard · Agenda · Comandas · Comissões · Fidelidade) e `/app/agenda`
+   mostrando SÓ a coluna do Carlos. Clicar pelo nav leva a `/app/agenda`,
+   `/app/comandas`, `/app/financeiro`… — as três coisas foram conferidas no
+   navegador nesta sessão.
+
+   **Não confunda com bug de rota**: abrir `/app` ou `/admin` SEM sessão fica no
+   skeleton "Carregando sua sessão…" para sempre, em vez de ir para `/entrar`.
+   É o deadlock do interceptor de refresh descrito nas dívidas desta fase —
+   anterior ao refactor, em `packages/ui`. Faça login primeiro.
+
+3. **Roteamento por host** (o que produção faz). Sobe com as variáveis e testa
+   sem DNS nenhum:
+
+   ```bash
+   HOST_SITE=barbervp.com HOST_BOOKING=agendar.barbervp.com \
+   HOST_APP=app.barbervp.com HOST_ADMIN=admin.barbervp.com \
+     pnpm --filter @barbervp/web start
+
+   curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: admin.barbervp.com' \
+     http://localhost:3000/admin/tenants        # 200
+   curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: app.barbervp.com' \
+     http://localhost:3000/admin/tenants        # 404 — a guarda do super admin
+   curl -s -H 'Host: agendar.barbervp.com' http://localhost:3000/ \
+     | grep -o '<title>[^<]*'                   # "Agendamento online"
+   curl -s -H 'Host: app.barbervp.com' http://localhost:3000/agenda \
+     | grep -o '<title>[^<]*'                   # painel — URL antiga ainda vale
+   curl -s -H 'Host: admin.barbervp.com' http://localhost:3000/robots.txt
+                                                # Disallow: /
+   ```
+
+4. **Cabeçalhos por superfície** (o que os 4 middlewares antigos faziam):
+   `/entrar` → `cache-control: no-store` + `referrer-policy: no-referrer`;
+   `/app/*` e `/admin/*` → `x-robots-tag: noindex, nofollow, noarchive` +
+   `x-frame-options: DENY`; landing e booking → sem `noindex`.
+
+5. **Build isolado — é o contrato do deploy**, e o CI roda os dois:
+
+   ```bash
+   make build-web   # pnpm --filter @barbervp/web... build   (Vercel)
+   make build-api   # pnpm --filter @barbervp/api... build   (Railway)
+   ```
+
+6. **Testes**: `make test` (81 unit), `make test-e2e` (133),
+   `make test-isolation` (106). Todos verdes nesta sessão, iguais à baseline.
+
+7. **Varredura responsiva**: `node scripts/responsive-sweep.mjs --app=site` (e
+   `booking`, `dashboard`, `admin`). Rodar UMA superfície por vez — a varredura
+   completa esgotou recursos do Chrome nesta máquina no meio do `dashboard`.
+   Site (20/20) e booking (10/10) passam; `dashboard` e `admin` reprovam nos
+   alvos de toque das abas — dívida pré-existente, ver fase 11.
+
+8. **`make seed` de novo ao terminar** se tiver mexido no `onboardingDoneAt`
+   para conferir o painel.
+
+> **Atenção às seções abaixo (fases 03 a 08).** Elas foram escritas quando o
+> frontend eram 4 apps em 4 portas. As URLs `localhost:3000/3001/3002/3003`
+> viraram uma só, `localhost:3000`, com prefixo — traduza assim ao seguir
+> qualquer roteiro antigo:
+>
+> | Antes | Agora |
+> |---|---|
+> | `:3000/` · `:3000/entrar` · `:3000/cadastro` | `:3000/` · `:3000/entrar` · `:3000/cadastro` |
+> | `:3001/{slug}` | `:3000/{slug}` |
+> | `:3001/` | `:3000/agendar` |
+> | `:3002/` · `:3002/agenda` · `:3002/configurar` | `:3000/app` · `:3000/app/agenda` · `:3000/app/configurar` |
+> | `:3003/` · `:3003/tenants` | `:3000/admin` · `:3000/admin/tenants` |
+>
+> Tudo o mais nesses roteiros (contas do seed, `psql`, endpoints da API) segue
+> valendo — `apps/api` não mudou na fase 11.
 
 ### Como conferir a fase 03 rodando
 
