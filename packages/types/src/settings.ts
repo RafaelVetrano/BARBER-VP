@@ -84,6 +84,11 @@ export interface PreferencesSettings {
   bloquearFaltasQtd: number;
   antecedenciaMinima: number;
   cancelamentoHoras: number;
+  /**
+   * Meta de faturamento do mês, em centavos. `null` = sem meta — o gráfico do
+   * Dashboard não desenha a linha tracejada (fase 13).
+   */
+  monthlyGoalCents: number | null;
 }
 
 export interface UpdatePreferencesDto {
@@ -91,6 +96,8 @@ export interface UpdatePreferencesDto {
   bloquearFaltasQtd?: number;
   antecedenciaMinima?: number;
   cancelamentoHoras?: number;
+  /** `null` limpa a meta. */
+  monthlyGoalCents?: number | null;
 }
 
 // ── Calculadora de preço inteligente (Avançado) ──────────────────────────

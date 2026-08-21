@@ -176,6 +176,15 @@ async function seedDemoTenant(planIds: Map<string, string>): Promise<void> {
           bloquearFaltasQtd: 3,
           antecedenciaMinima: 60,
           cancelamentoHoras: 2,
+          // A meta que o gráfico do Dashboard desenha como linha tracejada —
+          // é o "Meta: R$ 28.000/mês" que estava cravado no `.dc.html` e que
+          // a regra 2 manda viver no seed, não no cliente.
+          monthlyGoalCents: 2_800_000,
+          // O tenant demo está inteiro configurado (serviços, equipe, horários,
+          // slug): sem isto o `DashboardGuard` mandava todo login do seed para
+          // o wizard, e `/app` era inalcançável no ambiente semeado.
+          onboardingStep: 6,
+          onboardingDoneAt: new Date(),
           sobre:
             'Há 12 anos no centro da cidade, a Barbearia Central mistura técnica clássica e ' +
             'acabamento moderno. Cortes, barba e cuidado de verdade — sem pressa.',

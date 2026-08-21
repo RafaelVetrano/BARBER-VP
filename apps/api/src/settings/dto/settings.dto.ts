@@ -10,6 +10,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -116,6 +117,18 @@ export class UpdatePreferencesDto {
   @IsInt()
   @Min(0)
   cancelamentoHoras?: number;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    nullable: true,
+    description: 'Meta de faturamento do mês em centavos. `null` limpa a meta.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  monthlyGoalCents?: number | null;
 }
 
 export class PriceCalculatorDto {

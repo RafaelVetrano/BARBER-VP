@@ -1,4 +1,4 @@
-# Imagem única de desenvolvimento, compartilhada por api e pelas 4 webs.
+# Imagem única de desenvolvimento, compartilhada por api e web.
 # O código vem por bind mount (ver docker-compose.yml); a imagem carrega só as
 # dependências instaladas e os artefatos que precisam de build (Prisma Client,
 # `@barbervp/types`).
@@ -29,10 +29,7 @@ COPY --chown=node:node packages/config/package.json packages/config/
 COPY --chown=node:node packages/types/package.json packages/types/
 COPY --chown=node:node packages/ui/package.json packages/ui/
 COPY --chown=node:node apps/api/package.json apps/api/
-COPY --chown=node:node apps/site/package.json apps/site/
-COPY --chown=node:node apps/booking/package.json apps/booking/
-COPY --chown=node:node apps/dashboard/package.json apps/dashboard/
-COPY --chown=node:node apps/admin/package.json apps/admin/
+COPY --chown=node:node apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile
 
 COPY --chown=node:node . .
@@ -45,6 +42,6 @@ RUN pnpm --filter @barbervp/types build \
 # Os diretórios de saída precisam EXISTIR na imagem. Um volume anônimo cujo
 # caminho não existe na imagem nasce pertencendo a root, e o processo (agora
 # `node`) não conseguiria escrever nele.
-RUN mkdir -p apps/site/.next apps/booking/.next apps/dashboard/.next apps/admin/.next
+RUN mkdir -p apps/web/.next
 
 ENV NODE_ENV=development

@@ -20,6 +20,7 @@ import { ClientsModule } from './clients/clients.module';
 import { CatalogAdminModule } from './catalog-admin/catalog-admin.module';
 import { TeamModule } from './team/team.module';
 import { StaffAgendaModule } from './staff-agenda/staff-agenda.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { PosModule } from './pos/pos.module';
 import { CommissionsModule } from './commissions/commissions.module';
 import { FinanceModule } from './finance/finance.module';
@@ -80,6 +81,7 @@ import { FeatureGuard } from './common/guards/feature.guard';
     CatalogAdminModule,
     TeamModule,
     StaffAgendaModule,
+    DashboardModule,
     PosModule,
     CommissionsModule,
     FinanceModule,

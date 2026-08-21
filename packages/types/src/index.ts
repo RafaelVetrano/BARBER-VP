@@ -4,6 +4,7 @@ export * from './auth';
 export * from './booking';
 export * from './client-account';
 export * from './commissions';
+export * from './dashboard';
 export * from './enums';
 export * from './errors';
 export * from './features';

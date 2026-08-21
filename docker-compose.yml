@@ -13,14 +13,8 @@ x-dev-volumes: &dev-volumes
   - ./:/app
   - /app/node_modules
   - /app/apps/api/node_modules
-  - /app/apps/site/node_modules
-  - /app/apps/site/.next
-  - /app/apps/booking/node_modules
-  - /app/apps/booking/.next
-  - /app/apps/dashboard/node_modules
-  - /app/apps/dashboard/.next
-  - /app/apps/admin/node_modules
-  - /app/apps/admin/.next
+  - /app/apps/web/node_modules
+  - /app/apps/web/.next
   - /app/packages/config/node_modules
   - /app/packages/types/node_modules
   - /app/packages/ui/node_modules
@@ -33,11 +27,10 @@ x-web-env: &web-env
   # container do Next, e a renderização no servidor (a página `/{slug}`, que é
   # indexada) não chegaria à API por ele.
   API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:3333/api/v1}
-  # Cada app precisa saber a origem das outras três (navegação entre superfícies).
-  NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
-  NEXT_PUBLIC_BOOKING_URL: ${NEXT_PUBLIC_BOOKING_URL:-http://localhost:3001}
-  NEXT_PUBLIC_DASHBOARD_URL: ${NEXT_PUBLIC_DASHBOARD_URL:-http://localhost:3002}
-  NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:3003}
+  # As quatro superfícies vivem no MESMO app desde a fase 11: em dev os links
+  # entre elas são relativos (`/`, `/agendar`, `/app`, `/admin`) e nenhuma
+  # variável de origem precisa ser definida. Em produção, `HOST_*` e
+  # `NEXT_PUBLIC_*_URL` separam os hosts — ver `apps/web/.env.example`.
   # Hot reload através do bind mount (inotify não propaga em todos os hosts).
   WATCHPACK_POLLING: 'true'
 
@@ -98,11 +91,14 @@ services:
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
       THROTTLE_TTL: ${THROTTLE_TTL:-60}
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      # Frontend único (fase 11): uma origem só em dev. As quatro variáveis
+      # continuam existindo porque a API valida as quatro — em produção elas
+      # recebem os quatro hosts de verdade.
       CORS_ORIGIN_SITE: ${CORS_ORIGIN_SITE:-http://localhost:3000}
-      CORS_ORIGIN_BOOKING: ${CORS_ORIGIN_BOOKING:-http://localhost:3001}
-      CORS_ORIGIN_DASHBOARD: ${CORS_ORIGIN_DASHBOARD:-http://localhost:3002}
-      CORS_ORIGIN_ADMIN: ${CORS_ORIGIN_ADMIN:-http://localhost:3003}
-      PUBLIC_BOOKING_BASE_URL: ${PUBLIC_BOOKING_BASE_URL:-http://localhost:3001}
+      CORS_ORIGIN_BOOKING: ${CORS_ORIGIN_BOOKING:-http://localhost:3000}
+      CORS_ORIGIN_DASHBOARD: ${CORS_ORIGIN_DASHBOARD:-http://localhost:3000}
+      CORS_ORIGIN_ADMIN: ${CORS_ORIGIN_ADMIN:-http://localhost:3000}
+      PUBLIC_BOOKING_BASE_URL: ${PUBLIC_BOOKING_BASE_URL:-http://localhost:3000}
       # Auth (fase 03) — cookie httpOnly, OTP e recuperação de senha.
       AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
       OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-600}
@@ -150,57 +146,18 @@ services:
       retries: 30
       start_period: 40s
 
-  site:
+  web:
     <<: *dev-image
-    container_name: barbervp-site
+    container_name: barbervp-web
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
     environment: *web-env
     ports:
-      - '${SITE_PORT:-3000}:3000'
+      - '${WEB_PORT:-3000}:3000'
     volumes: *dev-volumes
-    command: pnpm --filter @barbervp/site dev
-
-  booking:
-    <<: *dev-image
-    container_name: barbervp-booking
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    environment: *web-env
-    ports:
-      - '${BOOKING_PORT:-3001}:3001'
-    volumes: *dev-volumes
-    command: pnpm --filter @barbervp/booking dev
-
-  dashboard:
-    <<: *dev-image
-    container_name: barbervp-dashboard
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    environment: *web-env
-    ports:
-      - '${DASHBOARD_PORT:-3002}:3002'
-    volumes: *dev-volumes
-    command: pnpm --filter @barbervp/dashboard dev
-
-  admin:
-    <<: *dev-image
-    container_name: barbervp-admin
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    environment: *web-env
-    ports:
-      - '${ADMIN_PORT:-3003}:3003'
-    volumes: *dev-volumes
-    command: pnpm --filter @barbervp/admin dev
+    command: pnpm --filter @barbervp/web dev
 
 volumes:
   db-data:

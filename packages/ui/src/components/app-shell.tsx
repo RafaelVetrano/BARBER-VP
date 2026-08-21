@@ -24,8 +24,14 @@ export interface AppShellProps {
   brandName?: string;
   /** Bloco no pé da sidebar (caixa de plano/trial do protótipo). */
   sidebarFooter?: ReactNode;
-  /** Conteúdo à esquerda da topbar (seletor de unidade, busca). */
+  /** Conteúdo à esquerda da topbar (seletor de unidade, selo do plano). */
   topbarStart?: ReactNode;
+  /**
+   * Faixa central elástica — a busca global. Fica entre `topbarStart` e
+   * `topbarEnd` e é o único bloco que estica; abaixo de `md` o chamador a
+   * troca por um ícone (ver `dashboard-chrome.tsx`).
+   */
+  topbarCenter?: ReactNode;
   /** Conteúdo à direita da topbar (notificações, avatar, CTA). */
   topbarEnd?: ReactNode;
   /** Sidebar começa recolhida (só ícones). */
@@ -121,6 +127,7 @@ export function AppShell({
   brandName = 'Barber VP',
   sidebarFooter,
   topbarStart,
+  topbarCenter,
   topbarEnd,
   defaultCollapsed = false,
   children,
@@ -212,7 +219,10 @@ export function AppShell({
 
       {/* ── Coluna de conteúdo ───────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-bg px-4 sm:px-6">
+        {/* Ordem do protótipo, da esquerda para a direita: unidade, plano,
+            busca (elástica) e o grupo de ações. O botão de menu só existe
+            abaixo de `lg`, onde a sidebar virou drawer. */}
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border bg-bg px-3 sm:gap-3 sm:px-4 lg:px-6">
           <IconButton
             aria-label="Abrir menu"
             aria-expanded={drawerOpen}
@@ -223,8 +233,18 @@ export function AppShell({
             <MenuIcon size={20} />
           </IconButton>
 
-          {topbarStart && <div className="flex min-w-0 items-center gap-3">{topbarStart}</div>}
-          <div className="ml-auto flex shrink-0 items-center gap-2">{topbarEnd}</div>
+          {topbarStart && <div className="flex min-w-0 items-center gap-2 sm:gap-3">{topbarStart}</div>}
+
+          {/* `min-w-11` porque abaixo de `md` o miolo é um botão de 44px que
+              não pode ser espremido; a partir daí é um campo elástico e o
+              piso sai do caminho. */}
+          {topbarCenter ? (
+            <div className="flex min-w-11 flex-1 justify-center md:min-w-0">{topbarCenter}</div>
+          ) : (
+            <span className="flex-1" />
+          )}
+
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:gap-3">{topbarEnd}</div>
         </header>
 
         <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>

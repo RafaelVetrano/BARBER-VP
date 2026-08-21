@@ -69,6 +69,18 @@ export class StaffAgendaController {
     return this.appointments.move(tenantId, timezone, id, dto, scope, principal.id, request);
   }
 
+  @Patch(':id/confirm')
+  @ApiOperation({ summary: 'Confirma um agendamento pelo balcão' })
+  async confirm(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<StaffAppointmentItem> {
+    const scope = await this.scopes.resolve(tenantId, principal);
+    return this.appointments.confirm(tenantId, id, scope, principal.id, request);
+  }
+
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancela um agendamento' })
   async cancel(

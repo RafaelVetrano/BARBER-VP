@@ -294,6 +294,7 @@ export class SettingsService {
       bloquearFaltasQtd: settings?.bloquearFaltasQtd ?? 3,
       antecedenciaMinima: settings?.antecedenciaMinima ?? 60,
       cancelamentoHoras: settings?.cancelamentoHoras ?? 2,
+      monthlyGoalCents: settings?.monthlyGoalCents ?? null,
     };
   }
 
@@ -310,6 +311,7 @@ export class SettingsService {
         bloquearFaltasQtd: dto.bloquearFaltasQtd,
         antecedenciaMinima: dto.antecedenciaMinima,
         cancelamentoHoras: dto.cancelamentoHoras,
+        monthlyGoalCents: dto.monthlyGoalCents,
       },
       create: {
         tenantId,
@@ -317,6 +319,7 @@ export class SettingsService {
         bloquearFaltasQtd: dto.bloquearFaltasQtd ?? 3,
         antecedenciaMinima: dto.antecedenciaMinima ?? 60,
         cancelamentoHoras: dto.cancelamentoHoras ?? 2,
+        monthlyGoalCents: dto.monthlyGoalCents ?? null,
       },
     });
 
@@ -330,6 +333,7 @@ export class SettingsService {
       bloquearFaltasQtd: settings.bloquearFaltasQtd,
       antecedenciaMinima: settings.antecedenciaMinima,
       cancelamentoHoras: settings.cancelamentoHoras,
+      monthlyGoalCents: settings.monthlyGoalCents,
     };
   }
 

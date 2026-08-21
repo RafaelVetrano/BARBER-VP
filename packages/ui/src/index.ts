@@ -55,11 +55,27 @@ export {
 } from './components/badge';
 export { TabPanel, Tabs, type TabItem, type TabPanelProps, type TabsProps } from './components/tabs';
 export { Menu, type MenuItem, type MenuProps } from './components/menu';
+export {
+  Popover,
+  PopoverDivider,
+  PopoverItem,
+  type PopoverItemProps,
+  type PopoverProps,
+} from './components/popover';
+export { Segmented, type SegmentedOption, type SegmentedProps } from './components/segmented';
 export { ResponsiveTable, type ResponsiveTableProps, type TableColumn } from './components/responsive-table';
 export { EmptyState, type EmptyStateProps } from './components/empty-state';
 export { Skeleton, SkeletonGroup, type SkeletonGroupProps, type SkeletonProps } from './components/skeleton';
 export { Avatar, initialsOf, type AvatarProps, type AvatarSize } from './components/avatar';
-export { StatCard, type StatCardProps } from './components/stat-card';
+export { StatCard, type StatCardProps, type StatDelta } from './components/stat-card';
+export {
+  DONUT_PALETTE,
+  Donut,
+  donutColor,
+  type DonutProps,
+  type DonutSlice,
+} from './components/donut';
+export { AreaChart, type AreaChartPoint, type AreaChartProps } from './components/area-chart';
 
 // ── Agenda ───────────────────────────────────────────────────────────────
 export { DatePicker, DayPill, type DatePickerProps, type DayOption, type DayPillProps } from './components/date-picker';

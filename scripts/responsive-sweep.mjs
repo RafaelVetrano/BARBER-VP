@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * Varredura responsiva das 4 apps nos 5 tamanhos de referência do SPEC
+ * Varredura responsiva das 4 SUPERFÍCIES nos 5 tamanhos de referência do SPEC
  * (360 · 390 · 768 · 1024 · 1440).
+ *
+ * Desde a fase 11 as quatro vivem num app só (`apps/web`, porta 3000),
+ * separadas por prefixo de rota — a varredura continua organizada por
+ * superfície porque é assim que se lê o resultado.
  *
  * Fecha a dívida arrastada desde a fase 02 ("sem teste de frontend
  * automatizado"): até aqui, responsividade era conferida LENDO classes
@@ -19,8 +23,8 @@
  * medida é do `documentElement`, não de cada filho.
  *
  * Uso:
- *   node scripts/responsive-sweep.mjs                 # tudo que estiver de pé
- *   node scripts/responsive-sweep.mjs --app=admin     # só uma app
+ *   node scripts/responsive-sweep.mjs                 # tudo, se o web estiver de pé
+ *   node scripts/responsive-sweep.mjs --app=admin     # só uma superfície
  *   node scripts/responsive-sweep.mjs --json          # saída para CI
  */
 
@@ -40,9 +44,8 @@ const VIEWPORTS = [
 ];
 
 /**
- * Rotas públicas de cada app. As telas atrás de login não entram: exigiriam
- * uma sessão por app e o valor marginal é baixo — elas são compostas dos
- * MESMOS primitives de `packages/ui` que as públicas exercitam.
+ * Rotas de cada superfície. As telas atrás de login entram porque uma sessão
+ * só cobre painel e admin (mesma audiência de estabelecimento).
  */
 const API = process.env.API_URL ?? 'http://localhost:3333/api/v1';
 
@@ -52,33 +55,36 @@ const CREDENTIALS = {
   owner: { email: 'dono@barbeariacentral.com.br', password: 'BarberVP@2026' },
 };
 
+/** Frontend único (fase 11): uma porta só, quatro prefixos. */
+const WEB_PORT = Number(process.env.WEB_PORT ?? 3000);
+
 const APPS = {
   site: {
-    port: 3000,
+    port: WEB_PORT,
     routes: ['/', '/entrar', '/cadastro', '/recuperar-senha'],
   },
   booking: {
-    port: 3001,
-    routes: [`/${process.env.DEMO_SLUG ?? 'barbearia-central'}`],
+    port: WEB_PORT,
+    routes: ['/agendar', `/${process.env.DEMO_SLUG ?? 'barbearia-central'}`],
   },
   dashboard: {
-    port: 3002,
+    port: WEB_PORT,
     login: CREDENTIALS.owner,
     routes: [
-      '/',
-      '/agenda',
-      '/clientes',
-      '/servicos-produtos',
-      '/equipe',
-      '/comandas',
-      '/financeiro',
-      '/comissoes',
-      '/fidelidade',
-      '/relatorios',
-      '/whatsapp',
-      '/assistente-ia',
-      '/configuracoes',
-      '/minha-pagina',
+      '/app',
+      '/app/agenda',
+      '/app/clientes',
+      '/app/servicos-produtos',
+      '/app/equipe',
+      '/app/comandas',
+      '/app/financeiro',
+      '/app/comissoes',
+      '/app/fidelidade',
+      '/app/relatorios',
+      '/app/whatsapp',
+      '/app/assistente-ia',
+      '/app/configuracoes',
+      '/app/minha-pagina',
     ],
     /*
      * O `/playground` é a galeria de componentes da fase 02, não uma tela de
@@ -86,12 +92,19 @@ const APPS = {
      * demonstração (inclusive tamanhos pequenos de propósito), então a régua
      * de alvo de toque não se aplica. O layout dele continua sendo medido.
      */
-    layoutOnly: ['/playground'],
+    layoutOnly: ['/app/playground'],
   },
   admin: {
-    port: 3003,
+    port: WEB_PORT,
     login: CREDENTIALS.admin,
-    routes: ['/tenants', '/planos', '/billing', '/metricas', '/filas', '/mensagens'],
+    routes: [
+      '/admin/tenants',
+      '/admin/planos',
+      '/admin/billing',
+      '/admin/metricas',
+      '/admin/filas',
+      '/admin/mensagens',
+    ],
   },
 };
 
@@ -100,8 +113,8 @@ const APPS = {
  * não a tela de login.
  *
  * O refresh token é um cookie httpOnly de `localhost`; cookie ignora porta,
- * então o que a API (3333) grava vale para a app (3002/3003). Feito o login, o
- * provider de auth de cada app renova o access token sozinho ao montar.
+ * então o que a API (3333) grava vale para o app (3000). Feito o login, o
+ * provider de auth da superfície renova o access token sozinho ao montar.
  */
 async function login(page, port, credentials) {
   await page.goto(`http://localhost:${port}/`, { waitUntil: 'domcontentloaded' });
@@ -147,7 +160,7 @@ const log = (message) => {
   }
 };
 
-/** Uma app só entra na varredura se estiver realmente no ar. */
+/** Uma superfície só entra na varredura se o app estiver realmente no ar. */
 async function isUp(port) {
   try {
     const response = await fetch(`http://localhost:${port}/`, {
@@ -177,7 +190,7 @@ async function sweep() {
         continue;
       }
       if (!(await isUp(config.port))) {
-        log(`\n⏭  ${app} — fora do ar na porta ${config.port}, pulando`);
+        log(`\n⏭  ${app} — app fora do ar na porta ${config.port}, pulando`);
         continue;
       }
 

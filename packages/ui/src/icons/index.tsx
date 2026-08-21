@@ -310,6 +310,46 @@ export function PlusIcon({ strokeWidth = 2, ...props }: IconProps) {
   );
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Topbar e alertas do Dashboard — paths copiados de `Dashboard.dc.html`
+ * (linhas 130–400).
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export function BellIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3a5 5 0 0 0-5 5v3l-2 4h14l-2-4V8a5 5 0 0 0-5-5zM9.5 20a2.5 2.5 0 0 0 5 0" />
+    </Icon>
+  );
+}
+
+/** Alerta de clientes inativos. */
+export function AlertTriangleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3L21 19H3zM12 9v4M12 16h.01" />
+    </Icon>
+  );
+}
+
+/** Alerta de contas a vencer. */
+export function CreditCardIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 7h18v10H3zM7 7v10M17 7v10M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+    </Icon>
+  );
+}
+
+/** Alerta de aniversariantes. */
+export function GiftIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 7V21M4 12h16M4 12v9h16v-9M4 12l2-5h12l2 5M9 7c0-2 1.5-4 3-4s3 2 3 4" />
+    </Icon>
+  );
+}
+
 export function UserIcon(props: IconProps) {
   return (
     <Icon {...props}>
