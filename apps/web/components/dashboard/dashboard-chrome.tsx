@@ -3,17 +3,15 @@
 import { useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Avatar,
   AppShell,
-  Badge,
   BarChartIcon,
   CalendarIcon,
   ChatIcon,
   GlobeIcon,
   GridIcon,
-  Menu,
   MoneyIcon,
   PercentIcon,
+  PlusIcon,
   ReceiptIcon,
   ScissorsIcon,
   SettingsIcon,
@@ -24,10 +22,15 @@ import {
   useEstablishmentAuth,
   type AppShellNavItem,
 } from '@barbervp/ui';
-import type { Role } from '@barbervp/types';
 import { navForRole } from '@/lib/dashboard/nav';
+import { useDashboardShellQuery } from '@/lib/dashboard/api/dashboard';
 import { DashboardGuard } from './dashboard-guard';
 import { ImpersonationBanner } from './impersonation-banner';
+import { AccountMenu } from './topbar/account-menu';
+import { GlobalSearch } from './topbar/global-search';
+import { NotificationBell } from './topbar/notification-bell';
+import { PlanFooter } from './topbar/plan-footer';
+import { UnitSelector } from './topbar/unit-selector';
 
 const ICONS: Record<string, ReactNode> = {
   dashboard: <GridIcon size={19} />,
@@ -46,18 +49,20 @@ const ICONS: Record<string, ReactNode> = {
   configuracoes: <SettingsIcon size={19} />,
 };
 
-const ROLE_LABEL: Record<Role, string> = {
-  OWNER: 'Dono',
-  MANAGER: 'Gerente',
-  BARBER: 'Barbeiro',
-  CLIENT: 'Cliente',
-  SUPER_ADMIN: 'Super admin',
+/**
+ * Feature que libera cada item do nav — o cadeado do protótipo
+ * (`LOCKED_NAV_KEYS` do `Dashboard.dc.html`). O item continua clicável: quem
+ * decide o 403 é o servidor, aqui o cadeado só antecipa a informação.
+ */
+const NAV_FEATURE: Record<string, 'comissoes' | 'fidelidadePontos'> = {
+  comissoes: 'comissoes',
+  fidelidade: 'fidelidadePontos',
 };
 
 export interface DashboardChromeProps {
   activeKey: string;
   children: ReactNode;
-  /** Ação(ões) à direita da topbar, além do menu de conta (ex.: "Novo agendamento"). */
+  /** Ação(ões) extras à direita da topbar, além do CTA e do menu de conta. */
   topbarActions?: ReactNode;
 }
 
@@ -66,20 +71,30 @@ export interface DashboardChromeProps {
  * componente: o que muda por papel é só o conjunto de itens do nav
  * (`navForRole`), nunca a URL. `BARBER` que abre `/clientes` direto na URL
  * ainda toma 403 do backend — o nav some só para não oferecer o link morto.
+ *
+ * A topbar reproduz a do protótipo na ordem exata: seletor de unidade, selo do
+ * plano, busca global, "Novo agendamento", sino e avatar. O selo do plano e o
+ * cadeado dos itens vêm de `GET /dashboard/shell`, que espelha o `FeatureGuard`.
  */
 export function DashboardChrome({ activeKey, children, topbarActions }: DashboardChromeProps) {
   const router = useRouter();
-  const { user, activeMembership, logout } = useEstablishmentAuth();
+  const { activeMembership } = useEstablishmentAuth();
+  const shellQuery = useDashboardShellQuery();
+  const shell = shellQuery.data;
 
   const nav = useMemo<AppShellNavItem[]>(() => {
-    return navForRole(activeMembership?.role).map((item) => ({
-      key: item.key,
-      label: item.label,
-      icon: ICONS[item.key],
-      locked: !item.ready,
-      onSelect: () => router.push(item.ready ? item.href : '/app'),
-    }));
-  }, [activeMembership?.role, router]);
+    return navForRole(activeMembership?.role).map((item) => {
+      const feature = NAV_FEATURE[item.key];
+      return {
+        key: item.key,
+        label: item.label,
+        icon: ICONS[item.key],
+        badge: item.key === 'assistente-ia' ? 'IA' : undefined,
+        locked: !item.ready || (feature ? shell !== undefined && !shell.features[feature] : false),
+        onSelect: () => router.push(item.ready ? item.href : '/app'),
+      };
+    });
+  }, [activeMembership?.role, router, shell]);
 
   return (
     <DashboardGuard>
@@ -87,38 +102,41 @@ export function DashboardChrome({ activeKey, children, topbarActions }: Dashboar
       <AppShell
         activeKey={activeKey}
         nav={nav}
-        brandName={activeMembership?.tenantName ?? 'Barber VP'}
+        brandName="Barber VP"
         topbarStart={
-          activeMembership ? (
-            <Badge tone={activeMembership.role === 'OWNER' ? 'gold' : 'neutral'}>
-              {ROLE_LABEL[activeMembership.role]}
-            </Badge>
-          ) : undefined
+          <>
+            <UnitSelector shell={shell} />
+            {shell?.plan && (
+              <span className="hidden h-8 shrink-0 items-center rounded-full border border-gold/35 bg-gold/[0.12] px-3 text-xs font-semibold text-gold lg:inline-flex">
+                {shell.plan.name}
+              </span>
+            )}
+            {shell && !shell.plan && (
+              <span className="hidden h-8 shrink-0 items-center rounded-full border border-gold/35 bg-gold/[0.12] px-3 text-xs font-semibold text-gold lg:inline-flex">
+                Teste grátis
+              </span>
+            )}
+          </>
         }
+        topbarCenter={<GlobalSearch />}
         topbarEnd={
           <>
             {topbarActions}
-            <Menu
-              label="Sua conta"
-              align="end"
-              trigger={<Avatar name={user?.name ?? '?'} size="md" />}
-              items={[
-                { label: user?.email ?? '', onSelect: () => undefined, disabled: true },
-                {
-                  label: 'Sair',
-                  destructive: true,
-                  onSelect: () => void logout().then(() => router.replace('/app')),
-                },
-              ]}
-            />
+            <button
+              type="button"
+              onClick={() => router.push('/app/agenda?novo=1')}
+              className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-control bg-gold px-2.5 text-sm font-semibold text-bg transition-colors hover:bg-gold-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-bg sm:h-10 sm:min-w-0 sm:px-4"
+            >
+              <PlusIcon size={16} strokeWidth={2.2} />
+              {/* Abaixo de `sm` sobra só o `+`, como o `isNarrow` do protótipo. */}
+              <span className="hidden sm:inline">Novo agendamento</span>
+              <span className="sr-only sm:hidden">Novo agendamento</span>
+            </button>
+            <NotificationBell />
+            <AccountMenu />
           </>
         }
-        sidebarFooter={
-          <div className="flex flex-col gap-1.5 text-[13px] text-fg-muted">
-            <p className="truncate font-semibold text-fg">{user?.name}</p>
-            <p className="truncate">{activeMembership?.tenantName}</p>
-          </div>
-        }
+        sidebarFooter={<PlanFooter shell={shell} loading={shellQuery.isLoading} />}
       >
         {children}
       </AppShell>

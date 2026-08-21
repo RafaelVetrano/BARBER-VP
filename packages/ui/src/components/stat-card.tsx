@@ -2,12 +2,27 @@ import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { Card } from './card';
 
+/**
+ * Direção da seta e SIGNIFICADO da variação são coisas separadas.
+ *
+ * "Faltas no mês ▼ 30%" é uma boa notícia e sai em verde; "Faturamento ▼ 30%"
+ * é uma má notícia e sai em vermelho. A seta descreve o número, `tone` descreve
+ * o que ele quer dizer para o negócio — quem sabe disso é o card, não o
+ * componente.
+ */
+export interface StatDelta {
+  label: ReactNode;
+  direction: 'up' | 'down' | 'flat';
+  /** Padrão: `up` = bom, `down` = ruim, `flat` = neutro. */
+  tone?: 'positive' | 'negative' | 'neutral';
+}
+
 export interface StatCardProps {
   label: ReactNode;
   /** Número grande já formatado (moeda em centavos vira string na camada de dados). */
   value: ReactNode;
   /** Variação em relação ao período anterior. */
-  delta?: { label: ReactNode; direction: 'up' | 'down' | 'flat' };
+  delta?: StatDelta;
   /** Linha de detalhe abaixo do número ("18 confirmados · 3 pendentes"). */
   hint?: ReactNode;
   /**
@@ -15,13 +30,18 @@ export interface StatCardProps {
    * normalizada pelo mínimo e máximo da própria série.
    */
   sparkline?: number[];
+  /** Cor do mini-gráfico. Verde no card de faltas, dourado no resto. */
+  sparklineTone?: 'gold' | 'success';
   className?: string;
 }
 
 const ARROW = { up: '▲', down: '▼', flat: '—' } as const;
+const DEFAULT_TONE = { up: 'positive', down: 'negative', flat: 'neutral' } as const;
 
-function Sparkline({ points }: { points: number[] }) {
-  if (points.length < 2) return null;
+function Sparkline({ points, tone }: { points: number[]; tone: 'gold' | 'success' }) {
+  // Série toda zerada não vira linha reta: um traço no rodapé do card lê como
+  // "houve movimento constante", quando o que houve foi nada.
+  if (points.length < 2 || points.every((point) => point === 0)) return null;
 
   const min = Math.min(...points);
   const max = Math.max(...points);
@@ -43,7 +63,7 @@ function Sparkline({ points }: { points: number[] }) {
       preserveAspectRatio="none"
       aria-hidden="true"
       focusable="false"
-      className="text-gold"
+      className={cn('mt-auto', tone === 'success' ? 'text-success' : 'text-gold')}
     >
       <polyline points={path} fill="none" stroke="currentColor" strokeWidth="2" />
     </svg>
@@ -55,7 +75,17 @@ function Sparkline({ points }: { points: number[] }) {
  * número grande em Sora com `tabular-nums`, variação e mini-gráfico dourado),
  * reaproveitados também na landing de vendas.
  */
-export function StatCard({ label, value, delta, hint, sparkline, className }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  delta,
+  hint,
+  sparkline,
+  sparklineTone = 'gold',
+  className,
+}: StatCardProps) {
+  const tone = delta ? (delta.tone ?? DEFAULT_TONE[delta.direction]) : null;
+
   return (
     <Card className={cn('gap-2', className)}>
       <span className="text-[13px] font-medium text-fg-muted">{label}</span>
@@ -67,9 +97,9 @@ export function StatCard({ label, value, delta, hint, sparkline, className }: St
         <span
           className={cn(
             'text-xs font-semibold',
-            delta.direction === 'up' && 'text-success',
-            delta.direction === 'down' && 'text-danger',
-            delta.direction === 'flat' && 'text-fg-muted',
+            tone === 'positive' && 'text-success',
+            tone === 'negative' && 'text-danger',
+            tone === 'neutral' && 'text-fg-muted',
           )}
         >
           <span aria-hidden="true">{ARROW[delta.direction]} </span>
@@ -78,7 +108,7 @@ export function StatCard({ label, value, delta, hint, sparkline, className }: St
       )}
 
       {hint && <span className="text-xs leading-relaxed text-fg-muted">{hint}</span>}
-      {sparkline && <Sparkline points={sparkline} />}
+      {sparkline && <Sparkline points={sparkline} tone={sparklineTone} />}
     </Card>
   );
 }

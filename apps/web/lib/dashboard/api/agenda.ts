@@ -59,6 +59,22 @@ export function useMoveStaffAppointmentMutation() {
   });
 }
 
+export function useConfirmStaffAppointmentMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await client.patch<StaffAppointmentItem>(`/staff-agenda/${id}/confirm`, {});
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['staff-agenda'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard-notifications'] });
+    },
+  });
+}
+
 export function useCancelStaffAppointmentMutation() {
   const { client } = useEstablishmentAuth();
   const queryClient = useQueryClient();
@@ -67,6 +83,9 @@ export function useCancelStaffAppointmentMutation() {
       const { data } = await client.patch<StaffAppointmentItem>(`/staff-agenda/${id}/cancel`, dto);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staff-agenda'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['staff-agenda'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+    },
   });
 }

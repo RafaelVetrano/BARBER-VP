@@ -352,6 +352,49 @@ export class StaffAppointmentsService {
     return toItem(updated);
   }
 
+  /**
+   * Confirma um agendamento pelo balcão.
+   *
+   * Existe porque o menu ⋯ dos "Próximos atendimentos" do Dashboard oferece
+   * "Confirmar" e não havia rota para isso: até a fase 13, `CONFIRMED` só era
+   * alcançável pelo cliente, no canal público. Confirmar de novo é idempotente
+   * — o balcão clica duas vezes o tempo todo, e um 409 aí seria ruído.
+   */
+  async confirm(
+    tenantId: string,
+    appointmentId: string,
+    scope: StaffScope,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<StaffAppointmentItem> {
+    const appointment = await this.loadOwned(tenantId, appointmentId);
+    this.scopes.assertAllowed(scope, appointment.barberId);
+
+    if (appointment.status === AppointmentStatus.CONFIRMED) {
+      return toItem(appointment);
+    }
+    this.assertChangeable(appointment);
+
+    const updated = await this.prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { status: AppointmentStatus.CONFIRMED, confirmedAt: new Date() },
+      include: APPOINTMENT_INCLUDE,
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.STAFF_APPOINTMENT_CONFIRMED,
+        entity: 'Appointment',
+        entityId: updated.id,
+        tenantId,
+        actorUserId,
+      },
+      request,
+    );
+
+    return toItem(updated);
+  }
+
   // ── Internos ──────────────────────────────────────────────────────────────
 
   private async loadOwned(tenantId: string, id: string): Promise<AppointmentRow> {

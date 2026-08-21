@@ -1,106 +1,94 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button, Card, CardHeader, EmptyState, PlusIcon, Skeleton, StatCard, useEstablishmentAuth } from '@barbervp/ui';
-import { AgendaView, formatBRL } from '@barbervp/types';
+import { useState } from 'react';
+import { Button, Card, Skeleton, SkeletonGroup } from '@barbervp/ui';
+import type { DashboardPeriod } from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
-import { useStaffAgendaQuery } from '@/lib/dashboard/api/agenda';
-import { useProductsQuery } from '@/lib/dashboard/api/catalog';
-
-function todayKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
+import { AlertsStrip } from '@/components/dashboard/home/alerts-strip';
+import { BarberRankingCard } from '@/components/dashboard/home/barber-ranking-card';
+import { KpiGrid, KpiGridSkeleton } from '@/components/dashboard/home/kpi-grid';
+import { RevenueChartCard } from '@/components/dashboard/home/revenue-chart-card';
+import { TopServicesCard } from '@/components/dashboard/home/top-services-card';
+import { UpcomingCard } from '@/components/dashboard/home/upcoming-card';
+import { useDashboardOverviewQuery } from '@/lib/dashboard/api/dashboard';
 
 /**
  * Home do painel — mesmo componente serve `Dashboard` e `DashboardFuncionario`:
- * o backend já devolve só a própria coluna quando o papel é BARBER, então o
- * resumo "hoje" nasce corretamente escopado sem nenhum `if (role)` aqui.
+ * `GET /dashboard/overview` já devolve só os números do próprio barbeiro quando
+ * o papel é `BARBER`, então o recorte nasce correto sem nenhum `if (role)` aqui.
+ *
+ * Ordem dos blocos, idêntica a `Dashboard.dc.html` (linhas 178–392):
+ * KPIs → gráfico + serviços (2fr 1fr) → ranking + próximos (1fr 1fr) → alertas.
  */
 export default function DashboardHomePage() {
-  const router = useRouter();
-  const { activeMembership } = useEstablishmentAuth();
-  const isOwnerOrManager = activeMembership?.role === 'OWNER' || activeMembership?.role === 'MANAGER';
-
-  const agendaQuery = useStaffAgendaQuery({ date: todayKey(), view: AgendaView.DAY });
-  const lowStockQuery = useProductsQuery({ lowStock: true, perPage: 5 });
-
-  const appointments = useMemo(
-    () => (agendaQuery.data?.days[0]?.barbers.flatMap((column) => column.appointments) ?? []).sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
-    [agendaQuery.data],
-  );
-
-  const active = appointments.filter((appointment) => appointment.status !== 'CANCELED');
-  const confirmed = active.filter((appointment) => appointment.status === 'CONFIRMED').length;
-  const revenueToday = active.reduce((total, appointment) => total + appointment.totalPriceCents, 0);
-  const nextAppointments = active.filter((appointment) => new Date(appointment.startsAt) >= new Date()).slice(0, 6);
+  const [period, setPeriod] = useState<DashboardPeriod>('mes');
+  const query = useDashboardOverviewQuery(period);
+  const data = query.data;
 
   return (
-    <DashboardChrome
-      activeKey="dashboard"
-      topbarActions={
-        <Button size="sm" iconLeft={<PlusIcon size={16} />} onClick={() => router.push('/app/agenda')}>
-          Novo agendamento
-        </Button>
-      }
-    >
-      <div className="flex flex-col gap-5">
-        <h1 className="font-display text-xl font-bold text-fg">
-          Olá, {activeMembership?.tenantName ?? 'barbearia'} 👋
-        </h1>
-
-        {agendaQuery.isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((key) => (
-              <Skeleton key={key} className="h-24" />
-            ))}
-          </div>
+    <DashboardChrome activeKey="dashboard">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-5">
+        {query.isError && !data ? (
+          <ErrorCard onRetry={() => void query.refetch()} retrying={query.isFetching} />
+        ) : !data ? (
+          <LoadingSkeleton />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Agendamentos hoje" value={active.length} hint={`${confirmed} confirmados`} />
-            <StatCard label="Faturamento previsto hoje" value={formatBRL(revenueToday)} />
-            {isOwnerOrManager && (
-              <StatCard
-                label="Estoque baixo"
-                value={lowStockQuery.data?.meta.total ?? 0}
-                hint={lowStockQuery.data && lowStockQuery.data.meta.total > 0 ? 'Reponha em Serviços & Produtos' : 'Tudo certo'}
-              />
-            )}
-            <StatCard label="Barbeiros na agenda" value={agendaQuery.data?.barberOptions.length ?? 0} />
-          </div>
-        )}
+          <>
+            <KpiGrid kpis={data.kpis} />
 
-        <Card>
-          <CardHeader title="Próximos horários de hoje" action={<Button variant="ghost" size="sm" onClick={() => router.push('/app/agenda')}>Ver agenda completa</Button>} />
-          {nextAppointments.length === 0 ? (
-            <EmptyState message="Nenhum horário à frente hoje." className="py-8" />
-          ) : (
-            <ul className="mt-3 flex flex-col gap-2">
-              {nextAppointments.map((appointment) => (
-                <li
-                  key={appointment.id}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5"
-                >
-                  <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-gold">
-                    {new Intl.DateTimeFormat('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      timeZone: agendaQuery.data?.timezone,
-                    }).format(new Date(appointment.startsAt))}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-fg">{appointment.clientName}</p>
-                    <p className="truncate text-xs text-fg-muted">
-                      {appointment.barberName} · {appointment.services.map((service) => service.name).join(' + ')}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+            {/* 2fr 1fr no desktop; empilhado abaixo de `lg`, onde 1fr do lado
+                direito ficaria estreito demais para a legenda dos serviços. */}
+            <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
+              <RevenueChartCard chart={data.revenueChart} period={period} onPeriodChange={setPeriod} />
+              <TopServicesCard services={data.topServices} />
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-2">
+              <BarberRankingCard ranking={data.barberRanking} scope={data.scope} />
+              <UpcomingCard appointments={data.upcomingAppointments} />
+            </div>
+
+            <AlertsStrip alerts={data.alerts} />
+          </>
+        )}
       </div>
     </DashboardChrome>
+  );
+}
+
+/** As alturas espelham as dos blocos reais — a página não pula ao carregar. */
+function LoadingSkeleton() {
+  return (
+    <>
+      <KpiGridSkeleton />
+      <SkeletonGroup label="Carregando o dashboard" className="flex flex-col gap-5">
+        <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
+          <Skeleton className="h-[336px] rounded-xl" />
+          <Skeleton className="h-[336px] rounded-xl" />
+        </div>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Skeleton className="h-[264px] rounded-xl" />
+          <Skeleton className="h-[264px] rounded-xl" />
+        </div>
+      </SkeletonGroup>
+    </>
+  );
+}
+
+/**
+ * Erro é um card, não uma página em branco: a casca (nav, busca, sino) continua
+ * utilizável enquanto só o miolo falhou.
+ */
+function ErrorCard({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
+  return (
+    <Card className="items-center gap-3 p-8 text-center">
+      <p className="text-[15px] text-fg">Não foi possível carregar o dashboard.</p>
+      <p className="text-[13px] text-fg-muted">
+        Os dados continuam salvos — foi só esta consulta que falhou.
+      </p>
+      <Button variant="outline" onClick={onRetry} loading={retrying}>
+        Tentar de novo
+      </Button>
+    </Card>
   );
 }

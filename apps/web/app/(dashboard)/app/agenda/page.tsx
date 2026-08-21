@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Avatar,
   Badge,
@@ -140,17 +141,28 @@ function MoveModal({
   );
 }
 
-export default function AgendaPage() {
+function AgendaContent() {
   const { activeMembership } = useEstablishmentAuth();
   const { toast } = useToast();
   const role = activeMembership?.role;
   const isStaffOnly = role === 'BARBER';
 
-  const [date, setDate] = useState(todayKey());
+  const searchParams = useSearchParams();
+
+  const [date, setDate] = useState(() => searchParams.get('date') ?? todayKey());
   const [view, setView] = useState<'DAY' | 'WEEK'>('DAY');
   const [barberFilter, setBarberFilter] = useState<string>('');
   const [modalBarberId, setModalBarberId] = useState<string | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(() => searchParams.get('novo') === '1');
+
+  // Pontos de entrada vindos de fora: `?novo=1` (o CTA "Novo agendamento" da
+  // topbar) e `?date=` (um resultado da busca global). Sem isto os dois
+  // controles do dashboard só trocariam de tela e parariam ali.
+  useEffect(() => {
+    if (searchParams.get('novo') === '1') setModalOpen(true);
+    const requested = searchParams.get('date');
+    if (requested) setDate(requested);
+  }, [searchParams]);
   const [cancelTarget, setCancelTarget] = useState<StaffAppointmentItem | null>(null);
   const [moveTarget, setMoveTarget] = useState<StaffAppointmentItem | null>(null);
 
@@ -362,6 +374,27 @@ export default function AgendaPage() {
           <strong className="text-fg">{cancelTarget?.clientName}</strong>? Esta ação não pode ser desfeita.
         </p>
       </Modal>
+    </DashboardChrome>
+  );
+}
+/**
+ * `useSearchParams()` (`?novo=1` da topbar, `?date=` da busca global) tira a
+ * rota da renderização estática: sem um limite de Suspense o `next build`
+ * falha no prerender — a mesma armadilha documentada em `configuracoes/page.tsx`.
+ * O fallback repete a casca, então não há salto visual.
+ */
+export default function AgendaPage() {
+  return (
+    <Suspense fallback={<AgendaFallback />}>
+      <AgendaContent />
+    </Suspense>
+  );
+}
+
+function AgendaFallback() {
+  return (
+    <DashboardChrome activeKey="agenda">
+      <Skeleton className="h-64" />
     </DashboardChrome>
   );
 }

@@ -2,7 +2,24 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Badge, Button, Card, CardHeader, EmptyState, Input, PlusIcon, Skeleton, Switch, Tabs, useToast } from '@barbervp/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  Input,
+  PasswordInput,
+  PlusIcon,
+  Skeleton,
+  Switch,
+  Tabs,
+  authErrorMessage,
+  establishmentApi,
+  isPasswordValid,
+  useEstablishmentAuth,
+  useToast,
+} from '@barbervp/ui';
 import { WEEKDAY_LABELS, formatBRL, minutesToTime, timeToMinutes } from '@barbervp/types';
 import type { OnboardingBusinessHour } from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
@@ -21,6 +38,7 @@ import {
 } from '@/lib/dashboard/api/settings';
 
 const TABS = [
+  { value: 'perfil', label: 'Meu perfil' },
   { value: 'barbearia', label: 'Barbearia' },
   { value: 'unidades', label: 'Unidades' },
   { value: 'plano', label: 'Plano' },
@@ -254,6 +272,97 @@ function PreferenciasTab() {
   );
 }
 
+/**
+ * "Meu perfil" — o destino do primeiro item do menu do avatar (fase 13).
+ *
+ * O protótipo tem uma tela inteira para isto (`Dashboard.dc.html`, linhas
+ * 2737–2817: "Dados pessoais", "Segurança", "Privacidade e dados"). Aqui está
+ * só o que já tem endpoint: os dados da sessão e a troca de senha
+ * (`POST /auth/password/change`, que existia em `auth-api.ts` sem nenhuma UI
+ * que a chamasse). O resto vem na auditoria de Configurações — o que NÃO se
+ * faz é deixar o item de menu apontando para uma aba que não existe e cair
+ * silenciosamente em "Barbearia".
+ */
+function PerfilTab() {
+  const { client, user, activeMembership } = useEstablishmentAuth();
+  const { toast } = useToast();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const canSubmit = current.length > 0 && isPasswordValid(next) && !saving;
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await establishmentApi.changePassword(client, { currentPassword: current, newPassword: next });
+      setCurrent('');
+      setNext('');
+      // O backend derruba as DEMAIS sessões e mantém esta — avisar, senão o
+      // usuário descobre sozinho ao trocar de dispositivo.
+      toast({ tone: 'success', message: 'Senha alterada. As outras sessões foram encerradas.' });
+    } catch (error) {
+      toast({ tone: 'danger', message: authErrorMessage(error, 'Não foi possível alterar a senha.') });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader title="Dados pessoais" description="Vêm do seu login e valem para todas as barbearias que você atende." />
+        <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-fg-muted">Nome</dt>
+            <dd className="text-sm font-medium text-fg">{user?.name ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">E-mail</dt>
+            <dd className="truncate text-sm font-medium text-fg">{user?.email ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">Barbearia ativa</dt>
+            <dd className="text-sm font-medium text-fg">{activeMembership?.tenantName ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">Seu papel</dt>
+            <dd className="text-sm font-medium text-fg">
+              {activeMembership?.role === 'OWNER'
+                ? 'Dono'
+                : activeMembership?.role === 'MANAGER'
+                  ? 'Gerente'
+                  : 'Barbeiro'}
+            </dd>
+          </div>
+        </dl>
+      </Card>
+
+      <Card>
+        <CardHeader title="Segurança" description="Trocar a senha encerra as suas outras sessões." />
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <PasswordInput
+            label="Senha atual"
+            autoComplete="current-password"
+            value={current}
+            onChange={(event) => setCurrent(event.target.value)}
+          />
+          <PasswordInput
+            label="Nova senha"
+            autoComplete="new-password"
+            showStrength
+            value={next}
+            onChange={(event) => setNext(event.target.value)}
+          />
+        </div>
+        <Button className="mt-4 self-start" disabled={!canSubmit} loading={saving} onClick={() => void submit()}>
+          Alterar senha
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
 function CalculadoraTab() {
   const calc = usePriceCalculatorMutation();
   const [custo, setCusto] = useState('15');
@@ -316,6 +425,7 @@ function ConfiguracoesContent() {
       <div className="flex flex-col gap-5">
         <h1 className="font-display text-xl font-bold text-fg">Configurações</h1>
         <Tabs label="Configurações" value={tab} onChange={(v) => setTab(v as CfgTab)} items={TABS.map((t) => ({ value: t.value, label: t.label }))} />
+        {tab === 'perfil' && <PerfilTab />}
         {tab === 'barbearia' && <BarbeariaTab />}
         {tab === 'unidades' && <UnidadesTab />}
         {tab === 'plano' && <PlanoTab />}

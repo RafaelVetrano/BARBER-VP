@@ -485,6 +485,9 @@ model ClientProfile {
   @@unique([tenantId, clientId])
   @@index([tenantId, phone])
   @@index([tenantId, lastVisitAt])
+  /// Fase 13: o KPI "Novos clientes (mês)" e sua sparkline de 8 meses agrupam
+  /// `firstVisitAt` por mês dentro do tenant.
+  @@index([tenantId, firstVisitAt])
 }
 
 /// Multi-unidade — disponível apenas no plano Avançado (`multiUnidades`).
@@ -1376,6 +1379,13 @@ model TenantSettings {
   /// `0` desliga o lembrete correspondente.
   lembrete1Horas     Int      @default(24)
   lembrete2Horas     Int      @default(2)
+  /// Meta de faturamento do mês, em centavos (fase 13 — a linha tracejada do
+  /// gráfico "Faturamento — últimos 30 dias" do Dashboard).
+  ///
+  /// `null` = barbearia sem meta definida: o gráfico simplesmente não desenha
+  /// a linha. O protótipo cravava "Meta: R$ 28.000/mês" no HTML; aqui a meta é
+  /// dado da barbearia, não do desenho.
+  monthlyGoalCents   Int?
   /// Branding da página pública.
   sobre              String?
   instagram          String?

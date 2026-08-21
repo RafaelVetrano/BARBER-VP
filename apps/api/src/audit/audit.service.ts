@@ -65,6 +65,7 @@ export const AuditAction = {
   STAFF_APPOINTMENT_CREATED: 'staff_agenda.appointment_created',
   STAFF_APPOINTMENT_MOVED: 'staff_agenda.appointment_moved',
   STAFF_APPOINTMENT_CANCELED: 'staff_agenda.appointment_canceled',
+  STAFF_APPOINTMENT_CONFIRMED: 'staff_agenda.appointment_confirmed',
   // Fase 07 — dashboard financeiro.
   ORDER_OPENED: 'pos.order_opened',
   ORDER_CLOSED: 'pos.order_closed',

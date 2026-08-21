@@ -1,10 +1,14 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-20 — fase 11 (Consolidação) concluída: as 4
-apps Next.js viraram UMA (`apps/web`), separadas por route group e roteadas por
-host no middleware. Resultado: **1 frontend + 1 backend**. Nenhuma mudança de
-comportamento — a suíte inteira ficou idêntica à baseline (81 unit · 133 e2e ·
-106 isolamento).
+Atualizado por último: 2026-08-21 — fase 13 (auditoria 1:1 da tela Dashboard)
+concluída: a `/app` foi reconstruída contra `Dashboard.dc.html` linha a linha —
+topbar completa, 6 KPIs, gráficos, ranking, próximos atendimentos e faixa de
+alertas —, com `GET /dashboard/overview` alimentando tudo. Suíte: 81 unit ·
+141 e2e · 111 isolamento.
+
+> Fase 12 (deploy) segue pendente. A 13 entrou na frente porque a auditoria
+> mostrou que a tela mais visível do produto estava incompleta — não faz
+> sentido publicar assim.
 
 ## Status das fases
 
@@ -21,6 +25,8 @@ comportamento — a suíte inteira ficou idêntica à baseline (81 unit · 133 e
 | 09 | Integrações & Hardening (GATE) | ✅ |
 | 10 | Landing de vendas | ✅ |
 | 11 | Consolidação (4 apps → 1 frontend) | ✅ |
+| 12 | Deploy | ⬜ |
+| 13 | Auditoria 1:1 — tela Dashboard | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
@@ -347,6 +353,23 @@ Mesmas regras do resto do super admin (`SUPER_ADMIN` + `@TenantOptional()`).
 | POST | `/admin/queues/:name/run` | Dispara o job agora, fora do cron. `attempts: 1` — rodada manual não fica repetindo sozinha. |
 | POST | `/admin/queues/:name/jobs/:jobId/retry` | Reenfileira um job que falhou depois de esgotar as tentativas. 404 se o job não existe. |
 | GET | `/admin/outbox` | "Mensagens enviadas" — `NotificationOutbox` + `MailOutbox` unidos, filtro por `kind`/`status`/`tenantId`. Destinatário sai MASCARADO. |
+
+### Dashboard, busca global e sino (`/api/v1`) — fase 13
+
+`@Roles('OWNER','MANAGER','BARBER')` nos três controllers. `BARBER` entra pelo
+MESMO endpoint do dono — quem recorta é o `StaffScopeService` (o mesmo da
+agenda interna e das comandas), dentro do serviço, nunca uma rota paralela.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/dashboard/shell` | Plano, `features` (espelho exato do `FeatureGuard`), dias de teste e unidades — a casca das 14 telas. Cacheada 5 min no front. Funciona com `planId` nulo: `plan: null` + tudo `false`. |
+| GET | `/dashboard/overview?period=dia\|semana\|mes` | A tela `/app` inteira numa chamada: KPIs (6), gráfico de faturamento, serviços do mês, ranking da semana, próximos atendimentos e alertas. ~12 agregações em SQL, em paralelo. Padrão `mes`. |
+| GET | `/search?q=` | Busca global da topbar (Ctrl+K) — clientes, agendamentos e serviços, 5 por grupo. `q` com menos de 2 caracteres é 400. `BARBER` não recebe a base de clientes. |
+| GET | `/notifications` | Sino — pendências do dia DERIVADAS do banco (confirmações/cancelamentos de hoje, contas a vencer, caixa fechado, estoque no mínimo). Não há tabela `Notification`; ver dívidas da fase 13. |
+| PATCH | `/staff-agenda/:id/confirm` | Confirma pelo balcão. Nasceu na fase 13 porque o menu ⋯ dos "Próximos atendimentos" oferece "Confirmar" e não havia rota — até então `CONFIRMED` só era alcançável pelo cliente. Idempotente. |
+
+`GET|PATCH /settings/preferences` ganhou `monthlyGoalCents` (nullable) — a meta
+mensal que o gráfico do Dashboard desenha como linha tracejada.
 
 ## O que a fase 01 entregou
 
@@ -839,6 +862,95 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   `TENANT_SUSPENDED` (403) e reativar devolvendo o acesso, impersonar
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
+
+## O que a fase 13 entregou
+
+Auditoria 1:1 da tela **Dashboard** (`/app`) contra `Dashboard.dc.html`
+(linhas 60–400). Não é uma fase de features novas: é a conferência de que o
+que existe no protótipo existe no produto, com a mesma estrutura e dado real.
+
+### Os desvios encontrados — a lista que orienta a auditoria das demais telas
+
+Este é o achado principal da fase. Os mesmos padrões devem ser procurados em
+cada tela restante (ver `agentes/auditoria/`).
+
+| # | Desvio | Onde | Gravidade |
+|---|---|---|---|
+| 1 | **Topbar quase inexistente.** Faltavam seletor de unidade, selo do plano, busca global, CTA "Novo agendamento" e sino. O menu do avatar tinha só o e-mail (desabilitado) e "Sair" — sem "Meu perfil", sem "Configurações", sem divisor. | `dashboard-chrome.tsx` | Alta |
+| 2 | **Blocos de conteúdo ausentes.** Dos 4 blocos do protótipo (KPIs, gráficos, ranking+próximos, alertas), existia 1 e meio: 4 KPIs em vez de 6, e uma versão reduzida de "Próximos atendimentos". Gráfico de faturamento, serviços mais vendidos, ranking de barbeiros e a faixa de alertas: nenhum. | `app/page.tsx` | Alta |
+| 3 | **Sem endpoint para a tela.** A página montava os números somando no cliente o que `GET /staff-agenda` devolvia. Não havia faturamento, ticket médio, ocupação, faltas, novos clientes, ranking nem alertas em lugar nenhum da API. | backend | Alta |
+| 4 | **Menu do avatar sem navegação.** Ver #1 — item explícito do critério de aceite. | `dashboard-chrome.tsx` | Média |
+| 5 | **Sem fechamento de menu por clique fora.** O `anyMenuOpen` do protótipo (um `<div>` fixo cobrindo a tela) não existia; não havia menu suspenso nenhum na topbar para precisar dele. | `packages/ui` | Média |
+| 6 | **Rodapé da sidebar errado.** Mostrava nome do usuário e da barbearia; o protótipo mostra o card do plano ativo com preço e CTA de upgrade, mais o aviso de teste. | `dashboard-chrome.tsx` | Média |
+| 7 | **Badge "IA" do nav não era renderizada.** `AppShellNavItem.badge` existia no componente desde a fase 02 e nunca foi preenchida. | `dashboard-chrome.tsx` | Baixa |
+| 8 | **Cadeado do nav não refletia o plano.** `locked` só marcava rota não implementada; `comissoes`/`fidelidade` fora do plano apareciam normais. | `dashboard-chrome.tsx` | Média |
+| 9 | **`/app` inalcançável no ambiente semeado.** O seed do tenant demo nunca marcava `onboardingDoneAt`, então o `DashboardGuard` mandava todo login do seed para o wizard. É por isso que a varredura responsiva vinha medindo a tela de onboarding e dando `/app` como verde. | `prisma/seed.ts` | **Alta** |
+| 10 | **Alvos de toque abaixo de 44px na topbar e no toggle do gráfico.** Mesma família da dívida da fase 11. | vários | Média |
+
+O #9 merece destaque na auditoria das outras telas: **um verde da varredura
+não prova que a tela foi medida** — prova que *alguma* tela foi medida naquela
+URL.
+
+### Backend
+
+`apps/api/src/dashboard/` — módulo novo, três controllers (`/dashboard`,
+`/search`, `/notifications`), quatro serviços. Importa `StaffAgendaModule` só
+pelo `StaffScopeService` que ele exporta.
+
+- **`DashboardOverviewService`** — ~12 agregações disparadas em `Promise.all`,
+  todas com `GROUP BY` no banco. Nenhuma cresce com o número de linhas
+  exibidas, e nenhuma varre linha a linha em JS. As séries de 8 pontos
+  (sparklines) e as variações percentuais saem da MESMA consulta: o delta de
+  faturamento é `série[7] vs série[6]`, não uma segunda query.
+- **`DashboardShellService`** — separado do overview de propósito: a casca é
+  comum às 14 telas e o overview é caro. Quem abre `/app/agenda` precisa do
+  selo do plano, não das agregações do dashboard.
+- **`GlobalSearchService`** — três consultas paralelas, 5 linhas cada.
+- **`NotificationsService`** — feed derivado (ver dívidas).
+
+### Frontend
+
+- `packages/ui`: **`Popover`** (dropdown ≥768px, bottom-sheet abaixo — com o
+  fundo clicável que o protótipo chama de `anyMenuOpen`), **`Donut`**
+  (`conic-gradient`, usado no KPI de ocupação e no card de serviços),
+  **`AreaChart`** (área com gradiente, linha de meta tracejada e tooltip por
+  ponto) e **`Segmented`** (Dia/Semana/Mês). `StatCard` ganhou `delta.tone` e
+  `sparklineTone`; `AppShell` ganhou `topbarCenter`.
+- `apps/web/components/dashboard/topbar/`: seletor de unidade, busca global,
+  sino e menu de conta. `home/`: os cinco blocos da página.
+
+### Decisões que valem para as próximas telas
+
+1. **Componente ≠ dado.** Nenhum número do protótipo entrou no frontend. O
+   `grep` do critério de aceite (`1.240`, `62,40`, `24.680`, `28.000`,
+   `Diego Martins`) não acha nada em `apps/web/components/dashboard` nem em
+   `packages/ui`. Os únicos hits no repositório são o `/app/playground`, que é
+   a galeria de componentes da fase 02 — vitrine, não tela de produto.
+2. **`null` não é `0`.** Todo `...DeltaPct` é `null` quando não há base de
+   comparação. "Não dá para comparar" e "não mudou" são afirmações diferentes,
+   e a UI as pinta diferente (sem linha vs. seta cinza).
+3. **Série toda zerada não vira linha.** `StatCard` suprime a sparkline quando
+   todos os pontos são `0`: um traço reto no rodapé do card lê como "houve
+   movimento constante", quando o que houve foi nada.
+4. **A seta e a cor são coisas separadas.** "Faltas ▼ 30%" é verde e
+   "Faturamento ▼ 30%" é vermelho. `StatDelta.direction` descreve o número,
+   `StatDelta.tone` descreve o que ele significa para o negócio.
+5. **A meta é dado da barbearia.** `TenantSettings.monthlyGoalCents`, nullable.
+   Sem meta, o gráfico não desenha a linha — em vez de fingir uma.
+6. **Bloco escondido pelo plano diz que foi o plano.** `lockedByPlan` no
+   overview; o front mostra upsell em vez de caixa vazia mentindo que não há
+   dado.
+
+### O que ficou aberto de propósito
+
+- **Meta mensal sem controle na UI.** O campo existe e é gravável por
+  `PATCH /settings/preferences`, mas a tela de Configurações ainda não o expõe.
+  Entra na auditoria de Configurações.
+- **Gate de plano só no alerta de contas.** Os demais blocos do dashboard
+  (serviços mais vendidos, ranking) ficaram abertos em todo plano porque é
+  assim no protótipo: os cadeados do `Dashboard.dc.html` estão nos itens de nav
+  (`comissoes`/`fidelidade`) e no "+ Nova unidade", não nos cards. O alerta de
+  contas é a exceção porque seu botão levaria a uma tela que devolve 403.
 
 ## O que a fase 11 entregou
 
@@ -1873,6 +1985,48 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   limites em env (`BOOKING_GUEST_IP_HOURLY_LIMIT`, `BOOKING_GUEST_OPEN_LIMIT`,
   `BOOKING_CREATE_HOURLY_LIMIT`). Ver decisão da fase 04.
 
+### Dívidas novas da fase 13
+
+1. **Sino sem tabela `Notification`.** `GET /notifications` DERIVA o feed de
+   fatos que já estão no banco (confirmações e cancelamentos de hoje, contas a
+   vencer, caixa fechado, estoque no mínimo). É dado real, não mock — mas o
+   contador é "pendências abertas", não "não lidas", e não há como marcar um
+   aviso como visto. Persistir de verdade exige escrever em toda ação do
+   produto e guardar estado de leitura por usuário: uma fase inteira, não uma
+   auditoria de tela. **Impacto:** o badge não zera ao abrir o painel.
+2. **"Remarcar" leva à Agenda em vez de remarcar ali.** O menu ⋯ dos próximos
+   atendimentos navega para `/app/agenda`. Duplicar aqui o seletor de horário
+   seria uma segunda implementação da mesma regra de disponibilidade — a
+   correção certa é extrair o modal de remarcação da Agenda para
+   `components/dashboard/agenda/` e reusá-lo, o que cabe na auditoria da Agenda.
+3. **Seletor de unidade não filtra nada.** Trocar de unidade muda o rótulo e
+   só: nenhum endpoint aceita `unitId` ainda (`Unit` existe no schema e em
+   `/settings/units`, mas `Appointment.unitId`/`Order.unitId` nunca são
+   filtrados). Fica assim de propósito — multi-unidade de verdade é escopo
+   próprio, não da auditoria do Dashboard. **Impacto:** um tenant Avançado com
+   2 unidades vê os números somados.
+4. **`next build` precisa de `NODE_ENV=production` explícito neste ambiente.**
+   Rodado de dentro dos containers de dev (que definem `NODE_ENV=development`),
+   `next build` quebra 35 páginas na prerenderização com `Cannot read properties
+   of null (reading 'useContext')` — inclusive `/404` e `/500`. A pista está na
+   pilha, que mistura `app-page.runtime.prod.js` com `app-page.runtime.dev.js`:
+   é o runtime errado, não código errado. Com
+   `docker exec -e NODE_ENV=production ... npx next build` o build sai **exit 0
+   e zero erros de prerender**. Não é dívida de código; é uma pegadinha de
+   ambiente que custou meia hora nesta sessão e vai custar de novo na fase 12
+   se não estiver anotada. Conferir se o `Makefile`/CI força `NODE_ENV`.
+5. **Meta mensal sem controle na tela.** `TenantSettings.monthlyGoalCents` é
+   gravável por `PATCH /settings/preferences` mas não tem campo em
+   Configurações. Entra na auditoria daquela tela.
+6. **"Meu perfil" é uma aba mínima.** O protótipo tem uma tela inteira
+   (`Dashboard.dc.html`, linhas 2737–2817: "Dados pessoais", "Segurança",
+   "Privacidade e dados"). A fase 13 criou a aba `?tab=perfil` com o que já
+   tinha endpoint — dados da sessão e troca de senha (`POST
+   /auth/password/change`, que existia em `auth-api.ts` sem nenhuma UI que a
+   chamasse). Foi o mínimo para o item de menu exigido pelo critério de aceite
+   não cair silenciosamente em "Barbearia". A exportação/exclusão LGPD, que
+   hoje só existe do lado do CLIENTE, entra na auditoria de Configurações.
+
 ### Dívidas novas da fase 11
 
 Nenhuma delas foi CAUSADA por este refactor. Foram encontradas ao verificar a
@@ -2501,11 +2655,18 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 | Suíte | Casos |
 |---|---|
 | Unitários | 81 |
-| E2E | 133 |
-| Isolamento de tenant (gate) | 106 |
-| **Total** | **320** |
+| E2E | 141 |
+| Isolamento de tenant (gate) | 111 |
+| **Total** | **333** |
 
-`pnpm turbo run lint typecheck` 11/11 · `pnpm turbo run build` 3/3.
+> A fase 13 somou 8 e2e (`dashboard-overview.e2e-spec.ts`) e 5 de isolamento
+> (`dashboard-overview.isolation-spec.ts`). O isolamento do dashboard testa os
+> NÚMEROS, não só o status: é o endpoint que mais agrega dado de tenant numa
+> chamada só, e um `tenantId` faltando numa das doze consultas entraria na soma
+> sem deixar nenhum id na tela para denunciar.
+
+`pnpm turbo run lint typecheck` 11/11 · `pnpm turbo run build` 3/3
+(o build do `apps/web` exige `NODE_ENV=production` — ver dívida 4 da fase 13).
 
 > O total de e2e estava anotado como 129 desde a fase 09: os 4 casos de
 > `public-plans.e2e-spec.ts` (fase 10) nunca entraram na conta. São os mesmos
@@ -2530,6 +2691,41 @@ Para subir o ambiente: `make env && make install && make up && make seed`
 restrição de RAM da máquina (7.5 GB), `docker compose up -d db redis api` +
 `docker compose up -d web` já é a stack inteira — não existe mais a escolha de
 "qual das 4 apps subir".
+
+### Como conferir a fase 13 rodando
+
+Login `dono@barbeariacentral.com.br` / `BarberVP@2026` → `http://localhost:3000/app`.
+
+1. **Topbar completa**, na ordem do protótipo: seletor de unidade, selo do
+   plano ("Avançado"), busca com o selo `Ctrl+K`, "Novo agendamento" dourado,
+   sino com badge vermelho e avatar com chevron.
+2. **`Ctrl+K`** foca a busca; digitar "Andr" traz cliente e agendamentos reais,
+   agrupados. Clicar num resultado navega para a tela certa.
+3. **Clique em qualquer lugar fora** fecha o menu aberto; `Esc` também.
+4. **Menu do avatar**: Meu perfil · Configurações · divisor · Sair (vermelho).
+5. **6 cards de KPI**, com "Ocupação da agenda" em rosca horizontal e a
+   sparkline de "Faltas no mês" em verde.
+6. **Toggle Dia/Semana/Mês** troca a granularidade do gráfico E o título; a
+   linha tracejada da meta acompanha o balde. Passar o mouse sobre o gráfico
+   abre o tooltip por ponto.
+7. **Menu ⋯ dos próximos atendimentos**: Confirmar muda a pílula de status na
+   hora; Abrir comanda cria a comanda e navega para ela.
+8. **Faixa de alertas** no rodapé — só os cards cuja condição é verdadeira.
+
+**Tenant vazio** (a página inteira em estado vazio, sem erro no console):
+entrar como `admin@barbervp.com.br`, ir em `/admin/tenants`, impersonar um
+tenant sem comandas fechadas. Cada bloco traz a própria mensagem ("Sem
+faturamento registrado ainda", "Nenhum atendimento esta semana"), e o rodapé da
+sidebar mostra os dias de teste restantes.
+
+**Papel BARBER** (`carlos@barbeariacentral.com.br` / `BarberVP@2026`): nav
+reduzido, "Ranking de barbeiros" vira "Seus atendimentos", os números são só
+dele e a faixa de alertas some inteira.
+
+**Responsividade**: `node scripts/responsive-sweep.mjs --app=dashboard
+--delay=6000`. Se der 429, `docker exec barbervp-redis redis-cli FLUSHDB`
+antes — a varredura abre dezenas de telas em segundos e estoura o rate limit,
+que desde a fase 09 conta no Redis.
 
 ### Como conferir a fase 11 rodando
 

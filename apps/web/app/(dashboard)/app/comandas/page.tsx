@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Badge, Button, EmptyState, PlusIcon, ResponsiveTable, Tabs, type TableColumn } from '@barbervp/ui';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Badge, Button, EmptyState, PlusIcon, ResponsiveTable, Skeleton, Tabs, type TableColumn } from '@barbervp/ui';
 import { formatBRL } from '@barbervp/types';
 import type { OrderListItem, OrderStatus } from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
@@ -14,8 +15,13 @@ function methodLabel(method: string): string {
   return { PIX: 'Pix', CASH: 'Dinheiro', DEBIT: 'Débito', CREDIT: 'Crédito' }[method] ?? method;
 }
 
-export default function ComandasPage() {
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+function ComandasContent() {
+  const searchParams = useSearchParams();
+  // `?order=` abre a comanda direto — é o destino de "Abrir comanda" no menu
+  // ⋯ dos próximos atendimentos do dashboard.
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
+    () => searchParams.get('order'),
+  );
   const [openModal, setOpenModal] = useState(false);
   const [status, setStatus] = useState<OrderStatus>('OPEN');
 
@@ -103,6 +109,27 @@ export default function ComandasPage() {
         onOpened={(orderId) => setSelectedOrderId(orderId)}
         barbers={barbersQuery.data ?? []}
       />
+    </DashboardChrome>
+  );
+}
+
+/**
+ * `useSearchParams()` (`?order=`, vindo do menu ⋯ do Dashboard) tira a rota da
+ * renderização estática: sem um limite de Suspense o `next build` falha no
+ * prerender — a mesma armadilha documentada em `configuracoes/page.tsx`.
+ */
+export default function ComandasPage() {
+  return (
+    <Suspense fallback={<ComandasFallback />}>
+      <ComandasContent />
+    </Suspense>
+  );
+}
+
+function ComandasFallback() {
+  return (
+    <DashboardChrome activeKey="comandas">
+      <Skeleton className="h-64" />
     </DashboardChrome>
   );
 }
