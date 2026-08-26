@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { StaffInviteListItem } from '@barbervp/types';
+import type { StaffInviteLink, StaffInviteListItem } from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
 import type { AuthPrincipal, RequestContext } from '../common/types/request-context';
@@ -41,6 +41,18 @@ export class InvitesController {
     @Req() request: RequestContext,
   ): Promise<StaffInviteListItem> {
     return this.invites.resend(tenantId, id, principal, request);
+  }
+
+  @Post(':id/link')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reemite o link de cadastro sem mandar e-mail (o anterior perde a validade)' })
+  issueLink(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<StaffInviteLink> {
+    return this.invites.issueLink(tenantId, id, principal, request);
   }
 
   @Post(':id/revoke')

@@ -2,46 +2,59 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Input, Modal, Select, useToast } from '@barbervp/ui';
-import { parseBRLToCents } from '@barbervp/types';
+import type { BarberListItem } from '@barbervp/types';
 import { useCreateValeMutation } from '@/lib/dashboard/api/commissions';
+import { financeErrorMessage, inputToCents, todayInput } from './finance-shared';
 
 export interface ValeModalProps {
   open: boolean;
   onClose: () => void;
-  barbers: Array<{ id: string; name: string }>;
+  barbers: BarberListItem[];
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
-
+/** `modalNovoVale` (`Dashboard.dc.html` l.4066). */
 export function ValeModal({ open, onClose, barbers }: ValeModalProps) {
   const { toast } = useToast();
+  // Só quem está na ativa recebe vale — um barbeiro desligado no seletor é
+  // lançamento errado esperando acontecer.
+  const options = barbers.filter((barber) => barber.active);
+
   const [barberId, setBarberId] = useState('');
+  const [date, setDate] = useState(todayInput());
   const [amountInput, setAmountInput] = useState('');
-  const [date, setDate] = useState(today());
-  const [description, setDescription] = useState('');
+  const [reason, setReason] = useState('');
   const create = useCreateValeMutation();
 
   useEffect(() => {
     if (!open) return;
-    setBarberId(barbers[0]?.id ?? '');
+    setBarberId(options[0]?.id ?? '');
+    setDate(todayInput());
     setAmountInput('');
-    setDate(today());
-    setDescription('');
+    setReason('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const canSubmit = barberId && amountInput.trim().length > 0;
+  const amountCents = inputToCents(amountInput);
+  const canSubmit = barberId !== '' && amountCents > 0 && date !== '';
 
-  const submit = async () => {
+  async function submit() {
     if (!canSubmit) return;
     try {
-      await create.mutateAsync({ barberId, amountCents: parseBRLToCents(amountInput), date, description: description.trim() || undefined });
+      await create.mutateAsync({
+        barberId,
+        amountCents,
+        date,
+        description: reason.trim() || null,
+      });
       toast({ message: 'Vale registrado.', tone: 'success' });
       onClose();
     } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível registrar o vale.', tone: 'danger' });
+      toast({
+        message: financeErrorMessage(error, 'Não foi possível registrar o vale.'),
+        tone: 'danger',
+      });
     }
-  };
+  }
 
   return (
     <Modal
@@ -49,16 +62,52 @@ export function ValeModal({ open, onClose, barbers }: ValeModalProps) {
       onClose={onClose}
       title="Novo vale"
       footer={
-        <Button fullWidth loading={create.isPending} disabled={!canSubmit} onClick={() => void submit()}>
-          Registrar vale
-        </Button>
+        <div className="flex justify-end gap-2.5">
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button loading={create.isPending} disabled={!canSubmit} onClick={() => void submit()}>
+            Salvar
+          </Button>
+        </div>
       }
     >
-      <div className="flex flex-col gap-4">
-        <Select label="Funcionário" value={barberId} onChange={(e) => setBarberId(e.target.value)} options={barbers.map((b) => ({ value: b.id, label: b.name }))} />
-        <Input label="Valor" placeholder="0,00" inputMode="decimal" value={amountInput} onChange={(e) => setAmountInput(e.target.value)} />
-        <Input label="Data" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <Input label="Motivo (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <div className="flex flex-col gap-3.5">
+        {options.length === 0 ? (
+          <p className="rounded-control border border-border bg-surface-2 px-3.5 py-3 text-[13px] text-fg-muted">
+            Nenhum funcionário ativo na equipe — cadastre um antes de lançar vales.
+          </p>
+        ) : (
+          <Select
+            label="Funcionário"
+            value={barberId}
+            onChange={(event) => setBarberId(event.target.value)}
+            options={options.map((barber) => ({ value: barber.id, label: barber.name }))}
+          />
+        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input label="Data" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <Input
+            label="Valor"
+            placeholder="0,00"
+            inputMode="decimal"
+            addonLeft={<span className="text-sm font-medium text-fg-muted">R$</span>}
+            value={amountInput}
+            onChange={(event) => setAmountInput(event.target.value)}
+          />
+        </div>
+
+        <Input
+          label="Motivo"
+          placeholder="ex.: adiantamento quinzenal"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
+
+        <p className="rounded-control border border-gold/35 bg-gold/10 px-3 py-2.5 text-xs text-gold">
+          Este valor será deduzido automaticamente na tela de Comissões.
+        </p>
       </div>
     </Modal>
   );

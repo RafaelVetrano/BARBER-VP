@@ -8,12 +8,12 @@ import {
   LoyaltyPointsKind,
   OrderItemKind,
   OrderStatus,
-  PaymentMethod,
   PaymentStatus,
   Prisma,
 } from '@prisma/client';
 import type {
   OrderDetail,
+  OrderListCounts,
   OrderListItem,
   OrderListQuery,
   OrderListResponse,
@@ -25,12 +25,14 @@ import { ApiException } from '../common/errors/api.exception';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import type { RequestContext } from '../common/types/request-context';
 import { pageWindow, toPaginated } from '../common/dto/pagination.dto';
+import { addDays, toDateKey, zonedTimeToUtc } from '../common/utils/timezone';
 import type { StaffScope } from '../staff-agenda/staff-scope.service';
 import { SubscriptionCoverageService } from '../booking/subscription-coverage.service';
 import { CommissionCalcService, monthStart } from '../commissions/commission-calc.service';
 import type {
   AddOrderItemDto,
   ApplyOrderDiscountDto,
+  AssignOrderDto,
   CloseOrderDto,
   OpenOrderDto,
   RedeemOrderLoyaltyDto,
@@ -59,7 +61,7 @@ export class OrdersService {
   // ── Catálogo do balcão ───────────────────────────────────────────────────
 
   async catalog(tenantId: string): Promise<PosCatalogResponse> {
-    const [services, products, barbers] = await Promise.all([
+    const [services, products, barbers, last] = await Promise.all([
       this.prisma.service.findMany({
         where: { tenantId, active: true },
         select: {
@@ -82,6 +84,7 @@ export class OrdersService {
         select: { id: true, name: true },
         orderBy: { name: 'asc' },
       }),
+      this.prisma.order.aggregate({ where: { tenantId }, _max: { number: true } }),
     ]);
 
     return {
@@ -101,6 +104,7 @@ export class OrdersService {
         category: product.category,
       })),
       barbers,
+      nextNumber: (last._max.number ?? 0) + 1,
     };
   }
 
@@ -108,34 +112,79 @@ export class OrdersService {
 
   async list(tenantId: string, scope: StaffScope, query: OrderListQuery): Promise<OrderListResponse> {
     const window = pageWindow(query.page, query.perPage);
+    // O recorte de "hoje" é o dia da BARBEARIA. Usar o dia do servidor faria a
+    // aba "Fechadas hoje" virar às 21h em qualquer deploy fora de -03.
+    const today = await this.todayRange(tenantId);
+    const base = this.baseWhere(tenantId, scope, query);
     const where: Prisma.OrderWhereInput = {
-      tenantId,
-      deletedAt: null,
+      ...base,
       ...(query.status ? { status: query.status } : {}),
-      ...(scope.forcedBarberId ? { barberId: scope.forcedBarberId } : query.barberId ? { barberId: query.barberId } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { client: { name: { contains: query.search, mode: 'insensitive' } } },
-              { guestName: { contains: query.search, mode: 'insensitive' } },
-              { number: Number.isNaN(Number(query.search)) ? undefined : Number(query.search) },
-            ],
-          }
-        : {}),
+      ...(query.closedToday ? { closedAt: { gte: today.start, lt: today.end } } : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, counts] = await Promise.all([
       this.prisma.order.findMany({
         where,
         include: ORDER_INCLUDE,
-        orderBy: { openedAt: 'desc' },
+        orderBy: query.status === OrderStatus.CLOSED ? { closedAt: 'desc' } : { openedAt: 'desc' },
         skip: window.skip,
         take: window.take,
       }),
       this.prisma.order.count({ where }),
+      // As abas ignoram a aba escolhida (mesma regra dos chips de Clientes) mas
+      // respeitam a busca — senão a contagem contradiz a lista logo abaixo.
+      this.countTabs(base, today),
     ]);
 
-    return toPaginated(rows.map(toListItem), total, window);
+    return { ...toPaginated(rows.map(toListItem), total, window), counts };
+  }
+
+  /** Tenant + recorte do BARBER + busca — a parte comum da lista e das contagens. */
+  private baseWhere(tenantId: string, scope: StaffScope, query: OrderListQuery): Prisma.OrderWhereInput {
+    const search = query.search?.trim();
+    const asNumber = search && /^#?\d+$/.test(search) ? Number(search.replace('#', '')) : undefined;
+
+    return {
+      tenantId,
+      deletedAt: null,
+      ...(scope.forcedBarberId ? { barberId: scope.forcedBarberId } : query.barberId ? { barberId: query.barberId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { client: { name: { contains: search, mode: 'insensitive' } } },
+              { guestName: { contains: search, mode: 'insensitive' } },
+              ...(asNumber === undefined ? [] : [{ number: asNumber }]),
+            ],
+          }
+        : {}),
+    };
+  }
+
+  private async countTabs(
+    base: Prisma.OrderWhereInput,
+    today: { start: Date; end: Date },
+  ): Promise<OrderListCounts> {
+    const [abertas, fechadasHoje] = await Promise.all([
+      this.prisma.order.count({ where: { ...base, status: OrderStatus.OPEN } }),
+      this.prisma.order.count({
+        where: { ...base, status: OrderStatus.CLOSED, closedAt: { gte: today.start, lt: today.end } },
+      }),
+    ]);
+    return { abertas, fechadasHoje };
+  }
+
+  /** Meia-noite a meia-noite do dia corrente NO FUSO da barbearia. */
+  private async todayRange(tenantId: string): Promise<{ start: Date; end: Date }> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { timezone: true },
+    });
+    const timezone = tenant?.timezone ?? 'America/Sao_Paulo';
+    const key = toDateKey(new Date(), timezone);
+    return {
+      start: zonedTimeToUtc(key, 0, timezone),
+      end: zonedTimeToUtc(addDays(key, 1), 0, timezone),
+    };
   }
 
   async detail(tenantId: string, scope: StaffScope, id: string): Promise<OrderDetail> {
@@ -201,6 +250,131 @@ export class OrdersService {
     );
 
     return this.toDetail(tenantId, order);
+  }
+
+  /**
+   * Troca cliente e/ou barbeiro de uma comanda ABERTA — o link "trocar" do
+   * cabeçalho do modal (l.3170).
+   *
+   * Trocar o cliente REAVALIA a cobertura de assinatura item a item: o preço
+   * zero foi fotografado no `OrderItem` em nome do cliente anterior, e deixá-lo
+   * como está entregaria de graça um serviço que o novo cliente não assina (ou
+   * cobraria cheio de quem assina). O resgate de pontos também cai — o saldo é
+   * de quem saiu.
+   */
+  async assign(
+    tenantId: string,
+    scope: StaffScope,
+    orderId: string,
+    dto: AssignOrderDto,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<OrderDetail> {
+    const order = await this.loadOwned(tenantId, scope, orderId, OrderStatus.OPEN);
+
+    if (scope.forcedBarberId && dto.barberId !== undefined && dto.barberId !== scope.forcedBarberId) {
+      throw ApiException.forbidden('Você só pode manter as próprias comandas.');
+    }
+
+    const data: Prisma.OrderUpdateInput = {};
+
+    if (dto.barberId !== undefined) {
+      if (dto.barberId) {
+        const barber = await this.prisma.barber.findFirst({
+          where: { id: dto.barberId, tenantId, active: true },
+          select: { id: true },
+        });
+        if (!barber) {
+          throw ApiException.notFound('Barbeiro não encontrado.');
+        }
+        data.barber = { connect: { id: dto.barberId } };
+      } else {
+        data.barber = { disconnect: true };
+      }
+    }
+
+    const changesClient = dto.clientId !== undefined || dto.walkIn !== undefined;
+    let nextClientId = order.clientId;
+
+    if (changesClient) {
+      if (dto.clientId) {
+        const profile = await this.prisma.clientProfile.findFirst({
+          where: { clientId: dto.clientId, tenantId, deletedAt: null },
+          select: { clientId: true },
+        });
+        if (!profile) {
+          throw ApiException.notFound('Cliente não encontrado nesta barbearia.');
+        }
+        nextClientId = dto.clientId;
+        data.client = { connect: { id: dto.clientId } };
+        data.guestName = null;
+      } else if (dto.walkIn) {
+        nextClientId = null;
+        if (order.clientId) data.client = { disconnect: true };
+        data.guestName = dto.walkIn.name;
+      } else {
+        throw ApiException.badRequest('Informe o cliente cadastrado ou os dados do walk-in.');
+      }
+      // O saldo de pontos é do cliente que saiu.
+      data.useLoyalty = false;
+    }
+
+    await this.prisma.order.update({ where: { id: orderId }, data });
+
+    if (changesClient && nextClientId !== order.clientId) {
+      await this.recoverService(tenantId, orderId, nextClientId);
+    }
+
+    await this.recompute(this.prisma, orderId);
+
+    await this.audit.record(
+      { action: AuditAction.ORDER_UPDATED, entity: 'Order', entityId: orderId, tenantId, actorUserId },
+      request,
+    );
+
+    return this.detail(tenantId, scope, orderId);
+  }
+
+  /**
+   * Reprecifica os itens de SERVIÇO da comanda para o cliente que passou a ser
+   * o dono dela. Produto não muda: assinatura cobre serviço, nunca mercadoria.
+   */
+  private async recoverService(tenantId: string, orderId: string, clientId: string | null): Promise<void> {
+    const items = await this.prisma.orderItem.findMany({
+      where: { tenantId, orderId, kind: OrderItemKind.SERVICE, serviceId: { not: null } },
+      select: { id: true, serviceId: true, quantity: true, coveredBySubscription: true },
+    });
+    if (items.length === 0) {
+      return;
+    }
+
+    const serviceIds = [...new Set(items.map((item) => item.serviceId as string))];
+    const [services, coverage] = await Promise.all([
+      this.prisma.service.findMany({
+        where: { id: { in: serviceIds }, tenantId },
+        select: { id: true, priceCents: true },
+      }),
+      this.coverage.coverageFor(tenantId, clientId, serviceIds),
+    ]);
+    const priceOf = new Map(services.map((service) => [service.id, service.priceCents]));
+
+    for (const item of items) {
+      const serviceId = item.serviceId as string;
+      const covered = coverage.get(serviceId);
+      // Mesma regra de `addItem`: a assinatura cobre UMA unidade por item.
+      const nowCovered = Boolean(covered && !covered.exhausted && item.quantity === 1);
+      const unitPriceCents = nowCovered ? 0 : (priceOf.get(serviceId) ?? 0);
+
+      await this.prisma.orderItem.update({
+        where: { id: item.id },
+        data: {
+          coveredBySubscription: nowCovered,
+          subscriptionUsageId: nowCovered ? (covered?.usageId ?? null) : null,
+          unitPriceCents,
+          totalCents: unitPriceCents * item.quantity,
+        },
+      });
+    }
   }
 
   // ── Itens ────────────────────────────────────────────────────────────────
@@ -423,6 +597,9 @@ export class OrdersService {
         include: {
           items: true,
           appointment: { select: { id: true } },
+          // O nome vai na descrição da movimentação de caixa ("Comanda #341 —
+          // Lucas Ferreira"), como no extrato do protótipo.
+          client: { select: { name: true } },
         },
       });
 
@@ -499,17 +676,27 @@ export class OrdersService {
         }
       }
 
-      // Comissão por item de SERVIÇO com barbeiro atribuído.
+      // Comissão por item com barbeiro atribuído. Serviço entra na faixa da
+      // regra; produto usa o "% produtos" dela — a coluna "Comissão produtos"
+      // da aba Comissões (`Dashboard.dc.html` l.1141) sai daqui. Regra com 0%
+      // de produto (o padrão) não gera lançamento nenhum.
       for (const item of order.items) {
-        if (item.kind === OrderItemKind.SERVICE && item.barberId) {
+        if (!item.barberId) continue;
+        const params = {
+          tenantId,
+          barberId: item.barberId,
+          orderId,
+          orderItemId: item.id,
+          baseCents: item.totalCents,
+          referenceMonth,
+        };
+        if (item.kind === OrderItemKind.SERVICE) {
           await this.commissionCalc.recordServiceEntry(tx, {
-            tenantId,
-            barberId: item.barberId,
-            orderId,
-            orderItemId: item.id,
-            baseCents: item.totalCents,
-            referenceMonth,
+            ...params,
+            serviceId: item.serviceId,
           });
+        } else {
+          await this.commissionCalc.recordProductEntry(tx, params);
         }
       }
 
@@ -525,28 +712,31 @@ export class OrdersService {
         })),
       });
 
-      // Caixa — vendas em dinheiro entram no registro aberto, se houver.
-      const cashAmount = dto.payments
-        .filter((payment) => payment.method === PaymentMethod.CASH)
-        .reduce((sum, payment) => sum + payment.amountCents, 0);
-      if (cashAmount > 0) {
-        const register = await tx.cashRegister.findFirst({
-          where: { tenantId, status: CashRegisterStatus.OPEN },
-          select: { id: true },
+      // Caixa — TODA venda entra no registro aberto, uma movimentação por forma
+      // de pagamento. O extrato do dia da aba Financeiro lista Pix e cartão ao
+      // lado do dinheiro (`Dashboard.dc.html` l.789); a conferência do
+      // fechamento é que filtra só o que passou pela gaveta.
+      const register = await tx.cashRegister.findFirst({
+        where: { tenantId, status: CashRegisterStatus.OPEN },
+        select: { id: true },
+      });
+      if (register) {
+        const clientLabel = order.client?.name ?? order.guestName ?? null;
+        await tx.cashMovement.createMany({
+          data: dto.payments.map((payment) => ({
+            tenantId,
+            cashRegisterId: register.id,
+            type: CashMovementType.SALE,
+            amountCents: payment.amountCents,
+            description: clientLabel
+              ? `Comanda #${order.number} — ${clientLabel}`
+              : `Comanda #${order.number}`,
+            category: orderCategoryLabel(order.items),
+            method: payment.method,
+            orderId,
+            createdByUserId: actorUserId,
+          })),
         });
-        if (register) {
-          await tx.cashMovement.create({
-            data: {
-              tenantId,
-              cashRegisterId: register.id,
-              type: CashMovementType.SALE,
-              amountCents: cashAmount,
-              description: `Comanda #${order.number}`,
-              orderId,
-              createdByUserId: actorUserId,
-            },
-          });
-        }
       }
 
       // Marca o agendamento vinculado como concluído.
@@ -780,14 +970,16 @@ export class OrdersService {
   }
 
   private async toDetail(tenantId: string, order: OrderRow): Promise<OrderDetail> {
-    let loyaltyBalance = 0;
-    if (order.clientId) {
-      const sum = await this.prisma.loyaltyPoints.aggregate({
-        where: { tenantId, clientId: order.clientId },
-        _sum: { points: true },
-      });
-      loyaltyBalance = sum._sum.points ?? 0;
-    }
+    const [balanceRow, program] = await Promise.all([
+      order.clientId
+        ? this.prisma.loyaltyPoints.aggregate({
+            where: { tenantId, clientId: order.clientId },
+            _sum: { points: true },
+          })
+        : null,
+      this.prisma.loyaltyProgram.findUnique({ where: { tenantId } }),
+    ]);
+    const loyaltyBalance = balanceRow?._sum.points ?? 0;
 
     return {
       id: order.id,
@@ -825,6 +1017,11 @@ export class OrdersService {
       loyaltyPointsUsed: order.loyaltyPointsUsed,
       loyaltyDiscountCents: order.loyaltyDiscountCents,
       loyaltyBalance,
+      // Walk-in não acumula ponto: sem `clientId` não há saldo a resgatar, e o
+      // card de fidelidade não deve prometer um desconto que não vai existir.
+      loyaltyEnabled: Boolean(program?.active) && order.clientId !== null,
+      loyaltyPointsRequired: program?.pontosParaDesconto ?? 0,
+      loyaltyRewardCents: program?.valorDesconto ?? 0,
       totalCents: order.totalCents,
       paidCents: order.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
       notes: order.notes,
@@ -841,9 +1038,29 @@ function toListItem(order: OrderRow): OrderListItem {
     status: order.status,
     clientName: order.client?.name ?? order.guestName,
     barberName: order.barber?.name ?? null,
+    subtotalCents: order.subtotalCents,
     totalCents: order.totalCents,
     paymentMethods: order.payments.map((payment) => payment.method),
+    // O resumo do card ("2× Corte · 1× Pomada") é montado na tela: quem
+    // formata R$ e o "×" é o front, o servidor manda os números.
+    lines: order.items.map((item) => ({
+      description: item.description,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+    })),
     openedAt: order.openedAt.toISOString(),
     closedAt: order.closedAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * Rótulo da coluna "Categoria" do extrato de caixa: "Serviço", "Produto" ou
+ * "Serviço + Produto", conforme a natureza dos itens da comanda — os mesmos
+ * três valores que aparecem em `MOVEMENTS` no protótipo.
+ */
+function orderCategoryLabel(items: Array<{ kind: OrderItemKind }>): string {
+  const hasService = items.some((item) => item.kind === OrderItemKind.SERVICE);
+  const hasProduct = items.some((item) => item.kind === OrderItemKind.PRODUCT);
+  if (hasService && hasProduct) return 'Serviço + Produto';
+  return hasProduct ? 'Produto' : 'Serviço';
 }

@@ -39,3 +39,6 @@ apps/api/prisma/*.db-journal
 
 # docker volumes locais (se algum dia mapeados)
 .docker-data/
+
+# uploads do StorageAdapter local (logo, capa e galeria de Minha Página)
+apps/api/uploads/

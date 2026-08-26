@@ -11,13 +11,14 @@
  */
 
 import { hash } from '@node-rs/argon2';
-import { CURRENT_TERMS_VERSION } from '@barbervp/types';
+import { CURRENT_TERMS_VERSION, SERVICE_COLORS } from '@barbervp/types';
 import {
   AccountStatus,
   AppointmentOrigin,
   AppointmentStatus,
   CashMovementType,
   CashRegisterStatus,
+  CommissionEntryKind,
   CommissionEntryStatus,
   CommissionRuleType,
   LoyaltyPointsKind,
@@ -28,7 +29,6 @@ import {
   PaymentStatus,
   Prisma,
   PrismaClient,
-  RaffleStatus,
   SaasInvoiceStatus,
   SubscriptionStatus,
   TenantStatus,
@@ -51,18 +51,20 @@ import {
   LOYALTY_PROGRAM,
   MIN,
   PRODUCTS,
-  RAFFLES,
   REVIEWS,
   SAAS_PLANS,
+  SEED_CLIENT_PHONE_PREFIX,
   SERVICES,
   SERVICE_COMBOS,
+  UNITS,
   USERS,
+  WHATSAPP_REMINDER_ENABLED_MONTHS_AGO,
   WHATSAPP_TEMPLATES,
   type BarberKey,
   type ServiceKey,
 } from './seed-data';
 
-const prisma = new PrismaClient();
+export const prisma = new PrismaClient();
 
 // ─────────────────────────────────────────────────────────── Helpers ────────
 
@@ -71,10 +73,10 @@ const prisma = new PrismaClient();
  * `America/Sao_Paulo` é UTC-3 o ano inteiro e a conversão pode ser aritmética.
  * Se um dia voltar, trocar por uma lib de timezone.
  */
-const TZ_OFFSET_MINUTES = -180;
+export const TZ_OFFSET_MINUTES = -180;
 
 /** Meia-noite local de hoje, em UTC. */
-function localMidnight(dayOffset = 0): Date {
+export function localMidnight(dayOffset = 0): Date {
   const now = new Date();
   const local = new Date(now.getTime() + TZ_OFFSET_MINUTES * 60_000);
   return new Date(
@@ -84,20 +86,26 @@ function localMidnight(dayOffset = 0): Date {
 }
 
 /** Instante UTC de `minutesLocal` (minutos desde a meia-noite) em `dayOffset`. */
-function at(dayOffset: number, minutesLocal: number): Date {
+export function at(dayOffset: number, minutesLocal: number): Date {
   return new Date(localMidnight(dayOffset).getTime() + minutesLocal * 60_000);
 }
 
-function addMinutes(date: Date, minutes: number): Date {
+export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
-function daysFromNow(days: number): Date {
+export function daysFromNow(days: number): Date {
   return new Date(Date.now() + days * 86_400_000);
 }
 
+/** Dia (meia-noite UTC) a `days` de hoje — coluna `date` de vale e afins. */
+export function dayFromNow(days: number): Date {
+  const target = daysFromNow(days);
+  return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()));
+}
+
 /** Primeiro dia do mês corrente (competência de comissões/vales). */
-function currentMonthStart(): Date {
+export function currentMonthStart(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
@@ -115,20 +123,39 @@ function hhmm(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-const argon = (plain: string) => hash(plain, { memoryCost: 19_456, timeCost: 2, parallelism: 1 });
+export const argon = (plain: string) => hash(plain, { memoryCost: 19_456, timeCost: 2, parallelism: 1 });
 
 // ────────────────────────────────────────────────────────── Limpeza ─────────
 
-async function reset(): Promise<void> {
+export async function reset(): Promise<void> {
   // Tenants caem em cascata; `Client` é global e precisa de limpeza própria.
   await prisma.tenant.deleteMany({
     where: { slug: { in: [DEMO_TENANT.slug, ISOLATION_TENANT.slug] } },
   });
-  await prisma.client.deleteMany({ where: { phone: { in: CLIENTS.map((c) => c.phone) } } });
+  // Por PREFIXO, e não pela lista de `CLIENTS`: o seed demo (`make seed-demo`)
+  // planta dezenas de clientes a mais na mesma faixa de telefone, e sem isto a
+  // segunda execução esbarraria no `@unique` de `Client.phone`.
+  await prisma.client.deleteMany({ where: { phone: { startsWith: SEED_CLIENT_PHONE_PREFIX } } });
   await prisma.user.deleteMany({
     where: { email: { in: Object.values(USERS).map((u) => u.email) } },
   });
   await prisma.saasPlan.deleteMany({ where: { code: { in: SAAS_PLANS.map((p) => p.code) } } });
+
+  // Planos deixados para trás por suíte interrompida (`iso-…`/`e2e-…`).
+  //
+  // Achado do agente 26: uma execução de teste que morre antes do `teardown`
+  // deixa o `SaasPlan` no banco PARA SEMPRE — `reset()` só apagava os três
+  // códigos do seed. O efeito aparecia na cara do usuário: a grade de
+  // comparação da aba "Plano e cobrança" (e a landing, que lê a mesma
+  // tabela) listava "Avançado (isolamento)" e "profissional (iso e2e)" ao
+  // lado dos planos de verdade. Mesma defesa por PREFIXO já usada em
+  // `Client.phone` logo acima.
+  //
+  // `deleteMany` falharia se algum tenant ainda apontasse para eles — e falha
+  // é o comportamento certo: significaria dado de teste vivo no banco.
+  await prisma.saasPlan.deleteMany({
+    where: { OR: [{ code: { startsWith: 'iso-' } }, { code: { startsWith: 'e2e-' } }] },
+  });
 }
 
 // ──────────────────────────────────────────────────── Planos do SaaS ────────
@@ -207,6 +234,9 @@ async function seedDemoTenant(planIds: Map<string, string>): Promise<void> {
         create: WHATSAPP_TEMPLATES.map((template) => ({
           event: template.event as WhatsappEvent,
           enabled: template.enabled,
+          // A data de ativação é o que o gráfico de faltas (Relatórios) marca;
+          // o lembrete nasce ligado há alguns meses, o resto desde sempre.
+          enabledAt: template.enabled ? whatsappEnabledAt(template.event) : null,
           template: template.template,
           offsetMinutes: template.offsetMinutes,
         })),
@@ -230,6 +260,7 @@ async function seedDemoTenant(planIds: Map<string, string>): Promise<void> {
   const commissionRuleIds = await seedCommissionRules(tenantId);
   const serviceIds = await seedServices(tenantId);
   const barberIds = await seedBarbers(tenantId, commissionRuleIds, users.barberUserId);
+  await seedUnits(tenantId, barberIds);
   await seedServiceCombos(tenantId, serviceIds);
   await seedBarberServices(tenantId, barberIds, serviceIds);
   await seedWorkSchedules(tenantId, barberIds);
@@ -335,6 +366,8 @@ async function seedCommissionRules(tenantId: string): Promise<Map<string, string
         name: rule.name,
         type: rule.type as CommissionRuleType,
         percentBps: rule.percentBps,
+        percentProdutosBps: rule.percentProdutosBps,
+        deductVales: rule.deductVales,
         tiers: {
           create: rule.tiers.map((tier) => ({
             tenantId,
@@ -365,6 +398,9 @@ async function seedServices(tenantId: string): Promise<Map<ServiceKey, string>> 
         durationMin: service.durationMin,
         priceCents: service.priceCents,
         category: service.category,
+        // A cor da bolinha na agenda é dado do serviço, não índice de render:
+        // o ciclo pelas 6 cores do design system acontece UMA vez, aqui.
+        color: SERVICE_COLORS[index % SERVICE_COLORS.length],
         isCombo: 'isCombo' in service ? service.isCombo : false,
         sortOrder: index,
       },
@@ -411,6 +447,7 @@ async function seedBarbers(
         name: barber.name,
         specialty: barber.specialty,
         ratingBps: barber.ratingBps,
+        phone: barber.phone,
         sortOrder: index,
         hiredAt: daysFromNow(-400 + index * 60),
         // Diego é o mais sênior da casa e trabalha por faixa de faturamento.
@@ -424,6 +461,32 @@ async function seedBarbers(
   }
 
   return ids;
+}
+
+/**
+ * Unidades do demo e a lotação de cada barbeiro (`UNITS`).
+ *
+ * Roda DEPOIS de `seedBarbers` porque é ela que amarra `Barber.unitId` — a
+ * contagem da coluna "Barbeiros" e o status derivado da unidade saem daí.
+ */
+async function seedUnits(tenantId: string, barberIds: Map<BarberKey, string>): Promise<void> {
+  for (const unit of UNITS) {
+    const created = await prisma.unit.create({
+      data: {
+        tenantId,
+        name: unit.name,
+        address: unit.address,
+        phone: unit.phone,
+        isDefault: unit.isDefault,
+      },
+      select: { id: true },
+    });
+
+    const ids = unit.barbers.map((key) => barberIds.get(key)!);
+    if (ids.length > 0) {
+      await prisma.barber.updateMany({ where: { id: { in: ids } }, data: { unitId: created.id } });
+    }
+  }
 }
 
 /** Todos atendem tudo, exceto Pigmentação — só o Diego Alves (SPEC). */
@@ -571,6 +634,13 @@ async function seedClientPlans(
   return ids;
 }
 
+/**
+ * Três assinantes — um por plano — e, de propósito, um em cada situação de
+ * pagamento que a coluna "Pagamento" da aba Fidelidade sabe mostrar
+ * (`Dashboard.dc.html` l.1567): quitado no ciclo, cobrança ainda por vir e
+ * cobrança vencida. Um seed em que os três aparecem "Pendente" não exercita a
+ * tela e esconde regressão na derivação do status.
+ */
 async function seedClientSubscriptions(
   tenantId: string,
   clientIds: Map<string, string>,
@@ -584,11 +654,39 @@ async function seedClientSubscriptions(
   const nextChargeAt = new Date(
     Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, CLIENT_PLAN_BILLING_DAY),
   );
+  /** Cobrança que já venceu — é o que faz o "Atrasado" aparecer. */
+  const overdueChargeAt = new Date(
+    Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), CLIENT_PLAN_BILLING_DAY),
+  );
 
   const assignments = [
-    { phone: CLIENTS[0].phone, plan: 'Corte + Barba Quinzenal', used: { corte: 1, barba: 0 } },
-    { phone: CLIENTS[3].phone, plan: 'Corte Semanal', used: { corte: 2 } },
-    { phone: CLIENTS[6].phone, plan: 'Clube Completo', used: { corte: 1, barba: 1 } },
+    {
+      phone: CLIENTS[0].phone,
+      plan: 'Corte + Barba Quinzenal',
+      used: { corte: 1, barba: 0 },
+      status: SubscriptionStatus.ACTIVE,
+      // Quitou o ciclo corrente ⇒ "Pago".
+      paidAt: periodStart,
+      chargeAt: nextChargeAt,
+    },
+    {
+      phone: CLIENTS[3].phone,
+      plan: 'Corte Semanal',
+      used: { corte: 2 },
+      status: SubscriptionStatus.ACTIVE,
+      // Sem pagamento e com a cobrança no futuro ⇒ "Pendente".
+      paidAt: null,
+      chargeAt: nextChargeAt,
+    },
+    {
+      phone: CLIENTS[6].phone,
+      plan: 'Clube Completo',
+      used: { corte: 1, barba: 1 },
+      status: SubscriptionStatus.PAST_DUE,
+      // Cobrança vencida sem quitação ⇒ "Atrasado".
+      paidAt: null,
+      chargeAt: overdueChargeAt,
+    },
   ] as const;
 
   for (const assignment of assignments) {
@@ -599,10 +697,10 @@ async function seedClientSubscriptions(
         tenantId,
         clientId: clientIds.get(assignment.phone)!,
         planId: planIds.get(assignment.plan)!,
-        status: SubscriptionStatus.ACTIVE,
+        status: assignment.status,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
-        nextChargeAt,
+        nextChargeAt: assignment.chargeAt,
         usages: {
           create: planDefinition.items.map((item) => ({
             tenantId,
@@ -613,6 +711,19 @@ async function seedClientSubscriptions(
             used: (assignment.used as Record<string, number | undefined>)[item.service] ?? 0,
           })),
         },
+        // O `Payment` é o que o painel lê para dizer "Pago" — a assinatura
+        // criada pela área do cliente sempre gera um, o seed não pode pular.
+        payments: assignment.paidAt
+          ? {
+              create: {
+                tenantId,
+                method: PaymentMethod.CREDIT,
+                status: PaymentStatus.PAID,
+                amountCents: planDefinition.priceCents,
+                paidAt: assignment.paidAt,
+              },
+            }
+          : undefined,
       },
     });
   }
@@ -820,25 +931,35 @@ async function seedOrders(
           },
         },
       },
-      select: { id: true, items: { where: { kind: OrderItemKind.SERVICE }, select: { id: true } } },
+      select: { id: true, items: { select: { id: true, kind: true, totalCents: true } } },
     });
 
-    // Comissão sobre o serviço (produto não gera comissão nesta regra).
-    const percentBps = appointment.barberKey === 'diego' ? 4_000 : 4_000;
+    // Comissão por item, com as MESMAS taxas da regra vinculada ao barbeiro —
+    // 40% no serviço, 10% no produto. A aba Comissões soma estes lançamentos,
+    // então divergir aqui faria a tela discordar de Comandas e Financeiro.
     const referenceMonth = new Date(Date.UTC(closedAt.getUTCFullYear(), closedAt.getUTCMonth(), 1));
-    await prisma.commissionEntry.create({
-      data: {
-        tenantId,
-        barberId,
-        orderId: order.id,
-        orderItemId: order.items[0]?.id ?? null,
-        referenceMonth,
-        baseCents: serviceTotal,
-        percentBps,
-        amountCents: Math.round((serviceTotal * percentBps) / 10_000),
-        status: CommissionEntryStatus.PENDING,
-      },
-    });
+    for (const item of order.items) {
+      const isService = item.kind === OrderItemKind.SERVICE;
+      const percentBps = isService ? 4_000 : 1_000;
+      await prisma.commissionEntry.create({
+        data: {
+          tenantId,
+          barberId,
+          orderId: order.id,
+          orderItemId: item.id,
+          referenceMonth,
+          baseCents: item.totalCents,
+          percentBps,
+          amountCents: Math.round((item.totalCents * percentBps) / 10_000),
+          kind: isService ? CommissionEntryKind.SERVICE : CommissionEntryKind.PRODUCT,
+          // Sem isto o lançamento nasceria com a data do `seed`, e não a do
+          // atendimento: o recorte Semanal da aba, que filtra pelo fechamento
+          // da comanda, mostraria tudo na semana em que o seed rodou.
+          createdAt: closedAt,
+          status: CommissionEntryStatus.PENDING,
+        },
+      });
+    }
   }
 
   // Comandas ABERTAS — atendimentos em andamento no balcão.
@@ -897,31 +1018,6 @@ async function seedLoyalty(tenantId: string, clientIds: Map<string, string>): Pr
       expiresAt: daysFromNow(365),
     })),
   });
-
-  for (const raffle of RAFFLES) {
-    const isFinished = raffle.status === 'FINISHED';
-    await prisma.loyaltyRaffle.create({
-      data: {
-        tenantId,
-        name: raffle.name,
-        description: raffle.description,
-        prize: raffle.prize,
-        status: raffle.status as RaffleStatus,
-        pointsPerEntry: raffle.pointsPerEntry,
-        startsAt: daysFromNow(raffle.startsInDays),
-        endsAt: daysFromNow(raffle.endsInDays),
-        winnerClientId: isFinished ? clientIds.get(CLIENTS[3].phone)! : null,
-        drawnAt: isFinished ? daysFromNow(raffle.endsInDays) : null,
-        entries: {
-          create: [
-            { tenantId, clientId: clientIds.get(CLIENTS[0].phone)!, entries: 14 },
-            { tenantId, clientId: clientIds.get(CLIENTS[3].phone)!, entries: 21 },
-            { tenantId, clientId: clientIds.get(CLIENTS[6].phone)!, entries: 5 },
-          ],
-        },
-      },
-    });
-  }
 }
 
 // ────────────────────────────────────────────────────────────── Caixa ───────
@@ -943,6 +1039,8 @@ async function seedCashRegister(tenantId: string, openedByUserId: string): Promi
             type: CashMovementType.OPENING,
             amountCents: openingCents,
             description: 'Abertura do caixa',
+            method: PaymentMethod.CASH,
+            category: 'Abertura',
             createdByUserId: openedByUserId,
           },
           {
@@ -950,6 +1048,8 @@ async function seedCashRegister(tenantId: string, openedByUserId: string): Promi
             type: CashMovementType.WITHDRAWAL,
             amountCents: -5_000,
             description: 'Compra de café e insumos',
+            method: PaymentMethod.CASH,
+            category: 'Compra de produto',
             createdByUserId: openedByUserId,
           },
         ],
@@ -958,23 +1058,49 @@ async function seedCashRegister(tenantId: string, openedByUserId: string): Promi
     select: { id: true },
   });
 
-  // Vendas pagas em dinheiro entram no caixa.
-  const cashPayments = await prisma.payment.findMany({
-    where: { tenantId, method: PaymentMethod.CASH, status: PaymentStatus.PAID },
-    select: { id: true, orderId: true, amountCents: true },
+  // TODA venda entra no extrato do caixa, uma linha por forma de pagamento —
+  // o mesmo que `OrdersService.close` faz em produção. A conferência do
+  // fechamento é que filtra só o dinheiro.
+  const payments = await prisma.payment.findMany({
+    where: { tenantId, status: PaymentStatus.PAID, orderId: { not: null } },
+    select: {
+      id: true,
+      orderId: true,
+      amountCents: true,
+      method: true,
+      order: {
+        select: {
+          number: true,
+          client: { select: { name: true } },
+          guestName: true,
+          items: { select: { kind: true } },
+        },
+      },
+    },
   });
 
-  if (cashPayments.length > 0) {
+  if (payments.length > 0) {
     await prisma.cashMovement.createMany({
-      data: cashPayments.map((payment) => ({
-        tenantId,
-        cashRegisterId: register.id,
-        type: CashMovementType.SALE,
-        amountCents: payment.amountCents,
-        description: 'Venda em dinheiro',
-        orderId: payment.orderId,
-        paymentId: payment.id,
-      })),
+      data: payments.map((payment) => {
+        const kinds = payment.order?.items.map((item) => item.kind) ?? [];
+        const hasProduct = kinds.includes(OrderItemKind.PRODUCT);
+        const hasService = kinds.includes(OrderItemKind.SERVICE);
+        const who = payment.order?.client?.name ?? payment.order?.guestName ?? null;
+        return {
+          tenantId,
+          cashRegisterId: register.id,
+          type: CashMovementType.SALE,
+          amountCents: payment.amountCents,
+          method: payment.method,
+          category:
+            hasService && hasProduct ? 'Serviço + Produto' : hasProduct ? 'Produto' : 'Serviço',
+          description: who
+            ? `Comanda #${payment.order?.number} — ${who}`
+            : `Comanda #${payment.order?.number}`,
+          orderId: payment.orderId,
+          paymentId: payment.id,
+        };
+      }),
     });
   }
 }
@@ -1029,6 +1155,7 @@ async function seedVales(tenantId: string, barberIds: Map<BarberKey, string>): P
         tenantId,
         barberId: barberIds.get('rafael')!,
         amountCents: 30_000,
+        date: dayFromNow(-6),
         referenceMonth: currentMonthStart(),
         description: 'Adiantamento quinzenal',
       },
@@ -1036,6 +1163,7 @@ async function seedVales(tenantId: string, barberIds: Map<BarberKey, string>): P
         tenantId,
         barberId: barberIds.get('bruno')!,
         amountCents: 15_000,
+        date: dayFromNow(-3),
         referenceMonth: currentMonthStart(),
         description: 'Adiantamento para material',
       },
@@ -1084,7 +1212,11 @@ async function seedIsolationTenant(planIds: Map<string, string>): Promise<void> 
 
 // ─────────────────────────────────────────────────────────────── Main ───────
 
-async function main(): Promise<void> {
+/**
+ * Seed base — o que `make seed` roda e o que `make seed-demo` reusa como
+ * fundação antes de engordar o tenant demo.
+ */
+export async function main(): Promise<void> {
   console.info('› limpando dados semeados anteriormente…');
   await reset();
 
@@ -1115,9 +1247,24 @@ async function main(): Promise<void> {
   console.info('  (senhas de desenvolvimento — nunca use estas em produção)\n');
 }
 
-main()
-  .catch((error) => {
-    console.error('✗ seed falhou:', error);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+// Só executa quando chamado direto (`prisma db seed`). Importado pelo
+// `seed-demo.ts`, o módulo apenas expõe as funções.
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error('✗ seed falhou:', error);
+      process.exitCode = 1;
+    })
+    .finally(() => prisma.$disconnect());
+}
+
+/** Ver `WHATSAPP_REMINDER_ENABLED_MONTHS_AGO` — o marcador do gráfico de faltas. */
+function whatsappEnabledAt(event: string): Date {
+  const at = new Date();
+  if (event === 'REMINDER') {
+    at.setMonth(at.getMonth() - WHATSAPP_REMINDER_ENABLED_MONTHS_AGO);
+  } else {
+    at.setMonth(at.getMonth() - 8);
+  }
+  return at;
+}

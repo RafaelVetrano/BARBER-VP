@@ -29,6 +29,7 @@ import { WhatsappConfigModule } from './whatsapp-config/whatsapp-config.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
+import { AccountModule } from './account/account.module';
 import { AdminModule } from './admin/admin.module';
 import { QueueModule } from './queue/queue.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -90,6 +91,7 @@ import { FeatureGuard } from './common/guards/feature.guard';
     AssistantModule,
     ReportsModule,
     SettingsModule,
+    AccountModule,
     AdminModule,
     QueueModule.register(),
   ],

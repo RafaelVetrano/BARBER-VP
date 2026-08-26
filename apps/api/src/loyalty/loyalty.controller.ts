@@ -1,19 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type {
-  ClientPlanAdminItem,
-  LoyaltyClientBalance,
-  LoyaltyProgramConfig,
-  RaffleItem,
-  SubscriberItem,
-} from '@barbervp/types';
+import type { ClientPlanAdminItem, LoyaltyProgramConfig, SubscriberItem } from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RequireFeature } from '../common/decorators/require-feature.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
 import type { AuthPrincipal, RequestContext } from '../common/types/request-context';
 import { LoyaltyService } from './loyalty.service';
-import { CreateRaffleDto, UpdateLoyaltyProgramDto, UpsertClientPlanDto } from './dto/loyalty.dto';
+import { UpdateLoyaltyProgramDto, UpsertClientPlanDto } from './dto/loyalty.dto';
 
+/**
+ * Fidelidade. A aba do painel mostra **só Assinaturas** — as sub-abas "Pontos"
+ * e "Sorteios" saíram do protótipo na revisão do agente 21, e com elas foram
+ * `GET /loyalty/clients` e toda a família `/loyalty/raffles`.
+ *
+ * `/loyalty/program` sobreviveu sem tela: o programa de pontos continua sendo
+ * lido pela comanda (resgate) e pela aba Clientes (saldo). Ver dívida no
+ * CONTEXT — a configuração precisa de um lugar em Configurações.
+ */
 @ApiTags('loyalty')
 @ApiBearerAuth('access-token')
 @Controller('loyalty')
@@ -40,46 +43,6 @@ export class LoyaltyController {
     @Req() request: RequestContext,
   ): Promise<LoyaltyProgramConfig> {
     return this.loyalty.updateProgram(tenantId, dto, principal.id, request);
-  }
-
-  @Get('clients')
-  @RequireFeature('fidelidadePontos')
-  @ApiOperation({ summary: 'Saldo de pontos por cliente' })
-  async clients(@CurrentTenant('id') tenantId: string): Promise<LoyaltyClientBalance[]> {
-    return this.loyalty.clientBalances(tenantId);
-  }
-
-  // ── Sorteios ─────────────────────────────────────────────────────────────
-
-  @Get('raffles')
-  @RequireFeature('fidelidadeSorteios')
-  @ApiOperation({ summary: 'Lista sorteios (ativos e encerrados)' })
-  async raffles(@CurrentTenant('id') tenantId: string): Promise<RaffleItem[]> {
-    return this.loyalty.listRaffles(tenantId);
-  }
-
-  @Post('raffles')
-  @RequireFeature('fidelidadeSorteios')
-  @ApiOperation({ summary: 'Cria um sorteio' })
-  async createRaffle(
-    @Body() dto: CreateRaffleDto,
-    @CurrentTenant('id') tenantId: string,
-    @CurrentUser() principal: AuthPrincipal,
-    @Req() request: RequestContext,
-  ): Promise<RaffleItem> {
-    return this.loyalty.createRaffle(tenantId, dto, principal.id, request);
-  }
-
-  @Post('raffles/:id/draw')
-  @RequireFeature('fidelidadeSorteios')
-  @ApiOperation({ summary: 'Realiza o sorteio — escolhe o vencedor' })
-  async draw(
-    @Param('id') id: string,
-    @CurrentTenant('id') tenantId: string,
-    @CurrentUser() principal: AuthPrincipal,
-    @Req() request: RequestContext,
-  ): Promise<RaffleItem> {
-    return this.loyalty.drawRaffle(tenantId, id, principal.id, request);
   }
 
   // ── Planos de assinatura (Avançado) ─────────────────────────────────────
@@ -124,15 +87,78 @@ export class LoyaltyController {
     @CurrentTenant('id') tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @Req() request: RequestContext,
-  ): Promise<{ archived: true }> {
-    await this.loyalty.archivePlan(tenantId, id, principal.id, request);
-    return { archived: true };
+  ): Promise<ClientPlanAdminItem> {
+    return this.loyalty.archivePlan(tenantId, id, principal.id, request);
   }
+
+  @Patch('plans/:id/reactivate')
+  @RequireFeature('fidelidadeAssinaturas')
+  @ApiOperation({ summary: 'Reativa um plano arquivado' })
+  async reactivatePlan(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<ClientPlanAdminItem> {
+    return this.loyalty.reactivatePlan(tenantId, id, principal.id, request);
+  }
+
+  @Delete('plans/:id')
+  @HttpCode(204)
+  @RequireFeature('fidelidadeAssinaturas')
+  @ApiOperation({ summary: 'Exclui um plano que nunca teve assinante (409 se teve)' })
+  async deletePlan(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<void> {
+    await this.loyalty.deletePlan(tenantId, id, principal.id, request);
+  }
+
+  // ── Assinantes ───────────────────────────────────────────────────────────
 
   @Get('subscribers')
   @RequireFeature('fidelidadeAssinaturas')
-  @ApiOperation({ summary: 'Assinantes com uso do ciclo e status de pagamento' })
+  @ApiOperation({ summary: 'Assinantes com uso do ciclo e situação de pagamento' })
   async subscribers(@CurrentTenant('id') tenantId: string): Promise<SubscriberItem[]> {
     return this.loyalty.subscribers(tenantId);
+  }
+
+  @Patch('subscribers/:id/pause')
+  @RequireFeature('fidelidadeAssinaturas')
+  @ApiOperation({ summary: 'Pausa a assinatura de um cliente' })
+  async pauseSubscriber(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<SubscriberItem> {
+    return this.loyalty.pauseSubscriber(tenantId, id, principal.id, request);
+  }
+
+  @Patch('subscribers/:id/resume')
+  @RequireFeature('fidelidadeAssinaturas')
+  @ApiOperation({ summary: 'Retoma uma assinatura pausada' })
+  async resumeSubscriber(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<SubscriberItem> {
+    return this.loyalty.resumeSubscriber(tenantId, id, principal.id, request);
+  }
+
+  @Patch('subscribers/:id/cancel')
+  @HttpCode(204)
+  @RequireFeature('fidelidadeAssinaturas')
+  @ApiOperation({ summary: 'Cancela a assinatura de um cliente' })
+  async cancelSubscriber(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<void> {
+    await this.loyalty.cancelSubscriber(tenantId, id, principal.id, request);
   }
 }

@@ -1,9 +1,32 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsInt, IsOptional, IsPositive, IsString, Matches, Min, MinLength } from 'class-validator';
-import { AccountStatus } from '@prisma/client';
-import { ACCOUNT_PAYABLE_CATEGORIES, ACCOUNT_RECEIVABLE_CATEGORIES } from '@barbervp/types';
+import {
+  ArrayUnique,
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
+import { AccountRecurrence, AccountStatus, PaymentMethod } from '@prisma/client';
+import {
+  ACCOUNT_PAYABLE_CATEGORIES,
+  ACCOUNT_RECEIVABLE_CATEGORIES,
+  BANK_ACCOUNT_METHODS,
+  CASH_ENTRY_CATEGORIES,
+  CASH_EXIT_CATEGORIES,
+} from '@barbervp/types';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
+
+/** Teto de parcelas — 5 anos de mensalidade. Acima disso é dedo escorregado. */
+const MAX_INSTALLMENTS = 60;
 
 export class OpenCashRegisterDto {
   @Type(() => Number)
@@ -22,6 +45,34 @@ export class CloseCashRegisterDto {
   @IsOptional()
   @IsString()
   notes?: string | null;
+}
+
+/**
+ * "+ Entrada avulsa" e "+ Saída/Sangria". A categoria é validada contra a
+ * lista da direção correspondente: uma "Sangria" positiva não existe.
+ */
+export class CreateCashMovementDto {
+  @ApiProperty({ enum: ['IN', 'OUT'] })
+  @IsIn(['IN', 'OUT'])
+  direction!: 'IN' | 'OUT';
+
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  amountCents!: number;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  description!: string;
+
+  @ApiProperty({ enum: [...CASH_ENTRY_CATEGORIES, ...CASH_EXIT_CATEGORIES] })
+  @IsIn([...CASH_ENTRY_CATEGORIES, ...CASH_EXIT_CATEGORIES])
+  category!: string;
+
+  @ApiProperty({ enum: BANK_ACCOUNT_METHODS })
+  @IsIn(BANK_ACCOUNT_METHODS)
+  method!: PaymentMethod;
 }
 
 export class AccountListQueryDto extends PaginationQueryDto {
@@ -59,12 +110,18 @@ export class CreateAccountPayableDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   dueDate!: string;
 
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @ApiPropertyOptional({ minimum: 1, maximum: MAX_INSTALLMENTS, default: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  @Max(MAX_INSTALLMENTS)
   installments?: number;
+
+  @ApiPropertyOptional({ enum: AccountRecurrence })
+  @IsOptional()
+  @IsEnum(AccountRecurrence)
+  recurrence?: AccountRecurrence | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -99,12 +156,18 @@ export class CreateAccountReceivableDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   dueDate!: string;
 
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @ApiPropertyOptional({ minimum: 1, maximum: MAX_INSTALLMENTS, default: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  @Max(MAX_INSTALLMENTS)
   installments?: number;
+
+  @ApiPropertyOptional({ enum: AccountRecurrence })
+  @IsOptional()
+  @IsEnum(AccountRecurrence)
+  recurrence?: AccountRecurrence | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -120,7 +183,22 @@ export class CreateAccountReceivableDto {
 export class UpsertBankAccountDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(60)
   name!: string;
+
+  /** Texto livre exibido sob o nome do card ("Conta bancária", "Caixa físico"…). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  type?: string | null;
+
+  @ApiPropertyOptional({ enum: BANK_ACCOUNT_METHODS, isArray: true })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsIn(BANK_ACCOUNT_METHODS, { each: true })
+  acceptedMethods?: PaymentMethod[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -151,5 +229,6 @@ export class CashFlowQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(24)
   months?: number;
 }

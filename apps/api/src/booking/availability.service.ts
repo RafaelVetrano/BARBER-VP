@@ -114,7 +114,14 @@ export class AvailabilityService {
     const [businessHours, schedules, exceptions, busy] = await Promise.all([
       this.prisma.tenantBusinessHour.findMany({
         where: { tenantId: query.tenantId },
-        select: { weekday: true, opensAt: true, closesAt: true, closed: true },
+        select: {
+          weekday: true,
+          opensAt: true,
+          closesAt: true,
+          closed: true,
+          lunchStart: true,
+          lunchEnd: true,
+        },
       }),
       this.prisma.workSchedule.findMany({
         where: { tenantId: query.tenantId, barberId: { in: barberIds } },
@@ -162,10 +169,15 @@ export class AvailabilityService {
       const shopClosed = business ? business.closed : false;
 
       // Feriado da casa fecha o dia para todo mundo, independente do barbeiro.
+      // Um `BLOCK` da casa só fecha o dia quando vem sem faixa de horas — com
+      // faixa ele é subtraído em `planFor`, coluna a coluna.
       const shopException = exceptions.some(
         (exception) =>
           exception.barberId === null &&
           exception.type !== ScheduleExceptionType.CUSTOM_HOURS &&
+          (exception.type !== ScheduleExceptionType.BLOCK ||
+            exception.startTime === null ||
+            exception.endTime === null) &&
           coversDate(exception, dateKey),
       );
 
@@ -315,7 +327,13 @@ export class AvailabilityService {
       lunchEnd: number | null;
       isDayOff: boolean;
     } | null;
-    business: { opensAt: number; closesAt: number; closed: boolean } | null;
+    business: {
+      opensAt: number;
+      closesAt: number;
+      closed: boolean;
+      lunchStart: number | null;
+      lunchEnd: number | null;
+    } | null;
     exceptions: Array<{
       barberId: string | null;
       startDate: Date;
@@ -331,13 +349,34 @@ export class AvailabilityService {
       return null;
     }
 
+    // Casa fechada, ninguém atende. Antes o `closed` só desligava o RECORTE
+    // pelo expediente (o `if` abaixo), então um barbeiro com `WorkSchedule` no
+    // domingo continuava aparecendo na grade de uma barbearia que não abre
+    // domingo — o botão "Fechado" da aba Configurações não chegava ao motor.
+    if (business?.closed) {
+      return null;
+    }
+
     const mine = input.exceptions.filter(
       (exception) =>
         (exception.barberId === barberId || exception.barberId === null) &&
         coversDate(exception, dateKey),
     );
 
-    if (mine.some((exception) => exception.type !== ScheduleExceptionType.CUSTOM_HOURS)) {
+    // Folga/férias/feriado zeram o dia. `BLOCK` não: ele só subtrai uma faixa
+    // (a menos que venha sem horas — aí vale o dia inteiro, ver abaixo).
+    if (
+      mine.some(
+        (exception) =>
+          exception.type !== ScheduleExceptionType.CUSTOM_HOURS &&
+          exception.type !== ScheduleExceptionType.BLOCK,
+      )
+    ) {
+      return null;
+    }
+
+    const blocks = mine.filter((exception) => exception.type === ScheduleExceptionType.BLOCK);
+    if (blocks.some((block) => block.startTime === null || block.endTime === null)) {
       return null;
     }
 
@@ -347,7 +386,7 @@ export class AvailabilityService {
     let end = custom?.endTime ?? schedule.endTime;
 
     // O expediente do barbeiro nunca extrapola o da casa: a porta está fechada.
-    if (business && !business.closed) {
+    if (business) {
       start = Math.max(start, business.opensAt);
       end = Math.min(end, business.closesAt);
     }
@@ -358,8 +397,19 @@ export class AvailabilityService {
 
     let windows: Window[] = [{ start, end }];
 
+    // Almoço da CASA primeiro (toda a barbearia fecha), depois o do barbeiro.
+    // Os dois são subtrações independentes: um barbeiro pode almoçar mais
+    // tarde do que a casa fecha, e as duas janelas somem da grade.
+    if (business && business.lunchStart !== null && business.lunchEnd !== null) {
+      windows = subtractWindow(windows, { start: business.lunchStart, end: business.lunchEnd });
+    }
+
     if (schedule.lunchStart !== null && schedule.lunchEnd !== null) {
       windows = subtractWindow(windows, { start: schedule.lunchStart, end: schedule.lunchEnd });
+    }
+
+    for (const block of blocks) {
+      windows = subtractWindow(windows, { start: block.startTime!, end: block.endTime! });
     }
 
     return windows.length > 0 ? { barberId, windows } : null;

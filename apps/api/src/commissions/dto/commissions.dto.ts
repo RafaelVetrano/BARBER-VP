@@ -2,12 +2,15 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsPositive,
   IsString,
   Matches,
+  Max,
   Min,
   MinLength,
   ValidateNested,
@@ -50,6 +53,21 @@ export class UpsertCommissionRuleDto {
   @Type(() => CommissionTierInputDto)
   tiers?: CommissionTierInputDto[];
 
+  /** Comissão sobre PRODUTOS — vale nos dois tipos de regra. */
+  @ApiPropertyOptional({ description: 'Basis points (1000 = 10%).' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10_000)
+  percentProdutosBps?: number;
+
+  /** "Descontar vales automaticamente" do modal de regras. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  deductVales?: boolean;
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
@@ -57,9 +75,29 @@ export class UpsertCommissionRuleDto {
 }
 
 export class CommissionPeriodQueryDto {
-  /** `YYYY-MM`. */
+  /** `WEEKLY` ou `MONTHLY` — o par "Semanal/Mensal" do protótipo. Padrão `MONTHLY`. */
+  @ApiPropertyOptional({ enum: ['WEEKLY', 'MONTHLY'] })
+  @IsOptional()
+  @IsIn(['WEEKLY', 'MONTHLY'])
+  type?: 'WEEKLY' | 'MONTHLY';
+
+  /** Qualquer dia DENTRO do período (`YYYY-MM-DD`). Obrigatório em `WEEKLY`. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  anchor?: string;
+
+  /** Atalho de `type=MONTHLY` (`YYYY-MM`). */
+  @ApiPropertyOptional()
+  @IsOptional()
   @Matches(/^\d{4}-\d{2}$/)
-  month!: string;
+  month?: string;
+}
+
+/** `CommissionPeriodQueryDto` + o barbeiro do relatório (`modalPdfOpen`). */
+export class CommissionReportQueryDto extends CommissionPeriodQueryDto {
+  @IsString()
+  barberId!: string;
 }
 
 export class ClosePeriodDto {

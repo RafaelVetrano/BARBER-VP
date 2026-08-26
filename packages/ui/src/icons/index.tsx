@@ -200,6 +200,24 @@ export function ArrowLeftIcon({ strokeWidth = 2, ...props }: IconProps) {
   );
 }
 
+/** Seta para a direita — botão de enviar do Assistente IA (l.2996). */
+export function ArrowRightIcon({ strokeWidth = 2.2, ...props }: IconProps) {
+  return (
+    <Icon strokeWidth={strokeWidth} {...props}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </Icon>
+  );
+}
+
+/** Microfone — ditado do Assistente IA (l.2989). */
+export function MicIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM6 11a6 6 0 0 0 12 0M12 17v4" />
+    </Icon>
+  );
+}
+
 /** Fechar — no protótipo é o glifo `✕` dos headers de sheet/modal. */
 export function CloseIcon({ strokeWidth = 2, ...props }: IconProps) {
   return (
@@ -306,6 +324,33 @@ export function PlusIcon({ strokeWidth = 2, ...props }: IconProps) {
   return (
     <Icon strokeWidth={strokeWidth} {...props}>
       <path d="M12 5v14M5 12h14" />
+    </Icon>
+  );
+}
+
+export function MinusIcon({ strokeWidth = 2, ...props }: IconProps) {
+  return (
+    <Icon strokeWidth={strokeWidth} {...props}>
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+/** Lixeira da lista de custos fixos da calculadora (`Dashboard.dc.html` l.1867). */
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+    </Icon>
+  );
+}
+
+/** Caixa de produto — estado vazio da sub-aba Produtos do catálogo. */
+export function BoxIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z" />
+      <path d="M3 7.5 12 12l9-4.5M12 12v9" />
     </Icon>
   );
 }

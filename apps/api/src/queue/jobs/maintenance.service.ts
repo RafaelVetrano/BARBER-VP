@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditAction, AuditService } from '../../audit/audit.service';
 
 export interface MaintenanceSummary {
   otpCodes: number;
@@ -9,6 +10,8 @@ export interface MaintenanceSummary {
   mailOutbox: number;
   passwordResetTokens: number;
   auditLogs: number;
+  /** Barbearias cuja janela de 30 dias venceu e que foram apagadas de vez. */
+  purgedTenants: number;
 }
 
 /**
@@ -43,6 +46,7 @@ const daysAgo = (days: number, now: Date): Date =>
 export class MaintenanceService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(MaintenanceService.name);
@@ -87,6 +91,7 @@ export class MaintenanceService {
       mailOutbox: mailOutbox.count,
       passwordResetTokens: passwordResetTokens.count,
       auditLogs: auditLogs.count,
+      purgedTenants: await this.purgeScheduledTenants(now),
     };
 
     const total = Object.values(summary).reduce((sum, count) => sum + count, 0);
@@ -95,5 +100,45 @@ export class MaintenanceService {
     }
 
     return summary;
+  }
+
+  /**
+   * Cumpre a exclusão pedida em "Meu perfil" (agente 27), vencida a janela de
+   * 30 dias que o `modalExcluirConta` promete.
+   *
+   * Apaga a linha do `Tenant` e deixa o `ON DELETE CASCADE` do schema levar o
+   * resto — barbeiros, agenda, comandas, financeiro. O `AuditLog` NÃO vai
+   * junto (`tenantId` é `SetNull`): é ele que prova, depois, que a exclusão
+   * foi pedida e cumprida.
+   *
+   * Uma barbearia por vez, e um erro numa não derruba as outras: apagar em
+   * lote transformaria um `FK` inesperado numa rodada inteira perdida.
+   */
+  private async purgeScheduledTenants(now: Date): Promise<number> {
+    const due = await this.prisma.tenant.findMany({
+      where: { purgeAt: { lte: now } },
+      select: { id: true, slug: true, name: true },
+    });
+
+    let purged = 0;
+    for (const tenant of due) {
+      try {
+        await this.prisma.tenant.delete({ where: { id: tenant.id } });
+        await this.audit.record({
+          action: AuditAction.ACCOUNT_PURGED,
+          entity: 'Tenant',
+          entityId: tenant.id,
+          metadata: { slug: tenant.slug, name: tenant.name },
+        });
+        purged += 1;
+      } catch (error) {
+        this.logger.error(
+          { err: error, tenantId: tenant.id, slug: tenant.slug },
+          'falha ao apagar barbearia com exclusão vencida',
+        );
+      }
+    }
+
+    return purged;
   }
 }

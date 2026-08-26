@@ -5,7 +5,7 @@ COMPOSE := docker compose
 API := $(COMPOSE) exec -T api pnpm --filter @barbervp/api exec
 
 .DEFAULT_GOAL := help
-.PHONY: help env install up down logs ps migrate migrate-create seed reset test test-e2e test-isolation responsive lint typecheck build build-web build-api prod-build sh psql redis-cli
+.PHONY: help env install up down logs ps migrate migrate-create seed seed-demo reset test test-e2e test-isolation responsive lint typecheck build build-web build-api prod-build sh psql redis-cli
 
 help: ## Lista os alvos disponíveis
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -38,6 +38,9 @@ migrate-create: ## Cria uma migration nova (make migrate-create name=xxx)
 
 seed: ## Popula o banco com os dados do SPEC (2 tenants)
 	$(API) prisma db seed
+
+seed-demo: ## Popula o banco com o volume de DEMONSTRAÇÃO (auditoria de tela)
+	$(COMPOSE) exec -T api pnpm --filter @barbervp/api run seed:demo
 
 reset: ## Derruba tudo COM volumes, sobe, migra e semeia do zero
 	$(COMPOSE) down -v

@@ -8,15 +8,22 @@ import type {
   CreateScheduleExceptionDto,
   CreateStaffInviteDto,
   ScheduleExceptionItem,
+  StaffInviteLink,
   StaffInviteListItem,
+  TeamPlanUsage,
   UpdateBarberDto,
-  UpdateWorkScheduleDto,
-  WorkScheduleDay,
 } from '@barbervp/types';
+
+/**
+ * Tudo que a aba Equipe mexe muda o teto do plano junto: convidar ocupa vaga,
+ * aceitar troca a vaga de lugar, reativar disputa a mesma. Invalidar as três
+ * chaves de uma vez evita cabeçalho "2 de 2" com três cards na tela.
+ */
+const TEAM_KEYS = [['barbers'], ['staff-invites'], ['team-plan-usage']] as const;
 
 // ── Barbeiros ────────────────────────────────────────────────────────────
 
-export function useBarbersQuery() {
+export function useBarbersQuery(options?: { enabled?: boolean }) {
   const { client } = useEstablishmentAuth();
   return useQuery({
     queryKey: ['barbers'],
@@ -24,6 +31,22 @@ export function useBarbersQuery() {
       const { data } = await client.get<BarberListItem[]>('/barbers');
       return data;
     },
+    // `/barbers` é OWNER/MANAGER: telas que o `BARBER` também abre desligam a
+    // consulta em vez de colecionar 403 no console.
+    enabled: options?.enabled ?? true,
+  });
+}
+
+/** "Barbeiros: X de Y", a barra de uso e o banner de downgrade. */
+export function useTeamPlanUsageQuery(options?: { enabled?: boolean }) {
+  const { client } = useEstablishmentAuth();
+  return useQuery({
+    queryKey: ['team-plan-usage'],
+    queryFn: async () => {
+      const { data } = await client.get<TeamPlanUsage>('/barbers/plan-usage');
+      return data;
+    },
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -35,7 +58,7 @@ export function useCreateBarberMutation() {
       const { data } = await client.post<BarberListItem>('/barbers', dto);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barbers'] }),
+    onSuccess: () => invalidateTeam(queryClient),
   });
 }
 
@@ -47,19 +70,7 @@ export function useUpdateBarberMutation() {
       const { data } = await client.patch<BarberListItem>(`/barbers/${id}`, dto);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barbers'] }),
-  });
-}
-
-export function useUpdateWorkScheduleMutation() {
-  const { client } = useEstablishmentAuth();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ barberId, dto }: { barberId: string; dto: UpdateWorkScheduleDto }) => {
-      const { data } = await client.put<WorkScheduleDay[]>(`/barbers/${barberId}/work-schedule`, dto);
-      return data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barbers'] }),
+    onSuccess: () => invalidateTeam(queryClient),
   });
 }
 
@@ -122,10 +133,7 @@ export function useCreateStaffInviteMutation() {
       const { data } = await client.post<StaffInviteListItem>('/team/invites', dto);
       return data;
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['staff-invites'] });
-      void queryClient.invalidateQueries({ queryKey: ['barbers'] });
-    },
+    onSuccess: () => invalidateTeam(queryClient),
   });
 }
 
@@ -137,7 +145,7 @@ export function useResendStaffInviteMutation() {
       const { data } = await client.post<StaffInviteListItem>(`/team/invites/${id}/resend`);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staff-invites'] }),
+    onSuccess: () => invalidateTeam(queryClient),
   });
 }
 
@@ -149,6 +157,29 @@ export function useRevokeStaffInviteMutation() {
       const { data } = await client.post<StaffInviteListItem>(`/team/invites/${id}/revoke`);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staff-invites'] }),
+    onSuccess: () => invalidateTeam(queryClient),
   });
+}
+
+/**
+ * "Gerar link de cadastro" — reemite o token e devolve a URL do
+ * `CadastroFuncionario`. O link anterior (o do e-mail) deixa de valer, então a
+ * tela avisa isso na confirmação.
+ */
+export function useIssueInviteLinkMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await client.post<StaffInviteLink>(`/team/invites/${id}/link`);
+      return data;
+    },
+    onSuccess: () => invalidateTeam(queryClient),
+  });
+}
+
+function invalidateTeam(queryClient: ReturnType<typeof useQueryClient>): void {
+  for (const queryKey of TEAM_KEYS) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
 }

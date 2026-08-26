@@ -50,6 +50,7 @@ const USER_WITH_MEMBERSHIPS = {
   name: true,
   email: true,
   phone: true,
+  avatarUrl: true,
   passwordHash: true,
   active: true,
   isSuperAdmin: true,
@@ -796,6 +797,7 @@ function toAuthUser(user: UserWithMemberships): AuthUser {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    avatarUrl: user.avatarUrl,
     isSuperAdmin: user.isSuperAdmin,
     hasClientAccount: user.client !== null,
   };

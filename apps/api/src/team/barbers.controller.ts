@@ -1,6 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { BarberListItem, ScheduleExceptionItem, WorkScheduleDay } from '@barbervp/types';
+import type {
+  BarberListItem,
+  ScheduleExceptionItem,
+  TeamPlanUsage,
+  WorkScheduleDay,
+} from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
 import type { RequestContext } from '../common/types/request-context';
@@ -40,6 +45,12 @@ export class BarbersController {
     @Req() request: RequestContext,
   ): Promise<BarberListItem> {
     return this.barbers.create(tenantId, dto, actorUserId, request);
+  }
+
+  @Get('plan-usage')
+  @ApiOperation({ summary: 'Uso do teto de barbeiros do plano (barra + banner de downgrade)' })
+  planUsage(@CurrentTenant('id') tenantId: string): Promise<TeamPlanUsage> {
+    return this.barbers.planUsage(tenantId);
   }
 
   @Get('exceptions')

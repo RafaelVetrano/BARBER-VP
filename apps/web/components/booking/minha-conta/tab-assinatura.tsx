@@ -6,7 +6,7 @@ import { SubscriptionStatus, type ClientSubscriptionAccount } from '@barbervp/ty
 import { Badge, Button, EmptyState, Skeleton, SkeletonGroup, useClientAuth, useToast, authErrorMessage, type BadgeTone } from '@barbervp/ui';
 import { clientAccountApi } from '@/lib/booking/client-account-api';
 import { formatPrice } from '@/lib/booking/format';
-import { ConfirmDialog } from './confirm-dialog';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 
 const STATUS_APPEARANCE: Record<SubscriptionStatus, { label: string; tone: BadgeTone }> = {
   ACTIVE: { label: 'Cobrança em dia', tone: 'success' },

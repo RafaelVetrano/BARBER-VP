@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, centsToInput, Input, inputToCents, Modal, Textarea, useToast } from '@barbervp/ui';
+import { formatBRL } from '@barbervp/types';
 import type { ProductListItem } from '@barbervp/types';
 import { useSaveProductMutation } from '@/lib/dashboard/api/catalog';
 
@@ -25,9 +26,11 @@ export function ProductModal({
   const [costInput, setCostInput] = useState('0,00');
   const [stock, setStock] = useState('0');
   const [estoqueMin, setEstoqueMin] = useState('0');
+  const [nameError, setNameError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setNameError(null);
     setName(product?.name ?? '');
     setSku(product?.sku ?? '');
     setDescription(product?.description ?? '');
@@ -38,8 +41,21 @@ export function ProductModal({
     setEstoqueMin(String(product?.estoqueMin ?? 0));
   }, [open, product]);
 
+  // Mesma conta da coluna "Margem" da tabela, mostrada ANTES de salvar: o
+  // protótipo só revelava a margem depois, na linha, e o dono descobria que
+  // tinha errado o custo ao ver "-40%" na tabela.
+  const priceCents = inputToCents(priceInput);
+  const costCents = inputToCents(costInput);
+  const marginLabel =
+    costCents > 0
+      ? `${Math.round(((priceCents - costCents) / costCents) * 100)}% (${formatBRL(priceCents - costCents)} por unidade)`
+      : 'Informe o custo para ver a margem.';
+
   const submit = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setNameError('Informe o nome do produto.');
+      return;
+    }
     try {
       await save.mutateAsync({
         id: product?.id,
@@ -73,14 +89,28 @@ export function ProductModal({
       }
     >
       <div className="flex flex-col gap-4">
-        <Input label="Nome" value={name} onChange={(event) => setName(event.target.value)} required />
+        <Input
+          label="Nome"
+          value={name}
+          required
+          error={nameError ?? undefined}
+          onChange={(event) => {
+            setName(event.target.value);
+            if (nameError) setNameError(null);
+          }}
+        />
         <div className="grid grid-cols-2 gap-3">
           <Input label="SKU (opcional)" value={sku} onChange={(event) => setSku(event.target.value)} />
           <Input label="Categoria (opcional)" value={category} onChange={(event) => setCategory(event.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="Preço de venda (R$)" value={priceInput} onChange={(event) => setPriceInput(event.target.value)} />
-          <Input label="Custo (R$, opcional)" value={costInput} onChange={(event) => setCostInput(event.target.value)} />
+          <Input
+            label="Custo (R$, opcional)"
+            value={costInput}
+            hint={marginLabel}
+            onChange={(event) => setCostInput(event.target.value)}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="Estoque atual" type="number" min={0} value={stock} onChange={(event) => setStock(event.target.value)} />

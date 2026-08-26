@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Max,
   Min,
   MinLength,
   ValidateNested,
@@ -48,37 +49,6 @@ export class UpdateLoyaltyProgramDto {
   expiracaoMeses?: number | null;
 }
 
-export class CreateRaffleDto {
-  @IsString()
-  @MinLength(2)
-  name!: string;
-
-  @IsString()
-  @MinLength(2)
-  prize!: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  description?: string | null;
-
-  @ApiPropertyOptional({ minimum: 1, default: 10 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  pointsPerEntry?: number;
-
-  /** ISO. */
-  @IsString()
-  endsAt!: string;
-
-  @ApiPropertyOptional({ default: true })
-  @IsOptional()
-  @IsBoolean()
-  notifyWhatsapp?: boolean;
-}
-
 export class UpsertClientPlanItemDto {
   @IsString()
   serviceId!: string;
@@ -104,11 +74,13 @@ export class UpsertClientPlanDto {
   @IsPositive()
   priceCents!: number;
 
+  /** O `select` do modal tem 28 opções (protótipo l.3355) — o dia 29+ não existe em fevereiro. */
   @ApiPropertyOptional({ minimum: 1, maximum: 28, default: 5 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(28)
   billingDay?: number;
 
   @ApiPropertyOptional()

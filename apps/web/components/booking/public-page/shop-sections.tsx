@@ -1,14 +1,19 @@
-'use client';
+"use client";
 
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from "react";
 import {
   formatDuration,
   formatRatingBps,
   minutesToTime,
   type PublicBarbershop,
-} from '@barbervp/types';
-import { Avatar, Button, StarIcon } from '@barbervp/ui';
-import { WEEKDAY_FULL, formatPrice, formatRelativeDate, mapsLink } from '@/lib/booking/format';
+} from "@barbervp/types";
+import { Avatar, Button, StarIcon } from "@barbervp/ui";
+import {
+  WEEKDAY_FULL,
+  formatPrice,
+  formatRelativeDate,
+  mapsLink,
+} from "@/lib/booking/format";
 
 /** Quantos serviços a lista mostra antes do "ver todos". */
 const SERVICES_PREVIEW = 5;
@@ -32,7 +37,14 @@ interface SectionProps {
  * cada lado e a página inteira ganha rolagem horizontal — o defeito que o
  * critério de aceite de 360px existe para pegar.
  */
-export function Section({ title, count, subtitle, action, children, bleed }: SectionProps) {
+export function Section({
+  title,
+  count,
+  subtitle,
+  action,
+  children,
+  bleed,
+}: SectionProps) {
   return (
     <section className="mt-8 px-5">
       <div className="flex items-baseline justify-between gap-3">
@@ -93,7 +105,9 @@ export function ServicesSection({ shop, onBook }: ServicesSectionProps) {
           >
             <div className="flex min-w-0 flex-[1_1_60%] flex-col gap-1">
               <span className="flex items-center gap-2">
-                <span className="truncate text-base font-medium text-fg">{service.name}</span>
+                <span className="truncate text-base font-medium text-fg">
+                  {service.name}
+                </span>
                 {service.isCombo && (
                   <span className="shrink-0 rounded-full bg-gold/15 px-2 py-0.5 text-xs text-gold">
                     Combo
@@ -133,7 +147,9 @@ export function ServicesSection({ shop, onBook }: ServicesSectionProps) {
           onClick={() => setShowAll((current) => !current)}
           className="mt-2 flex min-h-11 items-center rounded text-sm text-fg-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         >
-          {showAll ? 'Ver menos ▴' : `Ver todos os ${services.length} serviços ▾`}
+          {showAll
+            ? "Ver menos ▴"
+            : `Ver todos os ${services.length} serviços ▾`}
         </button>
       )}
     </Section>
@@ -168,7 +184,9 @@ export function PlansSection({
           disabled={!onManageSubscription}
           className="flex w-full flex-col gap-2.5 rounded-xl border border-gold p-4 text-left disabled:cursor-default"
         >
-          <span className="font-display text-base font-bold text-fg">{subscription.planName}</span>
+          <span className="font-display text-base font-bold text-fg">
+            {subscription.planName}
+          </span>
           <ul className="flex flex-col gap-1.5">
             {subscription.usages.map((usage) => (
               <li key={usage.serviceId} className="text-[13px] text-fg-muted">
@@ -176,7 +194,11 @@ export function PlansSection({
               </li>
             ))}
           </ul>
-          {onManageSubscription && <span className="text-[13px] text-gold">Gerenciar assinatura →</span>}
+          {onManageSubscription && (
+            <span className="text-[13px] text-gold">
+              Gerenciar assinatura →
+            </span>
+          )}
         </button>
       </Section>
     );
@@ -196,16 +218,18 @@ export function PlansSection({
           <article
             key={plan.id}
             className={[
-              'flex w-60 shrink-0 snap-start flex-col gap-2.5 rounded-xl border p-4',
-              plan.isPopular ? 'border-gold' : 'border-border',
-            ].join(' ')}
+              "flex w-60 shrink-0 snap-start flex-col gap-2.5 rounded-xl border p-4",
+              plan.isPopular ? "border-gold" : "border-border",
+            ].join(" ")}
           >
             {plan.isPopular && (
               <span className="w-fit rounded-full bg-gold/15 px-2.5 py-0.5 text-xs text-gold">
                 Mais popular
               </span>
             )}
-            <h3 className="font-display text-base font-bold text-fg">{plan.name}</h3>
+            <h3 className="font-display text-base font-bold text-fg">
+              {plan.name}
+            </h3>
             <p className="flex items-baseline gap-1">
               <span className="font-display text-[22px] font-bold text-gold">
                 {formatPrice(plan.priceCents)}
@@ -253,10 +277,19 @@ export function TeamSection({ shop }: { shop: PublicBarbershop }) {
             key={barber.id}
             className="flex w-36 shrink-0 snap-start flex-col items-center gap-2 rounded-xl border border-border p-4 text-center"
           >
-            <Avatar name={barber.name} src={barber.avatarUrl} size="lg" className="size-[72px] text-xl" />
-            <span className="w-full truncate text-sm font-semibold text-fg">{barber.name}</span>
+            <Avatar
+              name={barber.name}
+              src={barber.avatarUrl}
+              size="lg"
+              className="size-[72px] text-xl"
+            />
+            <span className="w-full truncate text-sm font-semibold text-fg">
+              {barber.name}
+            </span>
             {barber.specialty && (
-              <span className="w-full truncate text-xs text-fg-muted">{barber.specialty}</span>
+              <span className="w-full truncate text-xs text-fg-muted">
+                {barber.specialty}
+              </span>
             )}
             {barber.ratingBps !== null && (
               <span className="flex items-center gap-1 text-xs text-gold">
@@ -309,7 +342,9 @@ export function ReviewsSection({ shop }: { shop: PublicBarbershop }) {
             <div className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
                 <Avatar name={review.authorName} size="sm" />
-                <span className="truncate text-sm font-medium text-fg">{review.authorName}</span>
+                <span className="truncate text-sm font-medium text-fg">
+                  {review.authorName}
+                </span>
               </span>
               <span className="shrink-0 text-xs text-fg-muted">
                 {formatRelativeDate(review.createdAt)}
@@ -326,11 +361,49 @@ export function ReviewsSection({ shop }: { shop: PublicBarbershop }) {
             </span>
 
             {review.comment && (
-              <p className="text-sm leading-relaxed text-fg">{review.comment}</p>
+              <p className="text-sm leading-relaxed text-fg">
+                {review.comment}
+              </p>
             )}
             {review.barberName && (
-              <p className="text-xs text-fg-muted">Atendimento com {review.barberName}</p>
+              <p className="text-xs text-fg-muted">
+                Atendimento com {review.barberName}
+              </p>
             )}
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+// ── Fotos ───────────────────────────────────────────────────────────────────
+
+/**
+ * Galeria da barbearia — o toggle "Fotos" de Minha Página. Some inteira quando
+ * o dono desliga (a API já devolve `photos: []`) ou quando não há foto.
+ */
+export function PhotosSection({ shop }: { shop: PublicBarbershop }) {
+  if (!shop.sections.photos || shop.photos.length === 0) return null;
+
+  return (
+    <Section title="Fotos">
+      <ul className="grid grid-cols-3 gap-2">
+        {shop.photos.map((photo) => (
+          <li
+            key={photo.id}
+            className="overflow-hidden rounded-xl border border-border"
+          >
+            {/* `<img>` cru, não `next/image`: a URL pode vir do storage próprio
+                OU de um endereço digitado à mão desde a fase 03, e o loader do
+                Next exigiria allowlist de domínio. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo.url}
+              alt=""
+              loading="lazy"
+              className="aspect-square w-full bg-surface-2 object-cover"
+            />
           </li>
         ))}
       </ul>
@@ -361,45 +434,52 @@ export function LocationSection({ shop }: { shop: PublicBarbershop }) {
         </>
       )}
 
-      <h3 className="mt-6 text-sm font-semibold text-fg">Horário de funcionamento</h3>
-      <ul className="mt-1">
-        {[...shop.businessHours]
-          // Começa na segunda, como o protótipo — domingo fecha a lista.
-          .sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7))
-          .map((hour, index, all) => {
-            const isToday = hour.weekday === today;
-            return (
-              <li
-                key={hour.weekday}
-                className={[
-                  'flex h-10 items-center justify-between gap-3 text-sm',
-                  index < all.length - 1 ? 'border-b border-border' : '',
-                  isToday ? 'font-semibold text-gold' : 'text-fg',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <span>
-                  {WEEKDAY_FULL[hour.weekday]?.replace('-feira', '')}
-                  {isToday && <span className="sr-only"> (hoje)</span>}
-                </span>
-                <span>
-                  {hour.closed
-                    ? 'Fechado'
-                    : `${minutesToTime(hour.opensAt)} – ${minutesToTime(hour.closesAt)}`}
-                </span>
-              </li>
-            );
-          })}
-      </ul>
+      {shop.sections.businessHours && shop.businessHours.length > 0 && (
+        <>
+          <h3 className="mt-6 text-sm font-semibold text-fg">
+            Horário de funcionamento
+          </h3>
+          <ul className="mt-1">
+            {[...shop.businessHours]
+              // Começa na segunda, como o protótipo — domingo fecha a lista.
+              .sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7))
+              .map((hour, index, all) => {
+                const isToday = hour.weekday === today;
+                return (
+                  <li
+                    key={hour.weekday}
+                    className={[
+                      "flex h-10 items-center justify-between gap-3 text-sm",
+                      index < all.length - 1 ? "border-b border-border" : "",
+                      isToday ? "font-semibold text-gold" : "text-fg",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <span>
+                      {WEEKDAY_FULL[hour.weekday]?.replace("-feira", "")}
+                      {isToday && <span className="sr-only"> (hoje)</span>}
+                    </span>
+                    <span>
+                      {hour.closed
+                        ? "Fechado"
+                        : `${minutesToTime(hour.opensAt)} – ${minutesToTime(hour.closesAt)}`}
+                    </span>
+                  </li>
+                );
+              })}
+          </ul>
+        </>
+      )}
     </Section>
   );
 }
 
 /** Dia da semana AGORA no fuso da barbearia. */
 function todayWeekday(timezone: string): number {
-  const label = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short' }).format(
-    new Date(),
-  );
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(label);
+  const label = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+  }).format(new Date());
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(label);
 }

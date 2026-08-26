@@ -41,6 +41,7 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
     patch: (path: string) => api().patch(url(path)).set('Authorization', `Bearer ${ownerToken}`),
   });
   const asBarber = () => ({
+    get: (path: string) => api().get(url(path)).set('Authorization', `Bearer ${barberToken}`),
     post: (path: string) => api().post(url(path)).set('Authorization', `Bearer ${barberToken}`),
   });
 
@@ -78,7 +79,15 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
     tenantId = tenant.id;
 
     const commissionRule = await prisma.commissionRule.create({
-      data: { tenantId, name: 'Fixa 40% (e2e)', type: 'FIXED', percentBps: 4_000 },
+      data: {
+        tenantId,
+        name: 'Fixa 40% (e2e)',
+        type: 'FIXED',
+        percentBps: 4_000,
+        // 10% no produto: é o que a coluna "Comissão produtos" da aba exercita.
+        percentProdutosBps: 1_000,
+        deductVales: true,
+      },
       select: { id: true },
     });
 
@@ -205,14 +214,24 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
     const stockAfter = await prisma.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true } });
     expect(stockAfter.stock).toBe(stockBefore.stock - 2);
 
-    // Comissão: 40% sobre os 5.000 do SERVIÇO (produto não comissiona).
-    const entry = await prisma.commissionEntry.findFirstOrThrow({
+    // Comissão: 40% sobre os 5.000 do SERVIÇO e 10% sobre os 4.000 de PRODUTO
+    // (2 × 2.000) — as duas colunas de comissão da aba, cada uma com a sua taxa.
+    const entries = await prisma.commissionEntry.findMany({
       where: { tenantId, barberId, orderId },
+      orderBy: { kind: 'asc' },
     });
-    expect(entry.baseCents).toBe(5_000);
-    expect(entry.percentBps).toBe(4_000);
-    expect(entry.amountCents).toBe(2_000);
-    expect(entry.status).toBe('PENDING');
+    expect(entries).toHaveLength(2);
+
+    const serviceEntry = entries.find((row) => row.kind === 'SERVICE')!;
+    expect(serviceEntry.baseCents).toBe(5_000);
+    expect(serviceEntry.percentBps).toBe(4_000);
+    expect(serviceEntry.amountCents).toBe(2_000);
+    expect(serviceEntry.status).toBe('PENDING');
+
+    const productEntry = entries.find((row) => row.kind === 'PRODUCT')!;
+    expect(productEntry.baseCents).toBe(4_000);
+    expect(productEntry.percentBps).toBe(1_000);
+    expect(productEntry.amountCents).toBe(400);
 
     // Fidelidade: Math.round(subtotal / gastoPorPonto) = round(9000/100) = 90 pontos.
     const points = await prisma.loyaltyPoints.findFirstOrThrow({ where: { tenantId, clientId, orderId } });
@@ -223,6 +242,15 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
     const barberSummary = period.body.barbers.find((b: { barberId: string }) => b.barberId === barberId);
     expect(barberSummary.comissaoCents).toBeGreaterThanOrEqual(2_000);
     expect(barberSummary.status).toBe('PENDING');
+
+    // Serviço e produto somam separado, e o total é a soma dos dois.
+    expect(barberSummary.comissaoServicosCents).toBeGreaterThanOrEqual(2_000);
+    expect(barberSummary.comissaoProdutosCents).toBeGreaterThanOrEqual(400);
+    expect(barberSummary.comissaoCents).toBe(
+      barberSummary.comissaoServicosCents + barberSummary.comissaoProdutosCents,
+    );
+    expect(barberSummary.ruleProdutosPercentBps).toBe(1_000);
+    expect(barberSummary.deductVales).toBe(true);
 
     const closePeriod = await asOwner().post('/commissions/period/close').send({ month }).expect(201);
     const closedSummary = closePeriod.body.barbers.find((b: { barberId: string }) => b.barberId === barberId);
@@ -259,7 +287,8 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
       profile: await prisma.clientProfile.findFirstOrThrow({ where: { tenantId, clientId } }),
     };
     expect(afterFirstClose.stock).toBe(stockBefore - 1);
-    expect(afterFirstClose.commissions).toBe(1);
+    // Serviço + produto — o fechamento lança um `CommissionEntry` por item.
+    expect(afterFirstClose.commissions).toBe(2);
     expect(afterFirstClose.payments).toBe(1);
 
     // ── Reabertura: tudo volta ao estado anterior ao fechamento ──
@@ -322,5 +351,117 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
       where: { tenantId, action: 'pos.order_reopened', entityId: orderId },
     });
     expect(audit).not.toBeNull();
+  });
+  // ── Aba Comissões (auditoria 1:1, agente 19) ──────────────────────────────
+
+  /**
+   * O recorte "Semanal" do protótipo é uma LEITURA do mês, não um período
+   * próprio: precisa somar só a semana pedida, mas continuar apontando para a
+   * competência mensal, que é a que "Fechar período" trava.
+   */
+  it('o recorte semanal filtra pela semana e mantém a competência mensal', async () => {
+    const anchor = new Date().toISOString().slice(0, 10);
+    const weekly = await asOwner().get(`/commissions/period?type=WEEKLY&anchor=${anchor}`).expect(200);
+
+    expect(weekly.body.type).toBe('WEEKLY');
+    expect(weekly.body.month).toBe(anchor.slice(0, 7));
+    // Segunda a domingo — 7 dias, e a âncora dentro deles.
+    expect(weekly.body.start <= anchor).toBe(true);
+    expect(weekly.body.end >= anchor).toBe(true);
+    expect(Date.parse(weekly.body.end) - Date.parse(weekly.body.start)).toBe(6 * 86_400_000);
+
+    const monthly = await asOwner()
+      .get(`/commissions/period?month=${anchor.slice(0, 7)}`)
+      .expect(200);
+    expect(monthly.body.type).toBe('MONTHLY');
+    // A semana nunca pode pagar mais que o mês que a contém.
+    expect(weekly.body.totalAPagarCents).toBeLessThanOrEqual(monthly.body.totalAPagarCents);
+  });
+
+  /**
+   * O toggle "Descontar vales automaticamente" do modal de regras precisa ter
+   * efeito no DINHEIRO, não só no desenho: desligado, o vale continua visível
+   * mas não abate o total nem é quitado no fechamento.
+   */
+  it('regra com desconto de vales desligado não abate o vale do total', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    const day = `${month}-15`;
+
+    await asOwner()
+      .post('/commissions/vales')
+      .send({ barberId, amountCents: 1_000, date: day, description: 'e2e' })
+      .expect(201);
+
+    const withDeduction = await asOwner().get(`/commissions/period?month=${month}`).expect(200);
+    const before = withDeduction.body.barbers.find((b: { barberId: string }) => b.barberId === barberId);
+    expect(before.valeCents).toBeGreaterThanOrEqual(1_000);
+    expect(before.totalCents).toBe(Math.max(0, before.comissaoCents - before.valeCents));
+
+    const rules = await asOwner().get('/commissions/rules').expect(200);
+    const rule = rules.body.find((item: { barberIds: string[] }) => item.barberIds.includes(barberId));
+    const rulePayload = {
+      name: rule.name,
+      type: rule.type,
+      percentBps: rule.percentBps,
+      percentProdutosBps: rule.percentProdutosBps,
+      barberIds: rule.barberIds,
+    };
+    await asOwner()
+      .patch(`/commissions/rules/${rule.id}`)
+      .send({ ...rulePayload, deductVales: false })
+      .expect(200);
+
+    const withoutDeduction = await asOwner().get(`/commissions/period?month=${month}`).expect(200);
+    const after = withoutDeduction.body.barbers.find((b: { barberId: string }) => b.barberId === barberId);
+    expect(after.deductVales).toBe(false);
+    // O vale segue à vista — o que muda é ele não entrar na conta.
+    expect(after.valeCents).toBe(before.valeCents);
+    expect(after.totalCents).toBe(after.comissaoCents);
+
+    // Restaura para não contaminar os casos seguintes.
+    await asOwner()
+      .patch(`/commissions/rules/${rule.id}`)
+      .send({ ...rulePayload, deductVales: true })
+      .expect(200);
+  });
+
+  it('o relatório de comissão sai como PDF de verdade', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    const response = await asOwner()
+      .get(`/commissions/period/report.pdf?month=${month}&barberId=${barberId}`)
+      .buffer()
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+
+    expect(response.headers['content-type']).toContain('application/pdf');
+    expect(response.headers['content-disposition']).toContain('.pdf');
+    // `%PDF` — sem isto, um JSON de erro com status 200 passaria batido.
+    expect((response.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('BARBER só enxerga as próprias comissões e não emite o PDF de um colega', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+
+    const outro = await prisma.barber.create({
+      data: { tenantId, name: 'Colega D2' },
+      select: { id: true },
+    });
+
+    const scoped = await asBarber().get(`/commissions/period?month=${month}`).expect(200);
+    expect(scoped.body.scoped).toBe(true);
+    expect(scoped.body.barbers).toHaveLength(1);
+    expect(scoped.body.barbers[0].barberId).toBe(barberId);
+
+    // Regras e fechamento são de OWNER/MANAGER; o PDF do colega não existe
+    // para ele porque o extrato que o alimenta já vem filtrado.
+    await asBarber().get('/commissions/rules').expect(403);
+    await asBarber().post('/commissions/period/close').send({ month }).expect(403);
+    await asBarber()
+      .get(`/commissions/period/report.pdf?month=${month}&barberId=${outro.id}`)
+      .expect(404);
   });
 });

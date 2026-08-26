@@ -126,12 +126,28 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       );
     });
 
+    // Agente 23 — as duas rotas novas do kebab de produto.
+    it('não repõe o estoque do produto de B', async () => {
+      await expectDenied(
+        asA.post(`/products/${fixture.b.productId}/restock`).send({ quantity: 50 }),
+        'POST /products/:id/restock',
+      );
+    });
+
+    it('não exclui o produto de B', async () => {
+      await expectDenied(
+        asA.delete(`/products/${fixture.b.productId}`),
+        'DELETE /products/:id',
+      );
+    });
+
     it('o produto de B continua intacto depois das tentativas', async () => {
       const product = await fixture.prisma.product.findUniqueOrThrow({
         where: { id: fixture.b.productId },
       });
       expect(product.name).toBe('Produto B');
       expect(product.active).toBe(true);
+      expect(product.deletedAt).toBeNull();
     });
   });
 
@@ -141,6 +157,11 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
         asA.patch(`/services/${fixture.b.serviceId}`).send({ name: 'Invadido' }),
         'PATCH /services/:id',
       );
+    });
+
+    // Agente 23.
+    it('não exclui o serviço de B', async () => {
+      await expectDenied(asA.delete(`/services/${fixture.b.serviceId}`), 'DELETE /services/:id');
     });
 
     it('o serviço de B continua com o nome original', async () => {
@@ -164,6 +185,13 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
           .post(`/orders/${fixture.b.orderId}/items`)
           .send({ kind: 'SERVICE', serviceId: fixture.a.serviceId, quantity: 1 }),
         'POST /orders/:id/items',
+      );
+    });
+
+    it('não troca o cliente da comanda de B', async () => {
+      await expectDenied(
+        asA.patch(`/orders/${fixture.b.orderId}`).send({ clientId: fixture.a.clientId }),
+        'PATCH /orders/:id',
       );
     });
 
@@ -266,6 +294,56 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
     });
   });
 
+  // ── Caixa (fase 18) ────────────────────────────────────────────────────
+
+  describe('CashRegister / CashMovement', () => {
+    it('o caixa que A lê é o DELE, não o de B', async () => {
+      const response = await asA.get('/finance/cash-register').expect(200);
+      expect(response.body.register?.id).toBe(fixture.a.cashRegisterId);
+      expectNoForeignId(response.body, fixture.b.cashRegisterId, 'status do caixa');
+    });
+
+    /**
+     * O lançamento não recebe id nenhum: ele acha o caixa aberto pelo tenant do
+     * token. É justamente por isso que precisa de caso — um `findFirst` sem
+     * `tenantId` acertaria o caixa de outra barbearia sem ninguém notar.
+     */
+    it('a movimentação lançada por A não entra no caixa de B', async () => {
+      await asA
+        .post('/finance/cash-register/movements')
+        .send({
+          direction: 'OUT',
+          amountCents: 5_000,
+          description: 'Sangria do teste de isolamento',
+          category: 'Sangria',
+          method: 'CASH',
+        })
+        .expect(201);
+
+      const movementsOfB = await fixture.prisma.cashMovement.findMany({
+        where: { cashRegisterId: fixture.b.cashRegisterId },
+      });
+      expect(movementsOfB).toHaveLength(1);
+      expect(movementsOfB[0]!.type).toBe('OPENING');
+
+      const movementsOfA = await fixture.prisma.cashMovement.findMany({
+        where: { cashRegisterId: fixture.a.cashRegisterId, type: 'WITHDRAWAL' },
+      });
+      expect(movementsOfA).toHaveLength(1);
+      expect(movementsOfA[0]!.amountCents).toBe(-5_000);
+    });
+
+    it('o fechamento de A não fecha o caixa de B', async () => {
+      await asA.post('/finance/cash-register/close').send({ countedCents: 5_000 }).expect(201);
+
+      const registerOfB = await fixture.prisma.cashRegister.findUniqueOrThrow({
+        where: { id: fixture.b.cashRegisterId },
+      });
+      expect(registerOfB.status).toBe('OPEN');
+      expect(registerOfB.closedAt).toBeNull();
+    });
+  });
+
   // ── Comissões e vales ──────────────────────────────────────────────────
 
   describe('CommissionRule / Vale / CommissionEntry', () => {
@@ -305,6 +383,25 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       expectNoForeignId(response.body, fixture.b.barberId, 'extrato de comissões');
     });
 
+    it('o extrato semanal de A não menciona o barbeiro de B', async () => {
+      const anchor = new Date().toISOString().slice(0, 10);
+      const response = await asA.get(`/commissions/period?type=WEEKLY&anchor=${anchor}`).expect(200);
+      expectNoForeignId(response.body, fixture.b.barberId, 'extrato semanal de comissões');
+    });
+
+    /**
+     * O relatório em PDF é a única rota da aba que devolve um binário — sem
+     * este caso, um `barberId` de outro tenant vazaria o extrato inteiro num
+     * arquivo que ninguém inspeciona.
+     */
+    it('não emite o relatório em PDF de um barbeiro de B', async () => {
+      const month = new Date().toISOString().slice(0, 7);
+      await expectDenied(
+        asA.get(`/commissions/period/report.pdf?month=${month}&barberId=${fixture.b.barberId}`),
+        'GET /commissions/period/report.pdf com barbeiro de B',
+      );
+    });
+
     it('a regra de B continua com o nome original', async () => {
       const rule = await fixture.prisma.commissionRule.findUniqueOrThrow({
         where: { id: fixture.b.commissionRuleId },
@@ -316,7 +413,7 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
 
   // ── Fidelidade e assinaturas ───────────────────────────────────────────
 
-  describe('LoyaltyProgram / ClientPlan / LoyaltyRaffle', () => {
+  describe('LoyaltyProgram / ClientPlan / ClientSubscription', () => {
     it('o programa de fidelidade lido por A é o de A', async () => {
       const response = await asA.get('/loyalty/program').expect(200);
       const program = await fixture.prisma.loyaltyProgram.findUniqueOrThrow({
@@ -344,34 +441,58 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       );
     });
 
-    it('a lista de sorteios de A não traz o sorteio de B', async () => {
-      const response = await asA.get('/loyalty/raffles').expect(200);
-      expectNoForeignId(response.body, fixture.b.raffleId, 'lista de sorteios');
-    });
-
-    it('não sorteia o sorteio de B', async () => {
+    it('não reativa o plano de assinatura de B', async () => {
       await expectDenied(
-        asA.post(`/loyalty/raffles/${fixture.b.raffleId}/draw`),
-        'POST /loyalty/raffles/:id/draw',
+        asA.patch(`/loyalty/plans/${fixture.b.clientPlanId}/reactivate`),
+        'PATCH /loyalty/plans/:id/reactivate',
       );
     });
 
-    it('a lista de clientes com pontos de A não traz o cliente de B', async () => {
-      const response = await asA.get('/loyalty/clients?perPage=100').expect(200);
-      expectNoForeignId(response.body, fixture.b.clientId, 'lista de fidelidade');
+    it('não exclui o plano de assinatura de B', async () => {
+      await expectDenied(
+        asA.delete(`/loyalty/plans/${fixture.b.clientPlanId}`),
+        'DELETE /loyalty/plans/:id',
+      );
     });
 
-    it('o plano e o sorteio de B seguem intactos', async () => {
+    it('a lista de assinantes de A não traz a assinatura de B', async () => {
+      const response = await asA.get('/loyalty/subscribers').expect(200);
+      expectNoForeignId(response.body, fixture.b.clientSubscriptionId, 'lista de assinantes');
+      expectNoForeignId(response.body, fixture.b.clientId, 'lista de assinantes');
+    });
+
+    it('não pausa a assinatura de B', async () => {
+      await expectDenied(
+        asA.patch(`/loyalty/subscribers/${fixture.b.clientSubscriptionId}/pause`),
+        'PATCH /loyalty/subscribers/:id/pause',
+      );
+    });
+
+    it('não retoma a assinatura de B', async () => {
+      await expectDenied(
+        asA.patch(`/loyalty/subscribers/${fixture.b.clientSubscriptionId}/resume`),
+        'PATCH /loyalty/subscribers/:id/resume',
+      );
+    });
+
+    it('não cancela a assinatura de B', async () => {
+      await expectDenied(
+        asA.patch(`/loyalty/subscribers/${fixture.b.clientSubscriptionId}/cancel`),
+        'PATCH /loyalty/subscribers/:id/cancel',
+      );
+    });
+
+    it('o plano e a assinatura de B seguem intactos', async () => {
       const plan = await fixture.prisma.clientPlan.findUniqueOrThrow({
         where: { id: fixture.b.clientPlanId },
       });
-      const raffle = await fixture.prisma.loyaltyRaffle.findUniqueOrThrow({
-        where: { id: fixture.b.raffleId },
+      const subscription = await fixture.prisma.clientSubscription.findUniqueOrThrow({
+        where: { id: fixture.b.clientSubscriptionId },
       });
       expect(plan.name).toBe('Plano B');
       expect(plan.active).toBe(true);
-      expect(raffle.status).toBe('ACTIVE');
-      expect(raffle.winnerClientId).toBeNull();
+      expect(subscription.status).toBe('ACTIVE');
+      expect(subscription.canceledAt).toBeNull();
     });
   });
 
@@ -395,6 +516,23 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       );
     });
 
+    /**
+     * Fase 26 — o link "PDF" do histórico de faturas. O recibo carrega o nome
+     * e o CNPJ da barbearia: um cuid adivinhado do vizinho não pode devolver
+     * 200 com o documento dele.
+     */
+    it('não baixa o recibo da fatura de B', async () => {
+      await expectDenied(
+        asA.get(`/settings/plan/invoices/${fixture.b.saasInvoiceId}.pdf`),
+        'GET /settings/plan/invoices/:id.pdf',
+      );
+    });
+
+    it('as faturas listadas para A não trazem a fatura de B', async () => {
+      const response = await asA.get('/settings/plan').expect(200);
+      expectNoForeignId(response.body, fixture.b.saasInvoiceId, 'histórico de faturas');
+    });
+
     it('a Minha Página lida por A é a de A', async () => {
       const response = await asA.get('/my-page').expect(200);
       expect(JSON.stringify(response.body)).not.toContain(fixture.b.slug);
@@ -416,6 +554,43 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       });
       expect(unit.name).toBe('Unidade B');
     });
+
+    // ── Minha Página: preview, avaliações e galeria (fase 25) ────────────
+
+    it('o preview ao vivo de A é a página de A', async () => {
+      const response = await asA.get('/my-page/preview').expect(200);
+      expect(response.body.id).toBe(fixture.a.id);
+      expectNoForeignId(response.body, fixture.b.id, 'preview de Minha Página');
+    });
+
+    it('as avaliações recebidas de A não trazem a de B', async () => {
+      const response = await asA.get('/my-page/reviews').expect(200);
+      expectNoForeignId(response.body, fixture.b.reviewId, 'avaliações recebidas');
+    });
+
+    it('não despublica a avaliação de B', async () => {
+      await expectDenied(
+        asA.patch(`/my-page/reviews/${fixture.b.reviewId}`).send({ published: false }),
+        'PATCH /my-page/reviews/:id',
+      );
+
+      const review = await fixture.prisma.review.findUniqueOrThrow({
+        where: { id: fixture.b.reviewId },
+      });
+      expect(review.published).toBe(true);
+    });
+
+    it('não remove a foto da galeria de B', async () => {
+      await expectDenied(
+        asA.delete(`/my-page/photos/${fixture.b.photoId}`),
+        'DELETE /my-page/photos/:id',
+      );
+
+      const photo = await fixture.prisma.tenantPhoto.findUnique({
+        where: { id: fixture.b.photoId },
+      });
+      expect(photo).not.toBeNull();
+    });
   });
 
   // ── Automação de WhatsApp ──────────────────────────────────────────────
@@ -429,7 +604,10 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
     it('escrever o template em A não altera o de B', async () => {
       await asA
         .patch('/whatsapp-config/REMINDER')
-        .send({ enabled: true, template: 'Template de A para {nome}', offsetMinutes: 120 })
+        // 180 = 3h, uma das opções que a API publica em `options`. O valor
+        // antigo (120) deixou de ser aceito na fase 22, quando o `<select>`
+        // do protótipo virou validação de servidor.
+        .send({ enabled: true, template: 'Template de A para {nome}', offsetMinutes: 180 })
         .expect(200);
 
       const configB = await fixture.prisma.whatsappAutomationConfig.findUniqueOrThrow({
@@ -437,6 +615,76 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       });
       expect(configB.template).toBe('Lembrete B para {nome}');
       expect(configB.offsetMinutes).toBe(1_440);
+    });
+
+    /**
+     * O `upsert` da fase 22 CRIA a linha que não existia. Sem este caso, um
+     * `create` sem `tenantId` no corpo passaria despercebido — a linha nova
+     * nasceria órfã, ou pior, colidiria com a de outra barbearia.
+     */
+    it('a linha criada pelo upsert de A nasce no tenant de A', async () => {
+      await asA
+        .patch('/whatsapp-config/CONFIRMATION')
+        .send({ enabled: true, template: 'Confirmação de A para {nome}' })
+        .expect(200);
+
+      const criada = await fixture.prisma.whatsappAutomationConfig.findUniqueOrThrow({
+        where: { tenantId_event: { tenantId: fixture.a.id, event: 'CONFIRMATION' } },
+      });
+      expect(criada.tenantId).toBe(fixture.a.id);
+
+      const emB = await fixture.prisma.whatsappAutomationConfig.findUnique({
+        where: { tenantId_event: { tenantId: fixture.b.id, event: 'CONFIRMATION' } },
+      });
+      expect(emB).toBeNull();
+    });
+  });
+
+  // ── Histórico de envios (NotificationOutbox) ───────────────────────────
+
+  describe('NotificationOutbox', () => {
+    it('o histórico de A não traz a mensagem de B', async () => {
+      const response = await asA.get('/whatsapp-config/history').expect(200);
+
+      const ids = response.body.items.map((item: { id: string }) => item.id);
+      expect(ids).toContain(fixture.a.outboxId);
+      expect(ids).not.toContain(fixture.b.outboxId);
+      expect(JSON.stringify(response.body)).not.toContain('Reativação B');
+    });
+
+    it('a contagem de inativos e o disparo em massa de A não alcançam clientes de B', async () => {
+      const summary = await asA.get('/whatsapp-config/reactivation').expect(200);
+      expect(summary.body.clientCount).toBeLessThanOrEqual(1);
+
+      const antesEmB = await fixture.prisma.notificationOutbox.count({
+        where: { tenantId: fixture.b.id },
+      });
+
+      await asA.post('/whatsapp-config/reactivation/send').expect(201);
+
+      const depoisEmB = await fixture.prisma.notificationOutbox.count({
+        where: { tenantId: fixture.b.id },
+      });
+      expect(depoisEmB).toBe(antesEmB);
+
+      const deA = await fixture.prisma.notificationOutbox.findMany({
+        where: { tenantId: fixture.a.id, templateKey: 'whatsapp.reactivation' },
+        select: { recipient: true },
+      });
+      // Nenhuma mensagem de A saiu para o telefone do cliente de B.
+      const telefoneDeB = await fixture.prisma.client.findUniqueOrThrow({
+        where: { id: fixture.b.clientId },
+        select: { phone: true },
+      });
+      expect(deA.map((row) => row.recipient)).not.toContain(telefoneDeB.phone);
+    });
+
+    it('a conexão de A conta só o outbox de A', async () => {
+      const response = await asA.get('/whatsapp-config/connection').expect(200);
+      const emA = await fixture.prisma.notificationOutbox.count({
+        where: { tenantId: fixture.a.id, channel: 'WHATSAPP' },
+      });
+      expect(response.body.messagesSent).toBe(emA);
     });
   });
 
@@ -466,6 +714,97 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
     });
   });
 
+  // ── Equipe (fase 24) ───────────────────────────────────────────────────
+
+  describe('Barber / WorkSchedule / ScheduleException / StaffInvite', () => {
+    it('a listagem de A não traz o barbeiro de B', async () => {
+      const response = await asA.get('/barbers').expect(200);
+      const ids = (response.body as Array<{ id: string }>).map((row) => row.id);
+      expect(ids).not.toContain(fixture.b.barberId);
+    });
+
+    it('o uso do plano lido por A conta a equipe de A', async () => {
+      const response = await asA.get('/barbers/plan-usage').expect(200);
+      const barbers = await asA.get('/barbers').expect(200);
+      const active = (barbers.body as Array<{ active: boolean }>).filter((row) => row.active).length;
+      expect(response.body.activeBarbers).toBe(active);
+    });
+
+    it('não edita o barbeiro de B', async () => {
+      await expectDenied(
+        asA.patch(`/barbers/${fixture.b.barberId}`).send({ name: 'Invadido' }),
+        'PATCH /barbers/:id',
+      );
+    });
+
+    it('não desativa o barbeiro de B', async () => {
+      await expectDenied(
+        asA.patch(`/barbers/${fixture.b.barberId}`).send({ active: false }),
+        'PATCH /barbers/:id (active)',
+      );
+    });
+
+    it('não lê nem reescreve a escala do barbeiro de B', async () => {
+      await expectDenied(
+        asA.get(`/barbers/${fixture.b.barberId}/work-schedule`),
+        'GET /barbers/:id/work-schedule',
+      );
+      await expectDenied(
+        asA.put(`/barbers/${fixture.b.barberId}/work-schedule`).send({
+          days: [{ weekday: 1, startTime: 60, endTime: 120, isDayOff: false }],
+        }),
+        'PUT /barbers/:id/work-schedule',
+      );
+    });
+
+    it('não marca férias para o barbeiro de B', async () => {
+      await expectDenied(
+        asA.post('/barbers/exceptions').send({
+          barberId: fixture.b.barberId,
+          startDate: '2030-01-01',
+          endDate: '2030-01-05',
+          type: 'VACATION',
+        }),
+        'POST /barbers/exceptions',
+      );
+    });
+
+    it('a lista de convites de A não traz o convite de B', async () => {
+      const response = await asA.get('/team/invites').expect(200);
+      const ids = (response.body as Array<{ id: string }>).map((row) => row.id);
+      expect(ids).not.toContain(fixture.b.staffInviteId);
+    });
+
+    it('não reenvia, não revoga e não gera link do convite de B', async () => {
+      await expectDenied(
+        asA.post(`/team/invites/${fixture.b.staffInviteId}/resend`),
+        'POST /team/invites/:id/resend',
+      );
+      await expectDenied(
+        asA.post(`/team/invites/${fixture.b.staffInviteId}/revoke`),
+        'POST /team/invites/:id/revoke',
+      );
+      // O link é o caso mais sensível: um 200 aqui entregaria a A um token de
+      // cadastro válido dentro do tenant B.
+      await expectDenied(
+        asA.post(`/team/invites/${fixture.b.staffInviteId}/link`),
+        'POST /team/invites/:id/link',
+      );
+    });
+
+    it('o barbeiro e o convite de B seguem intactos depois das tentativas', async () => {
+      const [barber, invite] = await Promise.all([
+        fixture.prisma.barber.findUniqueOrThrow({ where: { id: fixture.b.barberId } }),
+        fixture.prisma.staffInvite.findUniqueOrThrow({ where: { id: fixture.b.staffInviteId } }),
+      ]);
+
+      expect(barber.name).not.toBe('Invadido');
+      expect(barber.active).toBe(true);
+      expect(invite.status).toBe('PENDING');
+      expect(invite.tokenHash).toContain('iso-token-b-');
+    });
+  });
+
   // ── Relatórios ─────────────────────────────────────────────────────────
 
   describe('Reports', () => {
@@ -483,6 +822,33 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       expect(serialized).not.toContain(fixture.b.serviceId);
       expect(serialized).not.toContain(fixture.b.productId);
     });
+
+    /**
+     * Os filtros da barra são parâmetros vindos do cliente — é por eles que um
+     * tenant tentaria alcançar o outro. Pedir o barbeiro/a unidade de B não
+     * pode devolver os números de B nem vazar o id de volta na resposta.
+     */
+    it('filtrar pelo barbeiro de B não traz nada de B', async () => {
+      const response = await asA
+        .get(`/reports/summary?period=30d&barberIds=${fixture.b.barberId}`)
+        .expect(200);
+      expect(response.body.revenueByBarber).toEqual([]);
+      expect(JSON.stringify(response.body)).not.toContain(fixture.b.barberId);
+    });
+
+    it('filtrar pela unidade de B não traz nada de B', async () => {
+      const response = await asA
+        .get(`/reports/summary?period=30d&unitId=${fixture.b.unitId}`)
+        .expect(200);
+      expect(response.body.revenueCents).toBe(0);
+      expect(response.body.revenueByBarber).toEqual([]);
+    });
+
+    it('a exportação de A não carrega nome nem número de B', async () => {
+      const response = await asA.get('/reports/export.csv?period=30d').expect(200);
+      expect(response.text).not.toContain(fixture.b.barberId);
+      expect(response.text).not.toContain(fixture.b.serviceId);
+    });
   });
 
   // ── Assistente IA ──────────────────────────────────────────────────────
@@ -491,6 +857,70 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
     it('a conversa de A nasce vazia e não enxerga o tenant B', async () => {
       const response = await asA.get('/assistant/messages').expect(200);
       expect(JSON.stringify(response.body)).not.toContain(fixture.b.id);
+    });
+
+    /**
+     * O cartão da resposta é o vazamento novo desta auditoria: ele carrega
+     * NOME de cliente, id de agendamento e faturamento. Perguntar sobre a base
+     * inteira com o token de A não pode trazer nada de B.
+     */
+    it('o cartão de clientes inativos não traz cliente de B', async () => {
+      const response = await asA
+        .post('/assistant/messages')
+        .send({ content: 'Quais clientes não vêm há 30 dias?' })
+        .expect(201);
+      const body = JSON.stringify(response.body);
+      expect(body).not.toContain(fixture.b.clientProfileId);
+      expect(body).not.toContain(fixture.b.clientId);
+    });
+
+    it('o cartão de agenda não traz agendamento de B', async () => {
+      const response = await asA
+        .post('/assistant/messages')
+        .send({ content: 'Como está a agenda de hoje?' })
+        .expect(201);
+      expect(JSON.stringify(response.body)).not.toContain(fixture.b.appointmentId);
+    });
+
+    it('limpar a conversa de A não apaga nem revela mensagem de B', async () => {
+      const foreign = await fixture.prisma.aiChatMessage.create({
+        data: {
+          tenantId: fixture.b.id,
+          userId: fixture.b.ownerUserId,
+          role: 'USER',
+          content: 'pergunta do tenant B',
+        },
+      });
+
+      await asA.delete('/assistant/messages').expect(200);
+
+      const survivor = await fixture.prisma.aiChatMessage.findUnique({ where: { id: foreign.id } });
+      expect(survivor).not.toBeNull();
+      expect(survivor?.hiddenAt).toBeNull();
+
+      await fixture.prisma.aiChatMessage.delete({ where: { id: foreign.id } });
+    });
+
+    /**
+     * A cota é do PLANO, logo do tenant — e por isso é contada com um `where`
+     * de tenant. Se esse recorte falhar, a conversa de B consome a cota de A.
+     */
+    it('a cota de A não conta mensagem de B', async () => {
+      const before = await asA.get('/assistant/messages').expect(200);
+
+      const foreign = await fixture.prisma.aiChatMessage.create({
+        data: {
+          tenantId: fixture.b.id,
+          userId: fixture.b.ownerUserId,
+          role: 'USER',
+          content: 'mais uma do tenant B',
+        },
+      });
+
+      const after = await asA.get('/assistant/messages').expect(200);
+      expect(after.body.usage.used).toBe(before.body.usage.used);
+
+      await fixture.prisma.aiChatMessage.delete({ where: { id: foreign.id } });
     });
   });
 
@@ -515,6 +945,80 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
         where: { id: fixture.b.appointmentId },
       });
       expect(appointment.status).toBe('SCHEDULED');
+    });
+  });
+
+  // ── Meu perfil (agente 27) ─────────────────────────────────────────────
+
+  /**
+   * `/me` é a única família de rotas do painel que NÃO leva id de recurso na
+   * URL: o alvo é sempre "a pessoa logada, na barbearia ativa". O risco de
+   * isolamento aqui não é ler a linha errada, é o TENANT errado entrar pela
+   * porta lateral — o header de slug — e o papel, o nome da barbearia e, no
+   * pior caso, a EXCLUSÃO caírem sobre a casa de outro.
+   */
+  describe('Meu perfil', () => {
+    afterAll(async () => {
+      // Se algum caso conseguir agendar a exclusão de A, o resto do arquivo
+      // não pode herdar um tenant CANCELED.
+      await fixture.prisma.tenant.update({
+        where: { id: fixture.a.id },
+        data: { purgeAt: null },
+      });
+    });
+
+    it('o perfil de A não carrega nada de B', async () => {
+      const response = await asA.get('/me').expect(200);
+      expect(response.body.role).toBe('OWNER');
+      expectNoForeignId(response.body, fixture.b.id, 'GET /me');
+      expect(response.body.tenantName).not.toContain(fixture.b.slug);
+    });
+
+    it('o header de slug de B não troca o tenant do perfil', async () => {
+      const response = await api()
+        .get(url('/me'))
+        .set('Authorization', `Bearer ${tokenA}`)
+        .set('x-tenant-slug', fixture.b.slug)
+        .expect(200);
+
+      // O `TenantGuard` resolve pelo JWT antes de olhar o header — o perfil
+      // continua sendo o de A, na barbearia de A.
+      expectNoForeignId(response.body, fixture.b.id, 'GET /me com slug de B');
+    });
+
+    it('a exportação LGPD de A não lista a barbearia de B', async () => {
+      const response = await asA.get('/me/export').expect(200);
+      expectNoForeignId(response.body, fixture.b.id, 'GET /me/export');
+      expect(JSON.stringify(response.body)).not.toContain(fixture.b.slug);
+    });
+
+    it('nem com o slug de B no header a exclusão cai sobre B', async () => {
+      await api()
+        .post(url('/me/account-deletion'))
+        .set('Authorization', `Bearer ${tokenA}`)
+        .set('x-tenant-slug', fixture.b.slug)
+        .send({ confirm: 'EXCLUIR' });
+
+      const b = await fixture.prisma.tenant.findUniqueOrThrow({
+        where: { id: fixture.b.id },
+        select: { purgeAt: true, status: true, deletedAt: true },
+      });
+      expect(b.purgeAt).toBeNull();
+      expect(b.deletedAt).toBeNull();
+      expect(b.status).not.toBe('CANCELED');
+    });
+
+    it('o pedido de exclusão de dados de A não notifica o dono de B', async () => {
+      await api()
+        .post(url('/me/data-deletion-request'))
+        .set('Authorization', `Bearer ${tokenA}`)
+        .set('x-tenant-slug', fixture.b.slug)
+        .send({});
+
+      const mail = await fixture.prisma.mailOutbox.findFirst({
+        where: { to: fixture.b.ownerEmail },
+      });
+      expect(mail).toBeNull();
     });
   });
 

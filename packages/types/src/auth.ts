@@ -50,6 +50,8 @@ export interface AuthUser {
   name: string;
   email: string;
   phone: string | null;
+  /** Foto do menu do avatar — `null` cai nas iniciais. */
+  avatarUrl: string | null;
   isSuperAdmin: boolean;
   /** `true` quando este login também tem conta de cliente vinculada. */
   hasClientAccount: boolean;

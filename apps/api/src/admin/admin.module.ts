@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { TeamModule } from '../team/team.module';
 import { AdminPlansController } from './plans/admin-plans.controller';
 import { AdminPlansService } from './plans/admin-plans.service';
 import { AdminTenantsController } from './tenants/admin-tenants.controller';
@@ -18,7 +19,7 @@ import { AdminOutboxService } from './outbox/admin-outbox.service';
  * a lógica de emissão de sessão.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TeamModule],
   controllers: [
     AdminPlansController,
     AdminTenantsController,

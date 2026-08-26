@@ -3,67 +3,117 @@
 import { formatBRL } from '@barbervp/types';
 import type { CashFlowMonth } from '@barbervp/types';
 
+const WIDTH = 780;
+const HEIGHT = 220;
+const BASELINE = HEIGHT - 30;
+const PLOT_TOP = 16;
+
 /**
- * Fluxo de caixa mensal — barras entrada/saída em SVG puro (sem lib de
- * gráfico, mesma convenção do resto do design system). Responsivo: a
- * legenda fica ao lado no desktop e some para uma linha abaixo no mobile
- * (regra 1 — "gráficos responsivos com legenda abaixo no mobile").
+ * Entradas × saídas por mês, com a linha do saldo acumulado por cima
+ * (`Dashboard.dc.html` l.1024). SVG puro, como o resto do design system.
+ *
+ * As barras e a linha usam ESCALAS DIFERENTES de propósito: o acumulado é um
+ * estoque (pode ser dez vezes o fluxo do mês) e o fluxo é uma vazão. Na mesma
+ * escala, uma das duas séries vira uma reta colada no eixo — é o que o
+ * protótipo faz, e o eixo secundário é o que torna a leitura possível.
  */
 export function CashFlowChart({ months }: { months: CashFlowMonth[] }) {
   if (months.length === 0) return null;
 
-  const max = Math.max(...months.map((m) => Math.max(m.inCents, m.outCents)), 1);
-  const height = 160;
-  const barWidth = 14;
-  const groupWidth = 56;
+  const groupWidth = WIDTH / months.length;
+  const barWidth = groupWidth * 0.26;
+  // `* 1.15` deixa ar acima da barra mais alta, como no protótipo.
+  const maxBar = Math.max(...months.map((month) => Math.max(month.inCents, month.outCents)), 1) * 1.15;
+  const barHeight = (cents: number) => (cents / maxBar) * (HEIGHT - 40);
+
+  const series = months.map((month) => month.accumulatedCents);
+  const accMin = Math.min(...series, 0);
+  const accMax = Math.max(...series, 1);
+  const accRange = accMax - accMin || 1;
+  const points = series.map((value, index) => ({
+    x: index * groupWidth + groupWidth / 2,
+    y: BASELINE - ((value - accMin) / accRange) * (BASELINE - PLOT_TOP),
+  }));
+  const linePath = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+    .join(' ');
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3.5">
+      <div className="flex flex-wrap items-center gap-4">
+        <h3 className="text-sm font-semibold text-fg">Entradas × Saídas (últimos {months.length} meses)</h3>
+        <ul className="flex flex-wrap gap-3.5 sm:ml-auto">
+          <Legend className="rounded-sm bg-success">Entradas</Legend>
+          <Legend className="rounded-sm bg-danger">Saídas</Legend>
+          <Legend className="rounded-full bg-gold">Saldo acumulado</Legend>
+        </ul>
+      </div>
+
       <div className="w-full overflow-x-auto">
         <svg
-          viewBox={`0 0 ${months.length * groupWidth} ${height + 24}`}
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           width="100%"
-          height={height + 24}
-          role="img"
-          aria-label="Fluxo de caixa mensal — entradas e saídas"
+          height={HEIGHT}
           preserveAspectRatio="xMinYMin meet"
+          role="img"
+          aria-label={`Fluxo de caixa dos últimos ${months.length} meses: entradas, saídas e saldo acumulado.`}
+          className="min-w-[560px]"
         >
           {months.map((month, index) => {
-            const x = index * groupWidth + (groupWidth - barWidth * 2 - 4) / 2;
-            const inH = (month.inCents / max) * height;
-            const outH = (month.outCents / max) * height;
+            const center = index * groupWidth + groupWidth / 2;
+            const inHeight = barHeight(month.inCents);
+            const outHeight = barHeight(month.outCents);
             return (
               <g key={month.month}>
-                <rect x={x} y={height - inH} width={barWidth} height={inH} rx={3} fill="#3FB68B" />
-                <rect x={x + barWidth + 4} y={height - outH} width={barWidth} height={outH} rx={3} fill="#E05B5B" />
-                <text x={x + barWidth + 2} y={height + 16} textAnchor="middle" fontSize="10" fill="#9AA1AC">
+                <rect
+                  x={center - barWidth - 2}
+                  y={BASELINE - inHeight}
+                  width={barWidth}
+                  height={inHeight}
+                  rx={3}
+                  className="fill-success"
+                />
+                <rect
+                  x={center + 2}
+                  y={BASELINE - outHeight}
+                  width={barWidth}
+                  height={outHeight}
+                  rx={3}
+                  className="fill-danger"
+                />
+                <text
+                  x={center}
+                  y={HEIGHT - 8}
+                  textAnchor="middle"
+                  fontSize="11"
+                  className="fill-fg-muted"
+                >
                   {month.label}
                 </text>
               </g>
             );
           })}
+
+          <path d={linePath} strokeWidth={2} fill="none" className="stroke-gold" />
+          {points.map((point, index) => (
+            <circle key={months[index]!.month} cx={point.x} cy={point.y} r={3.5} className="fill-gold" />
+          ))}
         </svg>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-xs text-fg-muted">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-success" /> Entradas
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-danger" /> Saídas
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {months.map((month) => (
-          <div key={month.month} className="rounded-lg border border-border bg-surface-2 px-2.5 py-2 text-xs">
-            <p className="font-semibold text-fg">{month.label}</p>
-            <p className="text-fg-muted">
-              {formatBRL(month.inCents)} · <span className={month.balanceCents >= 0 ? 'text-success' : 'text-danger'}>{formatBRL(month.balanceCents)}</span>
-            </p>
-          </div>
-        ))}
-      </div>
+      {/* A tabela abaixo do gráfico já traz os números; aqui só o total da janela. */}
+      <p className="text-xs text-fg-muted">
+        Saldo acumulado no período: {formatBRL(series[series.length - 1] ?? 0)}
+      </p>
     </div>
+  );
+}
+
+function Legend({ className, children }: { className: string; children: string }) {
+  return (
+    <li className="flex items-center gap-1.5 text-xs text-fg-muted">
+      <span aria-hidden="true" className={`inline-block size-2.5 ${className}`} />
+      {children}
+    </li>
   );
 }

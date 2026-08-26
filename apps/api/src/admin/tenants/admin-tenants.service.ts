@@ -14,6 +14,7 @@ import { AuditAction, AuditService } from '../../audit/audit.service';
 import type { RequestContext } from '../../common/types/request-context';
 import { pageWindow, toPaginated } from '../../common/dto/pagination.dto';
 import { EstablishmentAuthService } from '../../auth/establishment-auth.service';
+import { PlanLimitsService } from '../../team/plan-limits.service';
 
 function monthStart(date = new Date()): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
@@ -28,6 +29,7 @@ export class AdminTenantsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly establishmentAuth: EstablishmentAuthService,
+    private readonly planLimits: PlanLimitsService,
   ) {}
 
   /**
@@ -204,7 +206,7 @@ export class AdminTenantsService {
   ): Promise<void> {
     const [tenant, plan] = await Promise.all([
       this.prisma.tenant.findFirst({ where: { id, deletedAt: null }, select: { id: true } }),
-      this.prisma.saasPlan.findFirst({ where: { id: dto.planId }, select: { id: true } }),
+      this.prisma.saasPlan.findFirst({ where: { id: dto.planId }, select: { id: true, maxBarbers: true } }),
     ]);
     if (!tenant) {
       throw ApiException.notFound('Tenant não encontrado.');
@@ -215,6 +217,12 @@ export class AdminTenantsService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.tenant.update({ where: { id }, data: { planId: dto.planId } });
+      // Mesma regra da troca feita pelo dono (`SettingsService.changePlan`):
+      // o teto de barbeiros do plano novo é aplicado na hora, marcando os
+      // excedentes como "Inativo pelo plano". Sem isto, um downgrade feito
+      // pelo super admin deixaria a barbearia acima do teto sem nenhum sinal.
+      await this.planLimits.applyPlanLimit(tx, id, plan.maxBarbers);
+
       const subscription = await tx.tenantSubscription.findFirst({ where: { tenantId: id }, orderBy: { createdAt: 'desc' } });
       if (subscription) {
         await tx.tenantSubscription.update({ where: { id: subscription.id }, data: { planId: dto.planId } });

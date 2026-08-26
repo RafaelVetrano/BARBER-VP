@@ -1,387 +1,262 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  CardHeader,
-  EmptyState,
-  Input,
-  Menu,
-  Modal,
-  PlusIcon,
-  Select,
-  Skeleton,
-  Tabs,
-  useEstablishmentAuth,
-  useToast,
-} from '@barbervp/ui';
-import { AgendaView, formatBRL, WEEKDAY_LABELS } from '@barbervp/types';
+import { Button, EmptyState, Skeleton, useEstablishmentAuth, useToast } from '@barbervp/ui';
+import { AgendaView } from '@barbervp/types';
 import type { StaffAppointmentItem } from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
+import { AgendaToolbar, type AgendaTab } from '@/components/dashboard/agenda/agenda-toolbar';
+import { AgendaDayGrid } from '@/components/dashboard/agenda/agenda-day-grid';
+import { AgendaWeekGrid } from '@/components/dashboard/agenda/agenda-week-grid';
+import { AgendaMonthGrid } from '@/components/dashboard/agenda/agenda-month-grid';
+import { AgendaTimeline } from '@/components/dashboard/agenda/agenda-timeline';
+import { AppointmentDrawer } from '@/components/dashboard/agenda/appointment-drawer';
 import { AppointmentFormModal } from '@/components/dashboard/agenda/appointment-form-modal';
+import { BlockTimeModal } from '@/components/dashboard/agenda/block-time-modal';
 import {
-  useCancelStaffAppointmentMutation,
-  useMoveStaffAppointmentMutation,
-  useStaffAgendaQuery,
-} from '@/lib/dashboard/api/agenda';
+  addDaysToKey,
+  addMonthsToKey,
+  todayKey,
+} from '@/components/dashboard/agenda/agenda-shared';
+import { useStaffAgendaMonthQuery, useStaffAgendaQuery } from '@/lib/dashboard/api/agenda';
 
-function todayKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-function addDaysToKey(dateKey: string, days: number): string {
-  const [year, month, day] = dateKey.split('-').map(Number) as [number, number, number];
-  const date = new Date(year, (month ?? 1) - 1, (day ?? 1) + days);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function AppointmentRow({
-  appointment,
-  timezone,
-  onCancel,
-  onMove,
-}: {
-  appointment: StaffAppointmentItem;
-  timezone: string;
-  onCancel: () => void;
-  onMove: () => void;
-}) {
-  const time = new Intl.DateTimeFormat('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: timezone,
-  }).format(new Date(appointment.startsAt));
-
-  const changeable = !['CANCELED', 'DONE', 'NO_SHOW'].includes(appointment.status);
-
-  return (
-    <li className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
-      <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-gold">{time}</span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-fg">
-          {appointment.clientName}
-          {appointment.isWalkIn && (
-            <Badge tone="neutral" className="ml-2">
-              Avulso
-            </Badge>
-          )}
-        </p>
-        <p className="truncate text-xs text-fg-muted">
-          {appointment.services.map((service) => service.name).join(' + ')} ·{' '}
-          {formatBRL(appointment.totalPriceCents)}
-        </p>
-      </div>
-      {appointment.status === 'CANCELED' ? (
-        <Badge tone="neutral">Cancelado</Badge>
-      ) : (
-        changeable && (
-          <Menu
-            label={`Ações de ${appointment.clientName}`}
-            items={[
-              { label: 'Mover horário', onSelect: onMove },
-              { label: 'Cancelar', destructive: true, onSelect: onCancel },
-            ]}
-          />
-        )
-      )}
-    </li>
-  );
-}
-
-function MoveModal({
-  appointment,
-  onClose,
-}: {
-  appointment: StaffAppointmentItem | null;
-  onClose: () => void;
-}) {
-  const { toast } = useToast();
-  const move = useMoveStaffAppointmentMutation();
-  const [time, setTime] = useState('');
-
-  if (!appointment) return null;
-
-  const dateKey = appointment.startsAt.slice(0, 10);
-
-  const submit = async () => {
-    if (!time) return;
-    try {
-      await move.mutateAsync({
-        id: appointment.id,
-        dto: { startsAt: new Date(`${dateKey}T${time}:00`).toISOString() },
-      });
-      toast({ message: 'Agendamento movido.', tone: 'success' });
-      onClose();
-    } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível mover.', tone: 'danger' });
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Mover horário"
-      footer={
-        <Button fullWidth loading={move.isPending} disabled={!time} onClick={() => void submit()}>
-          Confirmar
-        </Button>
-      }
-    >
-      <p className="mb-3 text-sm text-fg-muted">
-        Novo horário para <strong className="text-fg">{appointment.clientName}</strong>, no mesmo dia.
-      </p>
-      <Input label="Horário" type="time" value={time} onChange={(event) => setTime(event.target.value)} />
-    </Modal>
-  );
-}
+/** Semana e Timeline não cabem em telas estreitas — regra 6 da fase. */
+const WIDE_ONLY: AgendaTab[] = ['WEEK', 'TIMELINE'];
 
 function AgendaContent() {
   const { activeMembership } = useEstablishmentAuth();
   const { toast } = useToast();
-  const role = activeMembership?.role;
-  const isStaffOnly = role === 'BARBER';
-
   const searchParams = useSearchParams();
 
-  const [date, setDate] = useState(() => searchParams.get('date') ?? todayKey());
-  const [view, setView] = useState<'DAY' | 'WEEK'>('DAY');
-  const [barberFilter, setBarberFilter] = useState<string>('');
-  const [modalBarberId, setModalBarberId] = useState<string | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(() => searchParams.get('novo') === '1');
+  const isStaffOnly = activeMembership?.role === 'BARBER';
 
-  // Pontos de entrada vindos de fora: `?novo=1` (o CTA "Novo agendamento" da
-  // topbar) e `?date=` (um resultado da busca global). Sem isto os dois
-  // controles do dashboard só trocariam de tela e parariam ali.
+  const [date, setDate] = useState(() => searchParams.get('date') ?? todayKey());
+  const [view, setView] = useState<AgendaTab>('DAY');
+  // `?barbeiro=` é o contrato do "Ver agenda" do card da aba Equipe: abrir a
+  // agenda JÁ filtrada por aquele barbeiro, e não a grade inteira para o dono
+  // procurar a coluna dele.
+  const [barberIds, setBarberIds] = useState<string[]>(() => {
+    const requested = searchParams.get('barbeiro');
+    return requested ? [requested] : [];
+  });
+  const [drawerAppointment, setDrawerAppointment] = useState<StaffAppointmentItem | null>(null);
+  const [rescheduling, setRescheduling] = useState<StaffAppointmentItem | null>(null);
+  const [blockOpen, setBlockOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(() => searchParams.get('novo') === '1');
+  const [formBarberId, setFormBarberId] = useState<string | undefined>(undefined);
+  const [formTime, setFormTime] = useState<string | undefined>(undefined);
+  const [formClientId, setFormClientId] = useState<string | null>(() => searchParams.get('cliente'));
+
+  // Pontos de entrada vindos de fora: `?novo=1` (o CTA da topbar), `?date=`
+  // (um resultado da busca global), `?cliente=` (o "Agendar" da aba Clientes)
+  // e `?barbeiro=` (o "Ver agenda" do card da aba Equipe).
   useEffect(() => {
-    if (searchParams.get('novo') === '1') setModalOpen(true);
+    if (searchParams.get('novo') === '1') setFormOpen(true);
     const requested = searchParams.get('date');
     if (requested) setDate(requested);
+    setFormClientId(searchParams.get('cliente'));
+    const barber = searchParams.get('barbeiro');
+    if (barber) setBarberIds([barber]);
   }, [searchParams]);
-  const [cancelTarget, setCancelTarget] = useState<StaffAppointmentItem | null>(null);
-  const [moveTarget, setMoveTarget] = useState<StaffAppointmentItem | null>(null);
 
-  const agendaQuery = useStaffAgendaQuery({
-    date,
-    view: view === 'WEEK' ? AgendaView.WEEK : AgendaView.DAY,
-    barberId: barberFilter || undefined,
-  });
-  const cancel = useCancelStaffAppointmentMutation();
+  const isMonth = view === 'MONTH';
 
-  const data = agendaQuery.data;
-  const day = data?.days[0];
+  const agendaQuery = useStaffAgendaQuery(
+    {
+      date,
+      view: view === 'WEEK' ? AgendaView.WEEK : view === 'TIMELINE' ? AgendaView.TIMELINE : AgendaView.DAY,
+      barberIds,
+    },
+    !isMonth,
+  );
+  const monthQuery = useStaffAgendaMonthQuery({ date, barberIds }, isMonth);
 
-  const openNewFor = (barberId?: string) => {
-    setModalBarberId(barberId);
-    setModalOpen(true);
+  const agenda = agendaQuery.data;
+  const day = agenda?.days.find((row) => row.date === date) ?? agenda?.days[0];
+  const barberOptions = useMemo(() => agenda?.barberOptions ?? [], [agenda]);
+
+  const openForm = (barberId?: string, time?: string) => {
+    setFormBarberId(barberId ?? (isStaffOnly ? barberOptions[0]?.id : undefined));
+    setFormTime(time);
+    // Abrir o formulário pela própria grade não herda o cliente da URL.
+    setFormClientId(null);
+    setRescheduling(null);
+    setFormOpen(true);
   };
 
-  const confirmCancel = async () => {
-    if (!cancelTarget) return;
+  const copyLink = async () => {
+    const slug = activeMembership?.tenantSlug;
+    if (!slug) return;
+    const url = `${window.location.origin}/agendar/${slug}`;
     try {
-      await cancel.mutateAsync({ id: cancelTarget.id, dto: {} });
-      toast({ message: 'Agendamento cancelado.', tone: 'success' });
-    } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível cancelar.', tone: 'danger' });
-    } finally {
-      setCancelTarget(null);
+      await navigator.clipboard.writeText(url);
+      toast({ message: 'Link de agendamento copiado.', tone: 'success' });
+    } catch {
+      // Área de transferência bloqueada (http, permissão negada): o link
+      // ainda precisa chegar ao operador de alguma forma.
+      toast({ message: `Link de agendamento: ${url}`, tone: 'neutral' });
     }
   };
 
+  const step = view === 'MONTH' ? 0 : view === 'WEEK' ? 7 : 1;
+
+  const navigate = (direction: 1 | -1) => {
+    setDate((current) =>
+      view === 'MONTH'
+        ? addMonthsToKey(current, direction)
+        : addDaysToKey(current, step * direction),
+    );
+  };
+
+  const goToDay = (target: string) => {
+    setDate(target);
+    setView('DAY');
+  };
+
+  const loading = isMonth ? monthQuery.isLoading : agendaQuery.isLoading;
+  const error = isMonth ? monthQuery.isError : agendaQuery.isError;
+
   return (
-    <DashboardChrome
-      activeKey="agenda"
-      topbarActions={
-        <Button size="sm" iconLeft={<PlusIcon size={16} />} onClick={() => openNewFor(isStaffOnly ? data?.barberOptions[0]?.id : undefined)}>
-          Novo agendamento
-        </Button>
-      }
-    >
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-xl font-bold text-fg">Agenda</h1>
+    <DashboardChrome activeKey="agenda">
+      <div className="flex flex-col gap-4.5">
+        <AgendaToolbar
+          date={date}
+          onDateChange={setDate}
+          onPrev={() => navigate(-1)}
+          onNext={() => navigate(1)}
+          onToday={() => setDate(todayKey())}
+          view={view}
+          onViewChange={setView}
+          barberOptions={barberOptions}
+          selectedBarberIds={barberIds}
+          onToggleBarber={(barberId) =>
+            setBarberIds((current) => {
+              // Lista vazia significa "todos": o primeiro clique tira UM da
+              // seleção completa, e não deixa apenas ele marcado.
+              const base = current.length === 0 ? barberOptions.map((barber) => barber.id) : current;
+              const next = base.includes(barberId)
+                ? base.filter((id) => id !== barberId)
+                : [...base, barberId];
+              return next.length === barberOptions.length ? [] : next;
+            })
+          }
+          showBarberFilter={!isStaffOnly}
+          onOpenBlock={() => setBlockOpen(true)}
+          onCopyLink={() => void copyLink()}
+          onNewAppointment={() => openForm()}
+        />
 
-          {/* Semana/colunas só faz sentido em telas largas — regra de responsividade da fase. */}
-          <div className="hidden lg:block">
-            <Tabs
-              label="Visão da agenda"
-              variant="segmented"
-              value={view}
-              onChange={(value) => setView(value as 'DAY' | 'WEEK')}
-              items={[
-                { value: 'DAY', label: 'Dia' },
-                { value: 'WEEK', label: 'Semana' },
-              ]}
+        {error && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/40 bg-danger/10 p-4">
+            <p className="text-[13px] text-fg">Não foi possível carregar a agenda.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void (isMonth ? monthQuery.refetch() : agendaQuery.refetch())}
+            >
+              Tentar de novo
+            </Button>
+          </div>
+        )}
+
+        {/* Skeleton com a altura da grade — sem salto ao carregar. */}
+        {loading && !agenda && !monthQuery.data && !error && <Skeleton className="h-[520px]" />}
+
+        {/* ── Semana e Timeline só ≥ lg; abaixo disso, aviso e volta para o Dia ── */}
+        {WIDE_ONLY.includes(view) && (
+          <div className="lg:hidden">
+            <EmptyState
+              message="Visão para telas maiores"
+              description="Semana e Timeline precisam de largura para caber. No celular, use a visão Dia."
+              action={
+                <Button size="sm" onClick={() => setView('DAY')}>
+                  Ver o dia
+                </Button>
+              }
             />
           </div>
-        </div>
+        )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setDate((current) => addDaysToKey(current, -1))}>
-            ← Anterior
-          </Button>
-          <Input
-            aria-label="Data"
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            className="w-auto"
+        {view === 'DAY' && agenda && day && (
+          <AgendaDayGrid
+            day={day}
+            agenda={agenda}
+            onOpenAppointment={setDrawerAppointment}
+            onPickSlot={(barberId, time) => openForm(barberId, time)}
           />
-          <Button variant="outline" size="sm" onClick={() => setDate((current) => addDaysToKey(current, 1))}>
-            Próximo →
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setDate(todayKey())}>
-            Hoje
-          </Button>
+        )}
 
-          {!isStaffOnly && data && data.barberOptions.length > 1 && (
-            <Select
-              aria-label="Filtrar por barbeiro"
-              className="w-auto min-w-[180px]"
-              value={barberFilter}
-              onChange={(event) => setBarberFilter(event.target.value)}
-              options={[
-                { value: '', label: 'Todos os barbeiros' },
-                ...data.barberOptions.map((barber) => ({ value: barber.id, label: barber.name })),
-              ]}
+        {view === 'WEEK' && agenda && (
+          <div className="hidden lg:block">
+            <AgendaWeekGrid
+              agenda={agenda}
+              onOpenAppointment={setDrawerAppointment}
+              onOpenDay={goToDay}
             />
-          )}
-        </div>
-
-        {agendaQuery.isLoading && (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
           </div>
         )}
 
-        {/* ── Visão dia: colunas por barbeiro em telas largas, empilhado no mobile ── */}
-        {view === 'DAY' && day && (
-          <div className="grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
-            {day.barbers.map((column) => (
-              <Card key={column.barberId} className="gap-3">
-                <CardHeader
-                  title={
-                    <span className="flex items-center gap-2">
-                      <Avatar name={column.barberName} size="sm" />
-                      {column.barberName}
-                    </span>
-                  }
-                  action={
-                    !isStaffOnly && (
-                      <Button size="sm" variant="ghost" onClick={() => openNewFor(column.barberId)}>
-                        + Agendar
-                      </Button>
-                    )
-                  }
-                />
-                {column.appointments.length === 0 ? (
-                  <p className="py-6 text-center text-[13px] text-fg-muted">Sem agendamentos.</p>
-                ) : (
-                  <ul className="flex flex-col gap-2">
-                    {column.appointments.map((appointment) => (
-                      <AppointmentRow
-                        key={appointment.id}
-                        appointment={appointment}
-                        timezone={data!.timezone}
-                        onCancel={() => setCancelTarget(appointment)}
-                        onMove={() => setMoveTarget(appointment)}
-                      />
-                    ))}
-                  </ul>
-                )}
-              </Card>
-            ))}
-
-            {day.barbers.length === 0 && (
-              <EmptyState message="Nenhum barbeiro ativo com agenda hoje." className="col-span-full" />
-            )}
+        {view === 'TIMELINE' && agenda && day && (
+          <div className="hidden lg:block">
+            <AgendaTimeline day={day} agenda={agenda} onOpenAppointment={setDrawerAppointment} />
           </div>
         )}
 
-        {/* ── Visão semana: só ≥ lg (regra de responsividade) ── */}
-        {view === 'WEEK' && data && (
-          <div className="hidden overflow-x-auto lg:block">
-            <div className="grid min-w-[980px] grid-cols-7 gap-3">
-              {data.days.map((weekDay) => (
-                <Card key={weekDay.date} tone="raised" className="gap-2">
-                  <p className="text-center text-[12px] font-semibold uppercase text-fg-muted">
-                    {WEEKDAY_LABELS[weekDay.weekday]?.slice(0, 3)} · {weekDay.date.slice(8, 10)}
-                  </p>
-                  <ul className="flex flex-col gap-1.5">
-                    {weekDay.barbers.flatMap((column) =>
-                      column.appointments.map((appointment) => (
-                        <li
-                          key={appointment.id}
-                          className="rounded-md bg-surface-2 px-2 py-1.5 text-[11px] text-fg"
-                        >
-                          <span className="font-semibold text-gold">
-                            {new Intl.DateTimeFormat('pt-BR', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              timeZone: data.timezone,
-                            }).format(new Date(appointment.startsAt))}
-                          </span>{' '}
-                          {appointment.clientName}
-                          <span className="block truncate text-fg-muted">{column.barberName}</span>
-                        </li>
-                      )),
-                    )}
-                    {weekDay.barbers.every((column) => column.appointments.length === 0) && (
-                      <li className="py-2 text-center text-[11px] text-fg-subtle">—</li>
-                    )}
-                  </ul>
-                </Card>
-              ))}
-            </div>
-          </div>
+        {view === 'MONTH' && (
+          <AgendaMonthGrid
+            month={monthQuery.data}
+            date={date}
+            loading={monthQuery.isLoading}
+            onOpenDay={goToDay}
+          />
         )}
       </div>
 
-      <AppointmentFormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        date={date}
-        barbers={data?.barberOptions ?? []}
-        fixedBarberId={isStaffOnly ? data?.barberOptions[0]?.id : modalBarberId}
+      <AppointmentDrawer
+        appointment={drawerAppointment}
+        timezone={agenda?.timezone ?? 'America/Sao_Paulo'}
+        onClose={() => setDrawerAppointment(null)}
+        onReschedule={(appointment) => {
+          setDrawerAppointment(null);
+          setRescheduling(appointment);
+          setFormBarberId(undefined);
+          setFormTime(undefined);
+          setFormOpen(true);
+        }}
       />
 
-      <MoveModal appointment={moveTarget} onClose={() => setMoveTarget(null)} />
+      <AppointmentFormModal
+        open={formOpen}
+        onClose={() => {
+          setFormOpen(false);
+          setRescheduling(null);
+          setFormClientId(null);
+        }}
+        date={date}
+        timezone={agenda?.timezone ?? 'America/Sao_Paulo'}
+        barbers={barberOptions}
+        fixedBarberId={isStaffOnly ? barberOptions[0]?.id : formBarberId}
+        defaultTime={formTime}
+        preselectedClientId={formClientId}
+        rescheduling={rescheduling}
+      />
 
-      <Modal
-        open={cancelTarget !== null}
-        onClose={() => setCancelTarget(null)}
-        title="Cancelar agendamento"
-        footer={
-          <div className="flex gap-2">
-            <Button variant="outline" fullWidth onClick={() => setCancelTarget(null)}>
-              Voltar
-            </Button>
-            <Button variant="danger" fullWidth loading={cancel.isPending} onClick={() => void confirmCancel()}>
-              Cancelar agendamento
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-sm text-fg-muted">
-          Tem certeza que quer cancelar o horário de{' '}
-          <strong className="text-fg">{cancelTarget?.clientName}</strong>? Esta ação não pode ser desfeita.
-        </p>
-      </Modal>
+      <BlockTimeModal
+        open={blockOpen}
+        onClose={() => setBlockOpen(false)}
+        date={date}
+        barberOptions={barberOptions}
+        fixedBarberId={isStaffOnly ? barberOptions[0]?.id : undefined}
+      />
     </DashboardChrome>
   );
 }
+
 /**
  * `useSearchParams()` (`?novo=1` da topbar, `?date=` da busca global) tira a
  * rota da renderização estática: sem um limite de Suspense o `next build`
  * falha no prerender — a mesma armadilha documentada em `configuracoes/page.tsx`.
- * O fallback repete a casca, então não há salto visual.
  */
 export default function AgendaPage() {
   return (
@@ -394,7 +269,10 @@ export default function AgendaPage() {
 function AgendaFallback() {
   return (
     <DashboardChrome activeKey="agenda">
-      <Skeleton className="h-64" />
+      <div className="flex flex-col gap-4.5">
+        <Skeleton className="h-10" />
+        <Skeleton className="h-[520px]" />
+      </div>
     </DashboardChrome>
   );
 }

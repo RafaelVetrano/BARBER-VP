@@ -32,6 +32,8 @@ import { GuestRiskService } from './guest-risk.service';
     GuestRiskService,
   ],
   exports: [
+    // `PublicPageService` sai do módulo pelo preview de Minha Página (fase 25).
+    PublicPageService,
     AvailabilityService,
     CatalogService,
     SubscriptionCoverageService,

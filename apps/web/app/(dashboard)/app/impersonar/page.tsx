@@ -52,6 +52,7 @@ function ImpersonarContent() {
             name: me.data.name,
             email: me.data.email,
             phone: me.data.phone,
+            avatarUrl: me.data.avatarUrl,
             isSuperAdmin: me.data.isSuperAdmin,
             hasClientAccount: me.data.hasClientAccount,
           },

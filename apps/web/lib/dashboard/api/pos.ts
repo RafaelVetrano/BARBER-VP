@@ -5,6 +5,7 @@ import { useEstablishmentAuth } from '@barbervp/ui';
 import type {
   AddOrderItemDto,
   ApplyOrderDiscountDto,
+  AssignOrderDto,
   CloseOrderDto,
   OpenOrderDto,
   OrderDetail,
@@ -24,10 +25,16 @@ function qs(query: object): string {
   return params.toString();
 }
 
-export function usePosCatalogQuery() {
+/**
+ * Catálogo do balcão. `enabled` porque ele só interessa com a comanda aberta:
+ * a lista de comandas não mostra serviço nem produto, e buscá-lo no load da
+ * página é uma requisição a mais concorrendo com a renovação de sessão.
+ */
+export function usePosCatalogQuery(options?: { enabled?: boolean }) {
   const { client } = useEstablishmentAuth();
   return useQuery({
     queryKey: ['pos-catalog'],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const { data } = await client.get<PosCatalogResponse>('/orders/catalog');
       return data;
@@ -35,10 +42,16 @@ export function usePosCatalogQuery() {
   });
 }
 
-export function useOrdersQuery(query: OrderListQuery) {
+/**
+ * `enabled` existe porque a aba "Todas" mantém as duas consultas montadas
+ * (abertas e fechadas) e as outras duas abas desligam a que não mostram —
+ * desmontar o hook perderia a página e a busca ao voltar.
+ */
+export function useOrdersQuery(query: OrderListQuery, options?: { enabled?: boolean }) {
   const { client } = useEstablishmentAuth();
   return useQuery({
     queryKey: ['orders', query],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const { data } = await client.get<OrderListResponse>(`/orders?${qs(query)}`);
       return data;
@@ -78,6 +91,19 @@ export function useOpenOrderMutation() {
       return data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
+  });
+}
+
+/** "trocar" do cabeçalho da comanda — cliente e/ou barbeiro. */
+export function useAssignOrderMutation(orderId: string) {
+  const { client } = useEstablishmentAuth();
+  const invalidate = useInvalidateOrder(orderId);
+  return useMutation({
+    mutationFn: async (dto: AssignOrderDto) => {
+      const { data } = await client.patch<OrderDetail>(`/orders/${orderId}`, dto);
+      return data;
+    },
+    onSuccess: invalidate,
   });
 }
 
@@ -166,6 +192,13 @@ export function useReopenOrderMutation() {
       const { data } = await client.post<OrderDetail>(`/orders/${id}/reopen`, dto);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
+    onSuccess: (order) => {
+      queryClient.invalidateQueries({ queryKey: ['order', order.id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // A reabertura desfaz baixa de estoque e comissão — as duas telas que
+      // leem esses números ficariam mostrando o mundo de antes.
+      queryClient.invalidateQueries({ queryKey: ['pos-catalog'] });
+      queryClient.invalidateQueries({ queryKey: ['commissions'] });
+    },
   });
 }

@@ -14,6 +14,7 @@ import type {
   CloseCashRegisterDto,
   CreateAccountPayableDto,
   CreateAccountReceivableDto,
+  CreateCashMovementDto,
   OpenCashRegisterDto,
   UpsertBankAccountDto,
 } from '@barbervp/types';
@@ -45,6 +46,19 @@ export function useOpenCashMutation() {
   return useMutation({
     mutationFn: async (dto: OpenCashRegisterDto) => {
       const { data } = await client.post<CashRegisterStatusResponse>('/finance/cash-register/open', dto);
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cash-register'] }),
+  });
+}
+
+/** "+ Entrada avulsa" / "+ Saída/Sangria" — devolve o caixa já recalculado. */
+export function useCreateCashMovementMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (dto: CreateCashMovementDto) => {
+      const { data } = await client.post<CashRegisterStatusResponse>('/finance/cash-register/movements', dto);
       return data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cash-register'] }),
@@ -99,7 +113,10 @@ export function usePayPayableMutation() {
       const { data } = await client.patch<AccountPayableItem>(`/finance/payables/${id}/pay`);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payables'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['payables'] });
+      void queryClient.invalidateQueries({ queryKey: ['cash-flow'] });
+    },
   });
 }
 
@@ -136,7 +153,10 @@ export function useReceiveReceivableMutation() {
       const { data } = await client.patch<AccountReceivableItem>(`/finance/receivables/${id}/receive`);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['receivables'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['receivables'] });
+      void queryClient.invalidateQueries({ queryKey: ['cash-flow'] });
+    },
   });
 }
 

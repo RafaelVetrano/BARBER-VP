@@ -146,7 +146,7 @@ export class NotificationsService {
             ? '1 produto está no estoque mínimo'
             : `${lowStockCount} produtos estão no estoque mínimo`,
         createdAt: window.from.toISOString(),
-        href: '/app/servicos-produtos',
+        href: '/app/servicos-produtos?tab=produtos',
       });
     }
 

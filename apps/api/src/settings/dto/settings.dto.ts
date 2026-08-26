@@ -1,8 +1,11 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import type { MyPageImageSlot } from '@barbervp/types';
+import { TENANT_TIMEZONES } from '@barbervp/types';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsPositive,
@@ -24,15 +27,39 @@ class BusinessHourInputDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(1_440)
   opensAt!: number;
 
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(1_440)
   closesAt!: number;
 
   @IsBoolean()
   closed!: boolean;
+
+  /**
+   * Almoço da CASA. Nulo os dois = não fecha. A coerência do par e a janela
+   * são conferidas no serviço (mensagem por dia) e no banco (duas CHECKs).
+   */
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1_440)
+  lunchStart!: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1_440)
+  lunchEnd!: number | null;
 }
 
 export class UpdateBarbershopSettingsDto {
@@ -57,9 +84,10 @@ export class UpdateBarbershopSettingsDto {
   @IsString()
   phone?: string | null;
 
-  @ApiPropertyOptional()
+  /** Só os fusos que o seletor da tela oferece (`TENANT_TIMEZONES`). */
+  @ApiPropertyOptional({ enum: TENANT_TIMEZONES.map((tz) => tz.value) })
   @IsOptional()
-  @IsString()
+  @IsIn(TENANT_TIMEZONES.map((tz) => tz.value))
   timezone?: string;
 
   @ApiPropertyOptional({ type: [BusinessHourInputDto] })
@@ -97,25 +125,34 @@ export class UpdatePreferencesDto {
   @IsBoolean()
   bloquearFaltasAtivo?: boolean;
 
-  @ApiPropertyOptional({ minimum: 1 })
+  @ApiPropertyOptional({ minimum: 1, maximum: 10 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  @Max(10)
   bloquearFaltasQtd?: number;
 
-  @ApiPropertyOptional({ minimum: 0 })
+  /**
+   * Minutos. O seletor da tela oferece 30min–12h (`ANTECEDENCIA_OPTIONS`), mas
+   * a validação é uma FAIXA, não a lista: um tenant antigo pode ter um valor
+   * fora do menu e precisa continuar conseguindo salvar o resto da aba.
+   */
+  @ApiPropertyOptional({ minimum: 0, maximum: 10_080 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(10_080)
   antecedenciaMinima?: number;
 
-  @ApiPropertyOptional({ minimum: 0 })
+  /** Horas. Mesma regra de faixa da antecedência. */
+  @ApiPropertyOptional({ minimum: 0, maximum: 168 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(168)
   cancelamentoHoras?: number;
 
   @ApiPropertyOptional({
@@ -129,31 +166,6 @@ export class UpdatePreferencesDto {
   @IsInt()
   @Min(0)
   monthlyGoalCents?: number | null;
-}
-
-export class PriceCalculatorDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  custoCents!: number;
-
-  @Type(() => Number)
-  @IsPositive()
-  margemPercent!: number;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  custosFixosCents!: number;
-
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  atendimentosMes!: number;
-
-  @Type(() => Number)
-  @Min(0)
-  comissaoPercent!: number;
 }
 
 export class UpdateMyPageDto {
@@ -198,8 +210,21 @@ export class UpdateMyPageDto {
   showBusinessHours?: boolean;
 }
 
-export class AddTenantPhotoDto {
-  @IsString()
-  @MinLength(4)
-  url!: string;
+/**
+ * Slot de imagem única da página (`POST|DELETE /my-page/images/:slot`).
+ *
+ * Validado como DTO de parâmetro, e não como string solta, para que
+ * `/my-page/images/qualquer-coisa` responda 400 e nunca chegue ao storage com
+ * uma pasta inventada pelo cliente.
+ */
+export class MyPageImageSlotParam {
+  @ApiProperty({ enum: ['logo', 'cover'] })
+  @IsIn(['logo', 'cover'])
+  slot!: MyPageImageSlot;
+}
+
+export class UpdateMyPageReviewDto {
+  @ApiProperty({ description: '`true` publica a avaliação na página pública.' })
+  @IsBoolean()
+  published!: boolean;
 }

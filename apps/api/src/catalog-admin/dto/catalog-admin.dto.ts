@@ -4,12 +4,16 @@ import {
   ArrayUnique,
   IsArray,
   IsBooleanString,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
   Length,
+  Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
+import { SERVICE_COLORS } from '@barbervp/types';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 
 export class ServiceListQueryDto extends PaginationQueryDto {
@@ -59,6 +63,24 @@ export class UpsertServiceDto {
   @IsString()
   @Length(0, 60)
   category?: string | null;
+
+  // A cor não é texto livre: são as 6 do design system. Aceitar um hex
+  // qualquer deixaria o dono pintar um serviço de preto sobre fundo preto na
+  // agenda, e não há tela para desfazer isso.
+  @ApiPropertyOptional({ enum: SERVICE_COLORS })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsIn(SERVICE_COLORS as unknown as string[])
+  color?: string | null;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 10_000, description: 'Basis points; null = usa a regra do barbeiro' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10_000)
+  commissionBps?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -150,4 +172,14 @@ export class UpsertProductDto {
   @IsOptional()
   @Type(() => Boolean)
   active?: boolean;
+}
+
+/** "Repor estoque" — soma unidades ao que já existe, nunca substitui. */
+export class RestockProductDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100_000 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100_000)
+  quantity!: number;
 }

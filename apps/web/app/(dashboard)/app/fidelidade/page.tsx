@@ -1,265 +1,327 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button, Card, CardHeader, EmptyState, Input, PlusIcon, ResponsiveTable, Switch, Tabs, useToast, type TableColumn } from '@barbervp/ui';
+import { useRouter } from 'next/navigation';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  PlusIcon,
+  ResponsiveTable,
+  Skeleton,
+  useEstablishmentAuth,
+  useToast,
+  type BadgeTone,
+  type MenuItem,
+  type TableColumn,
+} from '@barbervp/ui';
 import { formatBRL } from '@barbervp/types';
-import type { ClientPlanAdminItem, LoyaltyClientBalance, RaffleItem, SubscriberItem } from '@barbervp/types';
+import type {
+  ClientPlanAdminItem,
+  SubscriberItem,
+  SubscriptionPaymentStatus,
+} from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
 import { FeatureLocked } from '@/components/dashboard/feature-locked';
-import { isFeatureGateError } from '@/lib/dashboard/feature-error';
+import { BlockError, Panel } from '@/components/dashboard/blocks';
 import { ClientPlanModal } from '@/components/dashboard/loyalty/client-plan-modal';
-import { RaffleModal } from '@/components/dashboard/loyalty/raffle-modal';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { isFeatureGateError } from '@/lib/dashboard/feature-error';
 import {
-  useArchiveClientPlanMutation,
   useClientPlansQuery,
-  useDrawRaffleMutation,
-  useLoyaltyClientsQuery,
-  useLoyaltyProgramQuery,
-  useRafflesQuery,
+  useReactivateClientPlanMutation,
+  useSubscriberActionMutation,
   useSubscribersQuery,
-  useUpdateLoyaltyProgramMutation,
 } from '@/lib/dashboard/api/loyalty';
 import { useServicesQuery } from '@/lib/dashboard/api/catalog';
 
-const TABS = [
-  { value: 'pontos', label: 'Pontos' },
-  { value: 'sorteios', label: 'Sorteios' },
-  { value: 'assinaturas', label: 'Assinaturas' },
-] as const;
-type LoyaltyTab = (typeof TABS)[number]['value'];
+/** `assinaturasLocked` do protótipo (l.1508–1512). */
+const LOCKED_BULLETS = [
+  'Clientes mensalistas com cobrança recorrente',
+  'Controle de usos do plano por mês',
+  'Renovação automática',
+];
 
-function PontosTab() {
-  const programQuery = useLoyaltyProgramQuery();
-  const clientsQuery = useLoyaltyClientsQuery();
-  const updateProgram = useUpdateLoyaltyProgramMutation();
+const PAYMENT_LABEL: Record<SubscriptionPaymentStatus, string> = {
+  PAID: 'Pago',
+  PENDING: 'Pendente',
+  OVERDUE: 'Atrasado',
+  PAUSED: 'Pausado',
+};
 
-  const [gastoPorPonto, setGastoPorPonto] = useState('');
-  const [pontosParaDesconto, setPontosParaDesconto] = useState('');
-  const [valorDesconto, setValorDesconto] = useState('');
+/** As cores da coluna "Pagamento" (`STATUS_ASSIN_COLORS`, protótipo l.6191). */
+const PAYMENT_TONE: Record<SubscriptionPaymentStatus, BadgeTone> = {
+  PAID: 'success',
+  PENDING: 'warning',
+  OVERDUE: 'danger',
+  PAUSED: 'neutral',
+};
 
-  const program = programQuery.data;
-
-  if (isFeatureGateError(programQuery.error)) {
-    return (
-      <FeatureLocked
-        title="Programa de fidelidade"
-        description="Pontos por atendimento, resgate de desconto e histórico por cliente — disponível a partir do plano Profissional."
-        benefits={['Pontos automáticos a cada comanda fechada', 'Resgate configurável (ex.: 100 pts = R$10 de desconto)', 'Saldo por cliente, sem planilha']}
-        minPlanLabel="Profissional"
-      />
-    );
-  }
-
-  const clientColumns: TableColumn<LoyaltyClientBalance>[] = [
-    { key: 'name', header: 'Cliente', mobile: 'title', render: (row) => row.name },
-    { key: 'balance', header: 'Saldo', mobile: 'meta', render: (row) => `${row.balance} pts` },
-    { key: 'earned', header: 'Último ganho', mobile: 'subtitle', render: (row) => (row.lastEarnedAt ? new Date(row.lastEarnedAt).toLocaleDateString('pt-BR') : '—') },
-    { key: 'redeemed', header: 'Último resgate', mobile: 'meta', render: (row) => (row.lastRedeemedAt ? new Date(row.lastRedeemedAt).toLocaleDateString('pt-BR') : '—') },
-  ];
-
-  return (
-    <div className="flex flex-col gap-5">
-      <Card>
-        <CardHeader title="Configuração do programa" />
-        <div className="mt-3 flex flex-col gap-3">
-          <label className="flex items-center justify-between">
-            <span className="text-sm text-fg">Programa ativo</span>
-            <Switch checked={program?.active ?? false} onChange={(e) => updateProgram.mutate({ active: e.target.checked })} />
-          </label>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Input
-              label="Centavos gastos por ponto"
-              placeholder={String(program?.gastoPorPonto ?? 100)}
-              value={gastoPorPonto}
-              onChange={(e) => setGastoPorPonto(e.target.value)}
-              onBlur={() => gastoPorPonto && updateProgram.mutate({ gastoPorPonto: Number(gastoPorPonto) })}
-            />
-            <Input
-              label="Pontos p/ desconto"
-              placeholder={String(program?.pontosParaDesconto ?? 100)}
-              value={pontosParaDesconto}
-              onChange={(e) => setPontosParaDesconto(e.target.value)}
-              onBlur={() => pontosParaDesconto && updateProgram.mutate({ pontosParaDesconto: Number(pontosParaDesconto) })}
-            />
-            <Input
-              label="Valor do desconto (R$)"
-              placeholder={program ? (program.valorDesconto / 100).toFixed(2) : '10,00'}
-              value={valorDesconto}
-              onChange={(e) => setValorDesconto(e.target.value)}
-              onBlur={() => {
-                if (!valorDesconto) return;
-                updateProgram.mutate({ valorDesconto: Math.round(Number(valorDesconto.replace(',', '.')) * 100) });
-              }}
-            />
-          </div>
-          {program && (
-            <p className="text-xs text-fg-muted">
-              A cada R$ {(program.gastoPorPonto / 100).toFixed(2)} gastos → 1 ponto. {program.pontosParaDesconto} pontos
-              resgatam {formatBRL(program.valorDesconto)} de desconto.
-            </p>
-          )}
-        </div>
-      </Card>
-
-      <ResponsiveTable
-        columns={clientColumns}
-        rows={clientsQuery.data ?? []}
-        getRowKey={(row) => row.clientId}
-        caption="Saldo por cliente"
-        empty={<EmptyState message="Nenhum ponto lançado ainda." />}
-      />
-    </div>
-  );
+/** `planoServicosLabel` do protótipo (l.4594): "4× Corte/mês, 2× Barba/mês". */
+function planItemsLabel(plan: ClientPlanAdminItem): string {
+  if (plan.items.length === 0) return '—';
+  return plan.items.map((item) => `${item.quota}× ${item.serviceName}/mês`).join(', ');
 }
 
-function SorteiosTab() {
-  const { toast } = useToast();
-  const rafflesQuery = useRafflesQuery();
-  const draw = useDrawRaffleMutation();
-  const [modalOpen, setModalOpen] = useState(false);
+const dateLabel = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
 
-  if (isFeatureGateError(rafflesQuery.error)) {
+/**
+ * Aba **Fidelidade** (`Dashboard.dc.html` l.1497–1623).
+ *
+ * O protótipo foi revisado e ficou com UMA área: Assinaturas. As sub-abas
+ * "Pontos" e "Sorteios" saíram do desenho — e saíram daqui junto, em vez de
+ * serem completadas. Os pontos seguem vivos no produto (a comanda resgata, a
+ * aba Clientes mostra o saldo); o que sumiu foi a tela de configuração deles.
+ *
+ * A aba inteira é do plano Avançado (`fidelidadeAssinaturas`) e o paywall é
+ * INLINE, como no desenho (l.1503) — não é um overlay que embaça a tela.
+ */
+export default function FidelidadePage() {
+  const { toast } = useToast();
+  const router = useRouter();
+  const { activeMembership } = useEstablishmentAuth();
+  const isBarberRole = activeMembership?.role === 'BARBER';
+
+  // `BARBER` toma 403 de PAPEL (não de plano) em `/loyalty/*`, e o nav nem
+  // oferece o item — o `DashboardFuncionario.dc.html` não tem Fidelidade. Sem
+  // esta guarda, quem digita a URL vê dois blocos de erro genérico e um botão
+  // "Novo plano" que só sabe devolver 403.
+  const plansQuery = useClientPlansQuery({ enabled: !isBarberRole });
+  const subscribersQuery = useSubscribersQuery({ enabled: !isBarberRole });
+  // O catálogo só é preciso dentro do modal; pedir junto evita o select vazio
+  // no primeiro frame de quem clica em "Novo plano".
+  const servicesQuery = useServicesQuery({ active: true, perPage: 100 });
+  const reactivate = useReactivateClientPlanMutation();
+  const subscriberAction = useSubscriberActionMutation();
+
+  const [planModal, setPlanModal] = useState<{ open: boolean; plan: ClientPlanAdminItem | null }>({
+    open: false,
+    plan: null,
+  });
+  const [pendingAction, setPendingAction] = useState<
+    { row: SubscriberItem; action: 'pause' | 'resume' | 'cancel' } | null
+  >(null);
+
+  if (isBarberRole) {
     return (
-      <FeatureLocked
-        title="Sorteios automáticos"
-        description="Crie campanhas com cupons por pontos e sorteie o vencedor direto pelo painel — disponível a partir do plano Profissional."
-        benefits={['Aviso automático por WhatsApp', 'Cupons proporcionais aos pontos de fidelidade', 'Histórico de sorteios encerrados']}
-        minPlanLabel="Profissional"
-      />
+      <DashboardChrome activeKey="fidelidade">
+        <h1 className="sr-only">Fidelidade</h1>
+        <EmptyState
+          message="As assinaturas são do dono e do gerente."
+          description="Quando você atende um assinante, o uso do plano é debitado na comanda — é lá que a assinatura aparece para você."
+          action={<Button onClick={() => router.push('/app/comandas')}>Ir para as comandas</Button>}
+        />
+      </DashboardChrome>
     );
   }
 
-  const raffles = rafflesQuery.data ?? [];
-  const active = raffles.filter((r) => r.status === 'ACTIVE');
-  const finished = raffles.filter((r) => r.status !== 'ACTIVE');
+  // Um 403 do gate não é "nenhum plano cadastrado": sem tratar, o Essencial
+  // veria uma tela vazia e nenhuma pista do motivo (regra 3 do enunciado).
+  if (isFeatureGateError(plansQuery.error)) {
+    return (
+      <DashboardChrome activeKey="fidelidade">
+        <h1 className="sr-only">Fidelidade</h1>
+        <FeatureLocked
+          title="Disponível no plano Avançado"
+          description="Venda planos mensais (ex.: 4 cortes/mês), acompanhe o uso do ciclo de cada assinante e tenha receita previsível todo mês."
+          benefits={LOCKED_BULLETS}
+          minPlanLabel="Avançado"
+        />
+      </DashboardChrome>
+    );
+  }
 
-  const handleDraw = async (raffle: RaffleItem) => {
-    if (!confirm(`Sortear o vencedor de "${raffle.name}" agora?`)) return;
+  const plans = plansQuery.data ?? [];
+  const subscribers = subscribersQuery.data ?? [];
+
+  const handleReactivate = async (plan: ClientPlanAdminItem) => {
     try {
-      const result = await draw.mutateAsync(raffle.id);
-      toast({ message: `Vencedor: ${result.winnerName}`, tone: 'success' });
+      await reactivate.mutateAsync(plan.id);
+      toast({ message: 'Plano reativado.', tone: 'success' });
     } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível sortear.', tone: 'danger' });
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível reativar o plano.',
+        tone: 'danger',
+      });
     }
   };
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
-        <Button size="sm" iconLeft={<PlusIcon size={16} />} onClick={() => setModalOpen(true)}>
-          Novo sorteio
-        </Button>
-      </div>
+  const runSubscriberAction = async () => {
+    if (!pendingAction) return;
+    const { row, action } = pendingAction;
+    try {
+      await subscriberAction.mutateAsync({ id: row.subscriptionId, action });
+      toast({
+        message:
+          action === 'pause'
+            ? `Assinatura de ${row.clientName} pausada.`
+            : action === 'resume'
+              ? `Assinatura de ${row.clientName} retomada.`
+              : `Assinatura de ${row.clientName} cancelada.`,
+        tone: 'success',
+      });
+      setPendingAction(null);
+    } catch (error) {
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível concluir a ação.',
+        tone: 'danger',
+      });
+    }
+  };
 
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-semibold text-fg-muted">Ativos</p>
-        {active.length === 0 && <EmptyState message="Nenhum sorteio ativo." />}
-        {active.map((raffle) => (
-          <Card key={raffle.id}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-display text-base font-bold text-fg">{raffle.name}</p>
-                <p className="text-xs text-fg-muted">{raffle.prize} · {raffle.participants} participantes</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => void handleDraw(raffle)}>
-                Sortear agora
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-semibold text-fg-muted">Encerrados</p>
-        {finished.length === 0 && <EmptyState message="Nenhum sorteio encerrado ainda." />}
-        {finished.map((raffle) => (
-          <Card key={raffle.id}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-display text-base font-bold text-fg">{raffle.name}</p>
-                <p className="text-xs text-fg-muted">{raffle.prize}</p>
-              </div>
-              <Badge tone="gold">Vencedor: {raffle.winnerName ?? '—'}</Badge>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <RaffleModal open={modalOpen} onClose={() => setModalOpen(false)} />
-    </div>
-  );
-}
-
-function AssinaturasTab() {
-  const plansQuery = useClientPlansQuery();
-  const subscribersQuery = useSubscribersQuery();
-  const servicesQuery = useServicesQuery({ active: true, perPage: 100 });
-  const archivePlan = useArchiveClientPlanMutation();
-  const [planModal, setPlanModal] = useState<{ open: boolean; plan: ClientPlanAdminItem | null }>({ open: false, plan: null });
-
-  if (isFeatureGateError(plansQuery.error)) {
-    return (
-      <FeatureLocked
-        title="Assinaturas de clientes"
-        description="Venda planos mensais (ex.: 4 cortes/mês) e acompanhe o uso do ciclo de cada assinante — disponível no plano Avançado."
-        benefits={['Cobrança recorrente automática', 'Cliente vê o uso do plano na própria conta', 'Ideal para previsibilidade de caixa']}
-        minPlanLabel="Avançado"
-      />
-    );
-  }
-
-  const subscriberColumns: TableColumn<SubscriberItem>[] = [
-    { key: 'client', header: 'Cliente', mobile: 'title', render: (row) => row.clientName },
-    { key: 'plan', header: 'Plano', mobile: 'subtitle', render: (row) => row.planName },
+  const columns: TableColumn<SubscriberItem>[] = [
     {
-      key: 'usage',
-      header: 'Uso do ciclo',
-      mobile: 'meta',
-      render: (row) => row.usages.map((u) => `${u.serviceName} ${u.used}/${u.quota}`).join(' · '),
+      key: 'cliente',
+      header: 'Cliente',
+      mobile: 'title',
+      render: (row) => <span className="font-semibold">{row.clientName}</span>,
     },
     {
-      key: 'status',
-      header: 'Status',
+      key: 'plano',
+      header: 'Plano',
+      mobile: 'subtitle',
+      render: (row) => <span className="text-fg-muted">{row.planName}</span>,
+    },
+    {
+      key: 'usos',
+      header: 'Usos no mês',
       mobile: 'meta',
-      render: (row) => <Badge tone={row.status === 'ACTIVE' ? 'success' : row.status === 'PAST_DUE' ? 'danger' : 'neutral'}>{row.status}</Badge>,
+      render: (row) => <UsageMeter used={row.usedTotal} quota={row.quotaTotal} usages={row.usages} />,
+    },
+    {
+      key: 'pagamento',
+      header: 'Pagamento',
+      mobile: 'meta',
+      render: (row) => (
+        <Badge tone={PAYMENT_TONE[row.paymentStatus]}>{PAYMENT_LABEL[row.paymentStatus]}</Badge>
+      ),
+    },
+    {
+      key: 'proxima',
+      header: 'Próxima cobrança',
+      mobile: 'meta',
+      render: (row) => <span className="text-fg-muted">{dateLabel(row.nextChargeAt)}</span>,
     },
   ];
 
+  // O menu do protótipo (l.1583) tem Pausar e Cancelar. "Retomar" entra porque
+  // pausar aqui cria um estado que, sem ele, não teria volta pelo painel.
+  const rowActions = (row: SubscriberItem): MenuItem[] => [
+    row.status === 'PAUSED'
+      ? { label: 'Retomar', onSelect: () => setPendingAction({ row, action: 'resume' }) }
+      : { label: 'Pausar', onSelect: () => setPendingAction({ row, action: 'pause' }) },
+    { label: 'Cancelar', destructive: true, onSelect: () => setPendingAction({ row, action: 'cancel' }) },
+  ];
+
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
-        <Button size="sm" iconLeft={<PlusIcon size={16} />} onClick={() => setPlanModal({ open: true, plan: null })}>
-          Novo plano
-        </Button>
-      </div>
+    <DashboardChrome activeKey="fidelidade">
+      <div className="flex flex-col gap-5">
+        <h1 className="font-display text-[15px] font-semibold text-fg">Assinaturas</h1>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {(plansQuery.data ?? []).map((plan) => (
-          <Card key={plan.id}>
-            <CardHeader title={plan.name} description={`${formatBRL(plan.priceCents)}/mês`} />
-            <p className="mt-2 text-xs text-fg-muted">{plan.items.map((i) => `${i.quota}× ${i.serviceName}`).join(', ')}</p>
-            <p className="mt-2 text-sm font-semibold text-fg">{plan.subscriberCount} assinante(s)</p>
-            <div className="mt-3 flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setPlanModal({ open: true, plan })}>
-                Editar
-              </Button>
-              {plan.active && (
-                <Button size="sm" variant="ghost" onClick={() => archivePlan.mutate(plan.id)}>
-                  Arquivar
-                </Button>
-              )}
-            </div>
-          </Card>
-        ))}
-      </div>
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            iconLeft={<PlusIcon size={16} />}
+            onClick={() => setPlanModal({ open: true, plan: null })}
+          >
+            Novo plano
+          </Button>
+        </div>
 
-      <ResponsiveTable
-        columns={subscriberColumns}
-        rows={subscribersQuery.data ?? []}
-        getRowKey={(row) => row.subscriptionId}
-        caption="Assinantes"
-        empty={<EmptyState message="Nenhum assinante ainda." />}
-      />
+        {/* ── Cards dos planos ─────────────────────────────────────────── */}
+        {plansQuery.isPending ? (
+          <PlanCardsSkeleton />
+        ) : plansQuery.isError ? (
+          <BlockError label="os planos de assinatura" onRetry={() => void plansQuery.refetch()} />
+        ) : plans.length === 0 ? (
+          <EmptyState
+            message="Nenhum plano de assinatura ainda."
+            description="Crie o primeiro plano para vender mensalidades e ter receita recorrente."
+            action={
+              <Button onClick={() => setPlanModal({ open: true, plan: null })}>Criar plano</Button>
+            }
+          />
+        ) : (
+          <div
+            className="grid gap-4"
+            style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))' }}
+          >
+            {plans.map((plan) => (
+              <article
+                key={plan.id}
+                className={`flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-[18px] ${plan.active ? '' : 'opacity-60'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-[15px] font-semibold text-fg">{plan.name}</h2>
+                  {!plan.active && <Badge tone="neutral">Arquivado</Badge>}
+                </div>
+
+                <p className="font-display text-[22px] font-bold text-gold">
+                  {formatBRL(plan.priceCents)}
+                  <span className="text-[13px] font-normal text-fg-muted">/mês</span>
+                </p>
+
+                <p className="text-[13px] text-fg-muted">{planItemsLabel(plan)}</p>
+
+                <hr className="my-1 border-border" />
+
+                <div className="flex justify-between text-[13px] font-medium">
+                  <span>
+                    {plan.subscriberCount} {plan.subscriberCount === 1 ? 'assinante' : 'assinantes'}
+                  </span>
+                  <span className="font-semibold text-success">MRR {formatBRL(plan.mrrCents)}</span>
+                </div>
+
+                {plan.active ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-1 self-start"
+                    onClick={() => setPlanModal({ open: true, plan })}
+                  >
+                    Editar
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-1 self-start text-gold"
+                    loading={reactivate.isPending && reactivate.variables === plan.id}
+                    onClick={() => void handleReactivate(plan)}
+                  >
+                    Reativar
+                  </Button>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
+        {/* ── Tabela de assinantes ─────────────────────────────────────── */}
+        {subscribersQuery.isPending ? (
+          <Skeleton className="h-64 rounded-xl" />
+        ) : subscribersQuery.isError ? (
+          <BlockError label="os assinantes" onRetry={() => void subscribersQuery.refetch()} />
+        ) : (
+          <Panel>
+            <ResponsiveTable
+              columns={columns}
+              rows={subscribers}
+              getRowKey={(row) => row.subscriptionId}
+              caption="Assinantes ativos, uso do ciclo e situação de pagamento"
+              actions={rowActions}
+              getActionsLabel={(row) => `Ações da assinatura de ${row.clientName}`}
+              empty={
+                <EmptyState
+                  message="Nenhum assinante ainda."
+                  description="Quando um cliente assinar um plano na página pública, ele aparece aqui com o uso do ciclo."
+                />
+              }
+            />
+          </Panel>
+        )}
+      </div>
 
       <ClientPlanModal
         open={planModal.open}
@@ -267,22 +329,92 @@ function AssinaturasTab() {
         plan={planModal.plan}
         services={servicesQuery.data?.data ?? []}
       />
-    </div>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        onClose={() => setPendingAction(null)}
+        title={
+          pendingAction?.action === 'pause'
+            ? 'Pausar assinatura'
+            : pendingAction?.action === 'resume'
+              ? 'Retomar assinatura'
+              : 'Cancelar assinatura'
+        }
+        description={subscriberActionText(pendingAction)}
+        confirmLabel={
+          pendingAction?.action === 'pause'
+            ? 'Pausar'
+            : pendingAction?.action === 'resume'
+              ? 'Retomar'
+              : 'Cancelar assinatura'
+        }
+        cancelLabel="Voltar"
+        tone={pendingAction?.action === 'cancel' ? 'danger' : 'primary'}
+        busy={subscriberAction.isPending}
+        onConfirm={() => void runSubscriberAction()}
+      />
+    </DashboardChrome>
   );
 }
 
-export default function FidelidadePage() {
-  const [tab, setTab] = useState<LoyaltyTab>('pontos');
+/** A barrinha da coluna "Usos no mês" (protótipo l.1571–1577). */
+function UsageMeter({
+  used,
+  quota,
+  usages,
+}: {
+  used: number;
+  quota: number;
+  usages: SubscriberItem['usages'];
+}) {
+  const pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+  // O detalhe por serviço não cabe na barra, mas quem passa o mouse (ou usa
+  // leitor de tela) precisa saber de que serviços o saldo é feito.
+  const detail = usages.map((usage) => `${usage.serviceName} ${usage.used}/${usage.quota}`).join(' · ');
 
   return (
-    <DashboardChrome activeKey="fidelidade">
-      <div className="flex flex-col gap-5">
-        <h1 className="font-display text-xl font-bold text-fg">Fidelidade</h1>
-        <Tabs label="Fidelidade" variant="segmented" value={tab} onChange={(v) => setTab(v as LoyaltyTab)} items={TABS.map((t) => ({ value: t.value, label: t.label }))} />
-        {tab === 'pontos' && <PontosTab />}
-        {tab === 'sorteios' && <SorteiosTab />}
-        {tab === 'assinaturas' && <AssinaturasTab />}
-      </div>
-    </DashboardChrome>
+    <span className="flex items-center gap-2" title={detail || undefined}>
+      <span className="w-8 text-xs font-semibold tabular-nums">
+        {used}/{quota}
+      </span>
+      <span
+        role="progressbar"
+        aria-valuenow={used}
+        aria-valuemin={0}
+        aria-valuemax={quota}
+        aria-label={`Usos do ciclo: ${detail || `${used} de ${quota}`}`}
+        className="h-1.5 w-[70px] overflow-hidden rounded-full bg-border"
+      >
+        <span className="block h-full bg-gold" style={{ width: `${pct}%` }} />
+      </span>
+    </span>
+  );
+}
+
+function subscriberActionText(
+  pending: { row: SubscriberItem; action: 'pause' | 'resume' | 'cancel' } | null,
+): string {
+  if (!pending) return '';
+  const name = pending.row.clientName;
+  if (pending.action === 'pause') {
+    return `A assinatura de ${name} para de faturar e o saldo do ciclo fica congelado até ser retomada.`;
+  }
+  if (pending.action === 'resume') {
+    return `A assinatura de ${name} volta a faturar. Se o ciclo pausado já venceu, um ciclo novo começa com a cobrança e o saldo do zero.`;
+  }
+  return `A assinatura de ${name} é encerrada agora: ele perde os usos restantes do ciclo e não há nova cobrança. Não dá para desfazer.`;
+}
+
+/** Mesma altura dos cards finais — carregar não pode empurrar a tabela. */
+function PlanCardsSkeleton() {
+  return (
+    <div
+      className="grid gap-4"
+      style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))' }}
+    >
+      {Array.from({ length: 3 }, (_, index) => (
+        <Skeleton key={index} className="h-[214px] rounded-xl" />
+      ))}
+    </div>
   );
 }

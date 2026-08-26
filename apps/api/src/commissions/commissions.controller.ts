@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { ApiBearerAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import type {
   CommissionPeriodResponse,
   CommissionRuleItem,
@@ -11,9 +12,11 @@ import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.
 import type { AuthPrincipal, RequestContext } from '../common/types/request-context';
 import { StaffScopeService } from '../staff-agenda/staff-scope.service';
 import { CommissionsService } from './commissions.service';
+import { CommissionReportService } from './commission-report.service';
 import {
   ClosePeriodDto,
   CommissionPeriodQueryDto,
+  CommissionReportQueryDto,
   CreateValeDto,
   UpsertCommissionRuleDto,
 } from './dto/commissions.dto';
@@ -31,6 +34,7 @@ import {
 export class CommissionsController {
   constructor(
     private readonly commissions: CommissionsService,
+    private readonly reports: CommissionReportService,
     private readonly scopes: StaffScopeService,
   ) {}
 
@@ -67,14 +71,39 @@ export class CommissionsController {
   }
 
   @Get('period')
-  @ApiOperation({ summary: 'Extrato de comissão do período (mês)' })
+  @ApiOperation({ summary: 'Extrato de comissão do período (semana ou mês)' })
   async period(
     @Query() query: CommissionPeriodQueryDto,
     @CurrentTenant('id') tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
   ): Promise<CommissionPeriodResponse> {
     const scope = await this.scopes.resolve(tenantId, principal);
-    return this.commissions.period(tenantId, query.month, scope);
+    return this.commissions.period(tenantId, query, scope);
+  }
+
+  /**
+   * "Baixar PDF" do `modalPdfOpen`. `BARBER` passa por aqui — mas o extrato
+   * que alimenta o relatório já vem filtrado pelo `StaffScope`, então pedir o
+   * `barberId` de um colega devolve 404, não o relatório dele.
+   */
+  @Get('period/report.pdf')
+  @Header('Cache-Control', 'no-store')
+  @ApiProduces('application/pdf')
+  @ApiOperation({ summary: 'Relatório de comissão de um barbeiro, em PDF' })
+  async report(
+    @Query() query: CommissionReportQueryDto,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Res() response: Response,
+  ): Promise<void> {
+    const scope = await this.scopes.resolve(tenantId, principal);
+    const period = await this.commissions.period(tenantId, query, scope);
+    const report = await this.reports.build(tenantId, query.barberId, period);
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${report.filename}"`);
+    response.setHeader('Content-Length', report.body.length);
+    response.end(report.body);
   }
 
   @Post('period/close')

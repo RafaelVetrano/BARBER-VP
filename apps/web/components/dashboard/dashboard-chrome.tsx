@@ -54,9 +54,12 @@ const ICONS: Record<string, ReactNode> = {
  * (`LOCKED_NAV_KEYS` do `Dashboard.dc.html`). O item continua clicável: quem
  * decide o 403 é o servidor, aqui o cadeado só antecipa a informação.
  */
-const NAV_FEATURE: Record<string, 'comissoes' | 'fidelidadePontos'> = {
+const NAV_FEATURE: Record<string, 'comissoes' | 'fidelidadeAssinaturas'> = {
   comissoes: 'comissoes',
-  fidelidade: 'fidelidadePontos',
+  // A aba Fidelidade ficou só com Assinaturas (agente 21), que é do Avançado —
+  // o cadeado tem de seguir o gate REAL do conteúdo, não o `fidelidadePontos`
+  // das sub-abas que saíram do desenho.
+  fidelidade: 'fidelidadeAssinaturas',
 };
 
 export interface DashboardChromeProps {

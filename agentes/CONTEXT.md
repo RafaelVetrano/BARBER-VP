@@ -1,10 +1,163 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-21 — fase 13 (auditoria 1:1 da tela Dashboard)
-concluída: a `/app` foi reconstruída contra `Dashboard.dc.html` linha a linha —
-topbar completa, 6 KPIs, gráficos, ranking, próximos atendimentos e faixa de
-alertas —, com `GET /dashboard/overview` alimentando tudo. Suíte: 81 unit ·
-141 e2e · 111 isolamento.
+Atualizado por último: 2026-08-25 — **agente 27 (auditoria 1:1 da tela Meu
+perfil)** concluído: a `/app/meu-perfil` foi reconstruída contra
+`Dashboard.dc.html` l.2737–2817 (dono/gerente), `DashboardFuncionario.dc.html`
+l.776–845 (barbeiro) e os dois modais que pendem dela (l.3511 exclusão de
+conta, l.1212 do funcionário pedido de exclusão de dados). O achado que mais
+dói: **a tela tinha DOIS dos quatro blocos do desenho, e os dois pela metade**
+— "Dados pessoais" era uma lista de texto READ-ONLY (nem nome, nem e-mail, nem
+WhatsApp editáveis, sem endpoint por trás), e "Segurança" tinha dois dos três
+campos, sem a confirmação da nova senha. Trocar a senha com um erro de digitação
+derrubava as outras sessões e só se descobria no próximo login. "Privacidade e
+dados" e o bloco vermelho "ATENÇÃO" não existiam em lugar nenhum: **"Excluir
+minha conta", a ação mais destrutiva do produto inteiro, não tinha nem tela nem
+endpoint**. Junto vieram três defeitos de fundo: **a foto do usuário não tinha
+onde morar** (`avatarUrl` só existia em `Barber`, o profissional da agenda —
+um gerente sem ficha de barbeiro não tinha onde guardar a própria foto, e o
+protótipo respondia com um toast "será habilitado em breve"), **o recorte do
+BARBEIRO não existia** (o desenho do funcionário trava o nome com "Gerenciado
+pela administração da barbearia", esconde "Alterar foto" e troca o bloco
+vermelho por "Solicitar exclusão dos meus dados" — nada disso estava lá), e **o
+"30 dias para reativar a conta" que o modal promete não tinha como ser
+cumprido**: não havia coluna de prazo nem faxina. Agora a exclusão AGENDA
+(`Tenant.purgeAt`), cancela a assinatura no `PAYMENT_ADAPTER` na hora, manda o
+e-mail com a data, deixa o dono entrar e desistir dentro da janela, e a
+`MaintenanceService` apaga de vez quando o prazo vence — com `AuditLog`
+sobrevivendo (`tenantId` é `SetNull`) como prova de que foi cumprida.
+Suíte: 95 unit · 321 e2e · 173 isolamento.
+
+Antes disso, o **agente 26 (auditoria 1:1 da aba
+Configurações)**: a `/app/configuracoes` foi reconstruída contra
+`Dashboard.dc.html` l.2466–2736 e os dois modais que pendem dela (l.3461
+upgrade, l.3483 troca de plano). O achado que mais dói: **o gerente podia
+trocar o plano da barbearia** — `/settings/plan*` era `@Roles('OWNER','MANAGER')`
+quando o `SPEC.md` diz "MANAGER: dashboard completo EXCETO billing/plano do
+SaaS", e isso não era um detalhe de leitura: um gerente podia fazer downgrade e
+desligar barbeiros da equipe. Junto vieram quatro defeitos de fundo: **o
+"Almoço" do horário de funcionamento não existia** (o toggle do desenho não
+tinha coluna no banco — só o `WorkSchedule` de cada barbeiro tinha almoço),
+**"Fechado" não chegava ao motor de disponibilidade** (`business.closed` só
+desligava o RECORTE pelo expediente, então um barbeiro escalado no domingo
+enchia de horários uma barbearia que não abre domingo), **o `modalTrocarPlano`
+não existia** — a troca era um `window.confirm()`, sem os blocos de GANHOS e
+PERDAS que são a razão de o modal existir — e **o link "PDF" das faturas era um
+`href="#"`**. A grade de comparação mostrava só nome e preço, sem um recurso
+sequer. Agora os ganhos e perdas saem do diff REAL entre os `features` dos dois
+planos (`GET /settings/plan/preview/:planId`), com os NOMES dos barbeiros que o
+downgrade vai desligar, e a troca passa pelo `PAYMENT_ADAPTER` como toda
+cobrança do produto. O gate de `multiUnidades` mudou de lugar: a leitura das
+unidades é livre e o cadeado ficou no botão "+ Nova unidade", como na topbar do
+protótipo. Um achado fora do escopo, mas que aparecia na cara do usuário:
+**suíte de teste interrompida deixava `SaasPlan` no banco para sempre**, e a
+grade de planos listava "Avançado (isolamento)" ao lado dos planos de verdade.
+Suíte: 95 unit · 296 e2e · 168 isolamento.
+
+Antes disso, o **agente 23 (auditoria 1:1 da aba
+Serviços & Produtos)**: a `/app/servicos-produtos` foi reconstruída
+contra `Dashboard.dc.html` l.1723–2022 e o modal de serviço (l.1949). O achado
+que mais dói: **a sub-aba "Calculadora de preço" não existia na aba** — ela
+morava em Configurações, uma aba que o protótipo NÃO tem, como um `POST` sem
+estado cujos valores iniciais eram os do desenho hardcodados no formulário
+(`fixos = '3459'` é exatamente `2500+450+120+89+300` da fixture l.4762 — regra
+1 violada em um `useState`). Junto vieram três defeitos de fundo: **serviço não
+tinha cor nem comissão no schema** (duas colunas do desenho sem coluna no
+banco, e a tela mostrava 4 colunas onde o protótipo desenha 6), **"Excluir" não
+existia em lugar nenhum do catálogo** — nem para serviço, nem para produto, e
+"Repor estoque" também não — e **o "Ativo" era um selo em vez do interruptor do
+desenho**, transformando a ação mais frequente da tela em abrir um kebab. A
+calculadora nasceu inteira e PERSISTIDA (custos fixos linha a linha, dois
+sliders, ponto de equilíbrio com barra e marcador, simulação de lucro), com a
+fórmula numa função pura só (`computePriceCalculator`, em `@barbervp/types`)
+que a API e a página compartilham — os sliders respondem no cliente, o servidor
+é a fonte da verdade, e as duas contas não têm como divergir. Os parâmetros
+iniciais saem do TENANT (regras de comissão reais, `DONE` dos últimos 30 dias,
+média do catálogo), não do protótipo. A comissão específica do serviço, que no
+desenho era um toggle que descartava o valor, agora vence a regra do barbeiro
+no fechamento da comanda. Suíte: 95 unit · 259 e2e · 153 isolamento.
+
+Antes disso, o **agente 22 (auditoria 1:1 da aba
+WhatsApp)**: a `/app/whatsapp` foi reconstruída contra
+`Dashboard.dc.html` l.1624–1722 e os dois modais que pendem dela (l.4285
+editor de mensagem, l.4318 envio em massa). O achado que mais dói: **a aba
+tinha UM dos quatro blocos do desenho** — conexão, faixa de reativação e
+histórico de envios simplesmente não existiam, e o único bloco presente era um
+grid de seis cards onde o protótipo desenha UMA lista. Junto vieram três
+defeitos de fundo: **toda barbearia recém-cadastrada abria a aba VAZIA** (o
+`register` da fase 03 nunca criou linhas em `WhatsappAutomationConfig`, e o
+`GET` devolvia o que achasse — nada), **`?evento=REACTIVATION` e
+`?evento=BIRTHDAY`, os dois botões da faixa de alertas do Dashboard, eram
+ignorados** (caíam numa lista sem nada aberto), e **o gate só olhava o
+`enabled`** — dava para editar o template de uma automação fora do plano e
+achar que tinha comprado o recurso. Nasceram os três controles por evento que
+o desenho pede (antecedência do lembrete, hora do aniversário, janela da
+reativação) com validação server-side, e a faixa dourada passou a contar pela
+janela CONFIGURADA em vez de 30 dias fixos. A pré-visualização resolve os
+placeholders com dado REAL da barbearia (um barbeiro, um serviço, o link
+público), não com o "João Pedro / Corte + Barba / Diego" do protótipo.
+Suíte: 88 unit · 238 e2e · 148 isolamento.
+
+Antes disso, o **agente 21 (auditoria 1:1 da aba
+Fidelidade)**: a `/app/fidelidade` foi reconstruída contra
+`Dashboard.dc.html` l.1497–1623 e o modal `modalNewPlano` (l.3323) com os dois
+diálogos que pendem dele (l.3376 impacto, l.3384 exclusão). O achado que mais
+dói: **a aba tinha TRÊS sub-abas quando o protótipo revisado tem UMA** — Pontos
+e Sorteios saíram do desenho e saíram da implementação (rotas, modal, hooks e
+seed), em vez de serem completadas. Junto vieram três defeitos de gate: **o
+cadeado do nav apontava para `fidelidadePontos` (Profissional) quando o
+conteúdo real é `fidelidadeAssinaturas` (Avançado)**, **o `BARBER` via a aba no
+menu** — o `DashboardFuncionario` não tem Fidelidade — e **o MRR do card
+simplesmente não existia**, assim como "Reativar", "Excluir plano", "Pausar" e
+"Cancelar", todos botões do desenho sem nenhum endpoint atrás. A coluna
+"Pagamento" (Pago/Pendente/Atrasado) também não existia: nasceu agora, derivada
+do `Payment` do ciclo cruzado com o `nextChargeAt`. No caminho, um defeito fora
+do escopo: **o e2e de Relatórios quebrava das 21h à meia-noite** porque escolhia
+a quarta-feira por `getUTCDay()` enquanto o resto do caso mede em São Paulo.
+Suíte: 88 unit · 224 e2e · 144 isolamento.
+
+Antes disso, o **agente 20 (auditoria 1:1 da aba Relatórios)**: a `/app/relatorios` foi reconstruída contra
+`Dashboard.dc.html` l.1229–1496 e contra a versão do barbeiro em
+`DashboardFuncionario.dc.html` l.667–775. O achado que mais dói: **a aba
+inteira era uma página de cadeado quando o protótipo tranca CINCO dos oito
+blocos** — e "Faturamento por barbeiro", que o desenho mostra sem cadeado
+nenhum, vivia dentro do endpoint gated. Também entraram as 5 pílulas de
+período com intervalo personalizado, os filtros de barbeiro e de UNIDADE (o
+primeiro `unitId` que o produto de fato filtra), a exportação em PDF e CSV de
+verdade, e quatro blocos que não existiam em lugar nenhum: heatmap de horários
+de pico, taxa de faltas por mês, ticket médio por barbeiro e o headline da taxa
+de retorno. No caminho, dois defeitos: **o período do relatório era resolvido
+em UTC** (o "hoje" da barbearia virava o dia do container) e **um `@Transform`
+de DTO transformava um parâmetro AUSENTE na string `"undefined"`**, o que
+fazia toda consulta sem filtro procurar um barbeiro inexistente. O `BARBER`
+passou a ver a aba, com o recorte próprio que o `DashboardFuncionario` desenha.
+Suíte: 81 unit · 208 e2e · 139 isolamento.
+
+Antes disso, o **agente 19 (auditoria 1:1 da aba Comissões)**: a `/app/comissoes` foi reconstruída contra
+`Dashboard.dc.html` l.1089–1228 e os dois modais (l.4154 regras, l.4228 PDF).
+O achado que mais dói: **o protótipo cobra uma coluna "Comissão produtos" e um
+campo "% produtos" que o modelo simplesmente não tinha** — produto não gerava
+comissão nenhuma, e a tela mostrava metade da conta que o barbeiro faz.
+Entraram também o recorte Semanal/Mensal com stepper, os 3 KPIs, a tabela de 9
+colunas com extrato expansível, o toggle "Descontar vales" com efeito real no
+dinheiro e o relatório em PDF (pdfkit).
+
+Antes disso, o **agente 18 (auditoria 1:1 da aba Financeiro)**: as 6 sub-abas foram reconstruídas contra
+`Dashboard.dc.html` l.718–1088 e os 5 modais. O achado que mais dói: **duas das
+seis sub-abas estavam travadas por plano sem que o protótipo as trancasse**
+(contas bancárias e fluxo de caixa) — o Essencial via paywall onde deveria ver
+a tela. Também entraram o extrato de caixa com forma de pagamento e categoria,
+os lançamentos manuais (entrada avulsa / sangria), os KPIs somados em SQL,
+parcelamento e recorrência de verdade, e a conferência de fechamento sobre o
+DINHEIRO em vez do total do dia. Suíte: 81 unit · 185 e2e · 129 isolamento.
+
+Antes disso, o **agente 17 (auditoria 1:1 da aba Comandas/POS)**: a `/app/comandas` foi reconstruída contra
+`Dashboard.dc.html` l.639–717 e o modal l.3123 — 3 abas com contagem real, busca
+por cliente/nº, grid de cards das abertas e a comanda como diálogo de 3 colunas.
+No caminho, achou e corrigiu um defeito de sessão que atingia TODO o painel
+(duas renovações simultâneas revogavam a família do refresh — ver "Os dois
+achados"). Antes disso, o agente 16 reconstruiu a `/app/clientes`, o 14 separou
+`make seed` de `make seed-demo` e a fase 13 reconstruiu a `/app`. Suíte:
+81 unit · 173 e2e · 125 isolamento.
 
 > Fase 12 (deploy) segue pendente. A 13 entrou na frente porque a auditoria
 > mostrou que a tela mais visível do produto estava incompleta — não faz
@@ -27,9 +180,31 @@ alertas —, com `GET /dashboard/overview` alimentando tudo. Suíte: 81 unit ·
 | 11 | Consolidação (4 apps → 1 frontend) | ✅ |
 | 12 | Deploy | ⬜ |
 | 13 | Auditoria 1:1 — tela Dashboard | ✅ |
+| 14 | Auditoria — seeds de demonstração | ✅ |
+| 15 | Auditoria 1:1 — aba Agenda | ⬜ (ver nota) |
+| 16 | Auditoria 1:1 — aba Clientes | ✅ |
+| 17 | Auditoria 1:1 — aba Comandas (POS) | ✅ |
+| 18 | Auditoria 1:1 — aba Financeiro | ✅ |
+| 19 | Auditoria 1:1 — aba Comissões | ✅ |
+| 20 | Auditoria 1:1 — aba Relatórios | ✅ |
+| 21 | Auditoria 1:1 — aba Fidelidade | ✅ |
+| 22 | Auditoria 1:1 — aba WhatsApp | ✅ |
+| 23 | Auditoria 1:1 — aba Serviços & Produtos | ✅ |
+| 24 | Auditoria 1:1 — aba Equipe | ✅ |
+| 25 | Auditoria 1:1 — aba Minha Página | ✅ |
+| 26 | Auditoria 1:1 — aba Configurações | ✅ |
+| 27 | Auditoria 1:1 — tela Meu perfil | ✅ |
+| 28 | Auditoria 1:1 — aba Assistente IA (`auditoria/`) | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
+
+> **Nota sobre o agente 15.** Quando o 16 começou, o working tree já trazia a
+> aba Agenda reconstruída (`components/dashboard/agenda/`, `agenda.e2e-spec.ts`,
+> migration `agenda_time_block`) sem commit e sem registro nesta memória. O 16
+> não mexeu nesse trabalho — só acrescentou `preselectedClientId` ao modal de
+> agendamento, que é o contrato do "Agendar" da aba Clientes. Quem retomar
+> precisa fechar o registro do 15 antes de marcar a linha.
 
 ## Endpoints existentes
 
@@ -153,30 +328,45 @@ pelo cliente logado com o `bookingCode` que esta lista devolve.
 | POST | `/account/subscription` | 10/h | Assina (cartão OU Pix mock, auto-aprovado). 409 se já houver assinatura não cancelada. |
 | POST | `/account/subscription/pause` \| `/resume` \| `/cancel` | — | Ver decisões abaixo. |
 
-### Clientes (`/api/v1/clients`) — fase 06
+### Clientes (`/api/v1/clients`) — fase 06, revisto pelo agente 16
 
 `@Roles('OWNER','MANAGER')` — `BARBER` toma 403 (a visão dele é a própria
 agenda, não a base de clientes). Tudo escopado por `@CurrentTenant('id')`.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET | `/clients` | Paginado; `search` (nome/telefone/e-mail), `favoriteBarberId`, `blocked`, `sort`/`order`. |
+| GET | `/clients` | Paginado; `search` (nome/telefone/e-mail), `favoriteBarberId`, `blocked`, `status` (chip da aba), `sort`/`order`. Devolve `counts` — as 5 contagens dos chips, disjuntas e somando o total, calculadas DENTRO da busca e ignorando o status escolhido. Cada item traz `status` derivado, `loyaltyPoints` (`null` sem programa) e `acceptsMessages`. |
+| GET | `/clients/export` | **Agente 16.** CSV da lista (busca + chip) ou da seleção (`ids=` separados por vírgula). `text/csv` com BOM e `;` (Excel pt-BR), célula escapada contra injeção de fórmula, teto de 5.000 linhas. Registrada ANTES de `:id`. |
+| GET | `/clients/:id` | **Agente 16.** Perfil do drawer numa resposta só: KPIs (inclui ticket médio), histórico das últimas 20 comandas FECHADAS, extrato de pontos e a assinatura do ciclo corrente com uso por serviço. |
+| POST | `/clients` | Cadastro. Aceita a ficha inteira do modal "Novo cliente" (`email`, `birthDate`, `notes`, `acceptsMessages`) além de nome e telefone; `Client` é identidade global e é reaproveitado pelo telefone. |
+| POST | `/clients/bulk/block` | **Agente 16.** `{ ids, blocked }`; o `updateMany` filtra por `tenantId` junto com os ids e a resposta conta só o que mudou de verdade. Máx. 200. |
+| POST | `/clients/bulk/message` | **Agente 16.** `{ ids, body }` pelo `NotificationAdapter`, com `{nome}` substituído; pula quem tem `notifyWhatsapp: false` e devolve `{ queued, skipped }`. Máx. 200. |
 | PATCH | `/clients/:id` | Notas e barbeiro favorito (`ClientProfile`, não `Client`). |
 | PATCH | `/clients/:id/block` \| `/unblock` | Bloqueia/libera o agendamento online deste cliente NESTA barbearia. |
 
-### Serviços & Produtos (`/api/v1/services`, `/api/v1/products`) — fase 06
+### Serviços & Produtos (`/api/v1/services`, `/api/v1/products`, `/api/v1/price-calculator`) — fase 06, reescrito pelo agente 23
 
-`@Roles('OWNER','MANAGER')`. É o MESMO `Service`/`Product` que o booking
-público e o motor de disponibilidade leem — editar aqui muda a vitrine na
-hora, sem sincronização à parte.
+`@Roles('OWNER','MANAGER')` — `BARBER` toma 403 (o `DashboardFuncionario` não
+tem esta aba). É o MESMO `Service`/`Product` que o booking público e o motor de
+disponibilidade leem — editar aqui muda a vitrine na hora, sem sincronização à
+parte.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET \| POST | `/services` | Paginado (`search`/`category`/`active`); criar sincroniza `BarberService`. |
-| PATCH | `/services/:id` | Atualiza campos + `barberIds` (substitui a lista). |
-| PATCH | `/services/:id/activate` \| `/deactivate` | Some do booking, mantém histórico (nunca hard-delete — `Appointment`/`Order` referenciam). |
-| GET \| POST | `/products` | Paginado (`search`/`category`/`active`/`lowStock`); `lowStock` compara `stock` com `estoqueMin` (filtro em memória — Prisma não expressa comparação entre duas colunas em `where`). |
+| GET \| POST | `/services` | Paginado (`search`/`category`/`active`); criar sincroniza `BarberService`. **Agente 23:** a resposta ganhou `defaultCommissionBps` no envelope (a regra da casa que o modal mostra como herança) e cada linha traz `color`, `commissionBps` (override, `null` = herda) e `effectiveCommissionBps` (o que a coluna "Comissão padrão" exibe). |
+| PATCH | `/services/:id` | Atualiza campos + `barberIds` (substitui a lista). **Agente 23:** aceita `color` (só as 6 de `SERVICE_COLORS`; hex livre é 400) e `commissionBps` (0–10000). |
+| PATCH | `/services/:id/activate` \| `/deactivate` | Some do booking, mantém histórico. |
+| DELETE | `/services/:id` | **Agente 23.** "Excluir" do kebab — **soft-delete** (`deletedAt` + nome carimbado, para liberar o `@@unique([tenantId,name])`). 409 quando há agendamento FUTURO `SCHEDULED`/`CONFIRMED`, com a saída ("desative") no texto. Nunca hard-delete: `Appointment`/`OrderItem`/`ClientPlanItem` referenciam. |
+| GET \| POST | `/products` | Paginado (`search`/`category`/`active`/`lowStock`); `lowStock` compara `stock` com `estoqueMin` (filtro em memória — Prisma não expressa comparação entre duas colunas em `where`). **Agente 23:** cada linha traz `marginBps` (`null` sem custo, em vez de `Infinity`). |
 | PATCH | `/products/:id` \| `/:id/activate` \| `/:id/deactivate` | Idem serviços. |
+| POST | `/products/:id/restock` | **Agente 23.** "Repor estoque" — `{ quantity }` (1–100.000) por `increment`, nunca `SET` absoluto. `AuditLog`. |
+| DELETE | `/products/:id` | **Agente 23.** Soft-delete. 409 com estoque > 0 ou item em comanda ABERTA. |
+| GET \| PUT | `/price-calculator` | **Agente 23.** Calculadora de preço inteligente — `@RequireFeature('calculadoraPreco')` no controller INTEIRO (a leitura também é gated: o cadeado está na aba, não num botão). `PUT` substitui a lista de custos fixos e devolve os derivados. Primeiro acesso vem sem custos, mas com comissão média/atendimentos/preço praticado **derivados do tenant** (regras de comissão, `DONE` dos últimos 30 dias, média do catálogo). Faixas dos sliders validadas no DTO *e* em `CHECK` no banco. |
+
+> A calculadora **saiu de `/settings/price-calculator`** (fase 07). O protótipo
+> a desenha na aba Serviços & Produtos (l.1856), não em Configurações — e a
+> versão antiga era um `POST` sem estado, com os defaults do desenho
+> hardcodados no formulário.
 
 ### Equipe (`/api/v1/barbers`, `/api/v1/team/invites`, `/api/v1/staff-invites`) — fase 06
 
@@ -186,13 +376,15 @@ o token do e-mail.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET \| POST | `/barbers` | Lista o time (grid); `POST` adiciona barbeiro SEM login, copiando `TenantBusinessHour` para o `WorkSchedule` dele. Gate `maxBarbeiros` do plano. |
-| PATCH | `/barbers/:id` | Nome/especialidade/contato/`serviceIds`/`active`. Barbeiro-dono não pode ser desativado. |
-| GET \| PUT | `/barbers/:id/work-schedule` | Escala semanal (7 dias, com intervalo de almoço e `isDayOff`). |
-| GET \| POST | `/barbers/exceptions` | Folga avulsa/férias/feriado — `barberId` nulo = barbearia inteira. |
+| GET \| POST | `/barbers` | Lista o time (grid); `POST` adiciona barbeiro SEM login, copiando `TenantBusinessHour` para o `WorkSchedule` dele. Gate `maxBarbeiros` do plano. Cada linha traz `serviceNames`, `commissionLabel` e `inactiveByPlan` (fase 24). |
+| GET | `/barbers/plan-usage` | **fase 24** — `activeBarbers`/`pendingInvites`/`maxBarbers`/`canAddBarber`/`inactiveByPlanNames`. É a fonte do "Barbeiros: X de Y", da barra e do banner de downgrade. |
+| PATCH | `/barbers/:id` | Nome/contato/`avatarUrl`/`serviceIds`/`active` **e a semana inteira (`schedule`) na mesma transação** (fase 24). Barbeiro-dono não pode ser desativado; REATIVAR passa pelo gate de plano (403). WhatsApp quebrado recusa (400) em vez de virar `null`. |
+| GET \| PUT | `/barbers/:id/work-schedule` | Escala semanal (7 dias, com almoço e `isDayOff`). Validação da semana inteira ANTES de gravar qualquer dia. |
+| GET \| POST | `/barbers/exceptions` | Folga avulsa/férias/feriado — `barberId` nulo = barbearia inteira. Alimenta o ícone de férias da matriz da escala. |
 | DELETE | `/barbers/exceptions/:id` | Remove a exceção. |
-| GET \| POST | `/team/invites` | Lista/convida por e-mail com serviços pré-marcados e dias de trabalho. Gate `maxBarbeiros` (conta ativos + convites `PENDING`). |
+| GET \| POST | `/team/invites` | Lista/convida por e-mail com serviços pré-marcados e a semana montada no modal (`schedule`; `workDays` vira derivado). Gate `maxBarbeiros` (conta ativos + convites `PENDING`). |
 | POST | `/team/invites/:id/resend` \| `/revoke` | Reenvio gera token novo (o antigo perde validade); revogação é definitiva. |
+| POST | `/team/invites/:id/link` | **fase 24** — reemite o token e devolve a URL do `CadastroFuncionario` SEM mandar e-mail (o link anterior morre). É o "Gerar link de cadastro" da linha do convite. |
 | GET | `/staff-invites/:token` | Preview público — e-mail travado, serviços, dias, `valid`/`invalidReason`. |
 | POST | `/staff-invites/accept` | `{ token, password }` → cria `User` (se preciso) + `Membership` BARBER + `Barber` + `WorkSchedule` + `BarberService`, e já devolve sessão logada (mesmo formato do login). |
 
@@ -221,27 +413,46 @@ feature — comandas são o core do produto, liberado em todo plano.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET | `/orders/catalog` | Serviços/produtos/barbeiros ativos para o balcão. |
-| GET | `/orders` | Lista abertas/fechadas — `status`/`search`/`barberId`, paginado. |
-| GET \| POST | `/orders/:id` \| `/orders` | Detalhe; abrir (cliente cadastrado, walk-in `{name,phone}`, ou vinculado a um `appointmentId`). |
+| GET | `/orders/catalog` | Serviços/produtos/barbeiros ativos para o balcão. **Agente 17:** + `nextNumber`, o `#N` que o modal "Nova comanda" mostra antes de a comanda existir. |
+| GET | `/orders` | Lista abertas/fechadas — `status`/`search`/`barberId`, paginado. **Agente 17:** + `closedToday` (recorte do dia no fuso do tenant), `counts` (`abertas`/`fechadasHoje`, que ignoram a aba e respeitam a busca), e cada linha traz `subtotalCents` + `lines[]` para o card. `search` aceita `#123`. |
+| GET \| POST | `/orders/:id` \| `/orders` | Detalhe; abrir (cliente cadastrado, walk-in `{name,phone}`, ou vinculado a um `appointmentId`). **Agente 17:** o detalhe passou a trazer `loyaltyEnabled`/`loyaltyPointsRequired`/`loyaltyRewardCents` — a prévia do resgate, mostrada ANTES de o toggle ser ligado. |
+| PATCH | `/orders/:id` | **Agente 17.** Troca cliente e/ou barbeiro de uma comanda ABERTA — o "trocar" do cabeçalho do modal. Trocar o cliente REAVALIA a cobertura de assinatura item a item e derruba o resgate de pontos. `AuditLog`. |
 | POST \| PATCH \| DELETE | `/orders/:id/items(/:itemId)` | Adiciona/atualiza quantidade/remove item. Serviço com cliente coberto por assinatura ativa entra a R$0 automaticamente (`quantity` 1 apenas). |
 | PATCH | `/orders/:id/discount` | Desconto percentual (basis points) ou fixo (centavos). |
 | PATCH | `/orders/:id/loyalty` | Liga/desliga o resgate de pontos (aplica `valorDesconto` de uma vez, se o saldo cobrir `pontosParaDesconto`). |
 | POST | `/orders/:id/close` | **Fechamento em transação única** — ver "Decisões técnicas". |
 | POST | `/orders/:id/reopen` | Só `OWNER`/`MANAGER` (`@Roles` no método, não na classe), sempre `AuditLog`. |
 
-### Financeiro (`/api/v1/finance`) — fase 07
+### Financeiro (`/api/v1/finance`) — fase 07, revisto na fase 18
 
-`@Roles('OWNER','MANAGER')`. Caixa é liberado em todo plano; o resto atrás de
-`contasPagarReceber` (Profissional+).
+`@Roles('OWNER','MANAGER')` — `BARBER` toma 403 em TODAS as rotas e não vê o
+item no nav (`navForRole`), como no `DashboardFuncionario`.
+
+**Gate de plano (corrigido na fase 18):** `contasPagarReceber` cobre
+EXATAMENTE as 3 sub-abas que o protótipo tranca (`LOCKED_FIN_TABS` =
+contas a pagar · contas a receber · vales). **Caixa, contas bancárias e fluxo
+de caixa são de TODO plano** — antes as duas últimas estavam travadas, o que
+escondia do Essencial telas que o protótipo lhe entrega. Há caso em
+`dashboard-ii.isolation-spec.ts` afirmando os 200, para não regredir.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET \| POST | `/finance/cash-register` \| `/cash-register/open` \| `/cash-register/close` | Abrir com saldo inicial, fechar com valor conferido (`differenceCents` = contado − esperado). |
-| GET \| POST | `/finance/payables` \| `/receivables` | Categoria travada em `ACCOUNT_PAYABLE_CATEGORIES`/`ACCOUNT_RECEIVABLE_CATEGORIES` (`@barbervp/types`). |
-| PATCH | `/finance/payables/:id/pay` \| `/receivables/:id/receive` | Marca pago/recebido individualmente. |
-| GET \| POST \| PATCH | `/finance/bank-accounts(/:id)` | Nome, tipo (texto livre), formas de pagamento aceitas (`PaymentMethod[]`), saldo. |
-| GET | `/finance/cash-flow` | Mensal agregado (`?months=`, default 6) — Pagamentos + recebíveis (entrada) vs. contas pagas (saída). |
+| GET \| POST | `/finance/cash-register` \| `/cash-register/open` \| `/cash-register/close` | O status devolve `entriesCents`/`exitsCents`/`currentCents` (os 4 KPIs), `byMethod[]` (resumo do fechamento — só ENTRADAS por forma) e `expectedCashCents`. |
+| POST | `/finance/cash-register/movements` | **Fase 18.** "+ Entrada avulsa" / "+ Saída/Sangria": `{direction, amountCents, description, category, method}`. Valor sempre positivo — quem inverte o sinal é o servidor. Categoria validada contra a lista da direção; saída em `CASH` maior que a gaveta é 400. |
+| GET \| POST | `/finance/payables` \| `/receivables` | A listagem devolve `summary` (`overdueCents`/`next7DaysCents`/`monthCents`) somado em SQL sobre o conjunto, não sobre a página. `installments`/`recurrence` materializam N linhas com `seriesId` comum. |
+| PATCH | `/finance/payables/:id/pay` \| `/receivables/:id/receive` | Liquidar duas vezes é 409 `ACCOUNT_ALREADY_SETTLED`. |
+| GET \| POST \| PATCH | `/finance/bank-accounts(/:id)` | Nome (único por tenant, 409), `type`, `acceptedMethods: PaymentMethod[]`, saldo. Sem gate de plano. |
+| GET | `/finance/cash-flow` | Mensal agregado em SQL (`?months=`, 1–24, default 6): `inflowByCategory`/`outflowByCategory` e `accumulatedCents`. Entradas de comanda são RATEADAS pelo peso de cada item (Serviços × Produtos); assinaturas, recebíveis e vales entram como categorias próprias. Sem gate de plano. |
+
+**Conferência do caixa.** `expectedCents` do fechamento é só o DINHEIRO
+(`method = CASH`), não o total do dia: o operador conta a gaveta, e Pix/cartão
+não estão nela. Somar tudo faria toda barbearia com maquininha fechar com uma
+"quebra" do tamanho das vendas no cartão. O extrato mostra as três formas; a
+conferência filtra uma.
+
+**`OVERDUE` é derivado, nunca gravado.** A coluna guarda `PENDING`; vencida é
+quem passou de `dueDate`. Gravar exigiria job noturno e criaria estado que
+envelhece sozinho.
 
 ### Comissões (`/api/v1/commissions`) — fase 07
 
@@ -251,76 +462,138 @@ pedindo o próprio extrato. `BARBER` só vê a si mesmo.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET \| POST \| PATCH | `/commissions/rules(/:id)` | `FIXED` (%) ou `TIERED` (faixas); `barberIds` substitui o vínculo `Barber.commissionRuleId`. |
-| GET | `/commissions/period?month=YYYY-MM` | Extrato — lê os `CommissionEntry` já gravados no fechamento da comanda. |
-| POST | `/commissions/period/close` | Recalcula a taxa definitiva pelo faturamento TOTAL do mês, trava (`status: PAID`) e quita os vales do período. |
+| GET \| POST \| PATCH | `/commissions/rules(/:id)` | `FIXED` (%) ou `TIERED` (faixas); `barberIds` substitui o vínculo `Barber.commissionRuleId`. **Fase 19**: ganhou `percentProdutosBps` e `deductVales`. |
+| GET | `/commissions/period` | Extrato — lê os `CommissionEntry` gravados no fechamento da comanda. **Fase 19**: aceita `?type=WEEKLY&anchor=YYYY-MM-DD` além do `?month=YYYY-MM` de sempre; a resposta traz `start`/`end`/`totalAPagarCents`/`scoped` e separa comissão de serviço da de produto. |
+| GET | `/commissions/period/report.pdf` | **Fase 19, nova** — `?barberId=` mais o mesmo recorte do `/period`. Devolve `application/pdf` (pdfkit). `BARBER` só emite o próprio (404 no do colega). |
+| POST | `/commissions/period/close` | Recalcula a taxa definitiva pelo faturamento TOTAL de SERVIÇO do mês, trava (`status: PAID`) e quita os vales — **só os de quem tem `deductVales`**. |
 | GET \| POST | `/commissions/vales` | Atrás de `vales` (Profissional+) — vale entra automaticamente no desconto do próximo fechamento de período. |
 
-### Fidelidade (`/api/v1/loyalty`) — fase 07
+### Fidelidade (`/api/v1/loyalty`) — fase 07, reescrito pelo agente 21
 
-`@Roles('OWNER','MANAGER')`. Pontos/sorteios atrás de `fidelidadePontos`/
-`fidelidadeSorteios` (Profissional+); planos de assinatura administrados pela
-barbearia atrás de `fidelidadeAssinaturas` (Avançado).
-
-| Método | Rota | Observações |
-|---|---|---|
-| GET \| PATCH | `/loyalty/program` | `gastoPorPonto`/`pontosParaDesconto`/`valorDesconto`/`expiracaoMeses`. |
-| GET | `/loyalty/clients` | Saldo por cliente (top 200 por saldo). |
-| GET \| POST | `/loyalty/raffles` | Criar dispara aviso de WhatsApp (mock) para clientes com histórico de pontos. |
-| POST | `/loyalty/raffles/:id/draw` | Sorteio ponderado pelo nº de cupons (`LoyaltyRaffleEntry.entries`). |
-| GET \| POST \| PATCH | `/loyalty/plans(/:id)` \| `/plans/:id/archive` | CRUD do `ClientPlan` vendido pela barbearia — o MESMO modelo que a fase 05 já usa do lado do cliente. |
-| GET | `/loyalty/subscribers` | Assinantes com uso do ciclo (`SubscriptionUsage`) e status. |
-
-### WhatsApp (`/api/v1/whatsapp-config`) — fase 07
-
-`@Roles('OWNER','MANAGER')`. Lembrete/confirmação/cancelamento liberados em
-todo plano; aniversário/reativação/avaliação exigem `whatsappCompleto`
-(Profissional+) — checado por EVENTO, não no controller inteiro (ligar um
-evento avançado sem o plano é que toma 403; ler a lista sempre funciona, com
-os avançados sempre `enabled:false` se o plano não cobre).
+`@Roles('OWNER','MANAGER')`. A aba do painel ficou **só com Assinaturas**
+(`fidelidadeAssinaturas`, Avançado). `/loyalty/clients` e toda a família
+`/loyalty/raffles` FORAM REMOVIDAS — as sub-abas que as consumiam saíram do
+protótipo. `/loyalty/program` sobreviveu SEM TELA: o programa de pontos
+continua sendo lido pela comanda (resgate) e pela aba Clientes (saldo). Ver
+dívida "o programa de pontos ficou sem tela".
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET | `/whatsapp-config` | Os 6 eventos, com `requiresFullFeature` para o front pintar o cadeado certo. |
-| PATCH | `/whatsapp-config/:event` | Liga/desliga, edita template/`offsetMinutes`. |
+| GET \| PATCH | `/loyalty/program` | `fidelidadePontos` (Profissional+). Sem tela no painel — ver dívida. |
+| GET \| POST \| PATCH | `/loyalty/plans(/:id)` | CRUD do `ClientPlan` vendido pela barbearia — o MESMO modelo que a fase 05 usa do lado do cliente. A lista traz arquivados (o card esmaecido do desenho), com `mrrCents` e `canDelete` calculados no servidor. |
+| PATCH | `/loyalty/plans/:id/archive` \| `/reactivate` | **Agente 21, nova a segunda** — some da vitrine / volta para ela. Devolvem o card pronto. |
+| DELETE | `/loyalty/plans/:id` | **Agente 21, nova** — 204. 409 `CLIENT_PLAN_HAS_SUBSCRIBERS` se QUALQUER assinatura (mesmo cancelada) aponta para o plano; aí o caminho é arquivar. |
+| GET | `/loyalty/subscribers` | Assinantes com uso do ciclo (`SubscriptionUsage`), `usedTotal`/`quotaTotal` somados e `paymentStatus` derivado (`PAID`/`PENDING`/`OVERDUE`/`PAUSED`). |
+| PATCH | `/loyalty/subscribers/:id/pause` \| `/resume` \| `/cancel` | **Agente 21, novas** — delegam ao `ClientSubscriptionService` da fase 05; `cancel` devolve 204. O log grava `actorUserId` (dono) em vez de `actorClientId`. |
 
-### Assistente IA (`/api/v1/assistant`) — fase 07
+### WhatsApp (`/api/v1/whatsapp-config`) — fase 07, reescrita na fase 22
+
+`@Roles('OWNER','MANAGER')` — o `DashboardFuncionario.dc.html` não tem esta
+tela, então `BARBER` não a vê no nav E toma 403 na URL.
+
+Lembrete/confirmação/cancelamento liberados em todo plano;
+aniversário/reativação/avaliação exigem `whatsappCompleto` (Profissional+) —
+checado por EVENTO, não no controller inteiro: ler a lista sempre funciona
+(senão a tela não teria o que trancar com cadeado), com os avançados sempre
+`enabled:false` e `locked:true` quando o plano não cobre. Na fase 22 o gate
+passou a cobrir a linha INTEIRA: editar o template de um evento avançado
+também é 403, não só ligar o interruptor.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/whatsapp-config` | `{ items, sample }`. Os 6 eventos SEMPRE, na ordem do protótipo, com padrão de fábrica para quem nunca configurou (leitura não escreve nada). Cada item traz `locked`, `control` e `options`. |
+| GET | `/whatsapp-config/connection` | Estado do `NOTIFICATION_ADAPTER` + total de mensagens no outbox do tenant. `driver:'MOCK'` enquanto não houver provedor. |
+| GET | `/whatsapp-config/history` | "Histórico de envios" — `NotificationOutbox` do tenant, paginado por cursor. Nome do cliente resolvido em UMA consulta a mais (nunca N+1); telefone sai MASCARADO. |
+| GET | `/whatsapp-config/reactivation` | Contagem de inativos na janela configurada na automação, `optedOutCount` e o preview resolvido. |
+| POST | `/whatsapp-config/reactivation/send` | Disparo em massa pelo adapter (teto de 500). 403 sem `whatsappCompleto`. Pula quem desligou `notifyWhatsapp` e devolve `{queued, skipped}`. |
+| PATCH | `/whatsapp-config/:event` | **Upsert** (a linha pode não existir). `offsetMinutes` validado contra as `options` publicadas pela própria API. |
+
+**`offsetMinutes` muda de unidade por evento** (`WHATSAPP_CONTROL` em
+`packages/types`): minutos de antecedência no lembrete (`DELAY_BEFORE`),
+minutos desde a meia-noite no aniversário (`TIME_OF_DAY`), dias × 1440 na
+reativação (`INACTIVITY_DAYS`). Quem lê `offsetMinutes` sem olhar o `control`
+vai errar a conta.
+
+### Assistente IA (`/api/v1/assistant`) — fase 07, reescrito pelo agente 28
 
 `@Roles('OWNER','MANAGER')`. Sem gate de feature — o limite mensal por plano
 (`AI_MESSAGE_LIMIT_BY_TIER`: Essencial 50, Profissional 200, Avançado
-ilimitado) já regula o uso, contado por `AiChatMessage` do mês corrente.
+ilimitado) já regula o uso, contado nas `AiChatMessage` do TENANT no mês
+corrente (era por usuário até o agente 28 — a cota é do plano, não da pessoa).
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET | `/assistant/messages` | Histórico (até 100 últimas) + uso do mês. |
-| POST | `/assistant/messages` | 403 `AI_MESSAGE_LIMIT_REACHED` ao estourar o limite do plano. |
+| GET | `/assistant/messages` | Histórico (100 últimas, `hiddenAt IS NULL`) + uso do mês + sugestões do driver. |
+| POST | `/assistant/messages` | Resposta com `card` opcional. 403 `AI_MESSAGE_LIMIT_REACHED` ao estourar o limite. |
+| DELETE | `/assistant/messages` | Limpa a conversa do usuário. A cota do mês PERMANECE contada (ver agente 28). |
 
-### Relatórios (`/api/v1/reports`) — fase 07
+### Relatórios (`/api/v1/reports`) — fase 07, reescrito pelo agente 20
 
-`@Roles('OWNER','MANAGER')`. `summary` liberado em todo plano; `advanced`
-atrás de `relatoriosAvancados` (Profissional+) — rota DISTINTA de propósito,
-pro 403 do critério de aceite ter onde acontecer.
+`@Roles('OWNER','MANAGER','BARBER')`. A divisão entre as duas rotas é a do
+PROTÓTIPO, não uma escolha de arquitetura: o que aparece SEM cadeado na tela
+mora em `summary` (todo plano), o que aparece embaçado atrás de "Disponível no
+plano Profissional" mora em `advanced` (`relatoriosAvancados`). Mover um bloco
+de lado muda o que o Essencial vê.
 
-| Método | Rota | Observações |
-|---|---|---|
-| GET | `/reports/summary` | Faturamento, ticket médio, distribuição por forma de pagamento — `?from=&to=` (`YYYY-MM-DD`, default 30 dias). |
-| GET | `/reports/advanced` | Por barbeiro/serviço/dia (raw SQL agregado, sem N+1), ocupação, no-show, taxa de retorno por faixa de dias sem visita. |
-
-### Configurações e Minha Página (`/api/v1/settings`, `/api/v1/my-page`) — fase 07
-
-`@Roles('OWNER','MANAGER')`. Unidades atrás de `multiUnidades`, calculadora
-atrás de `calculadoraPreco` (Avançado); o resto liberado em todo plano.
-`/my-page` não tem gate — branding público não está em `FEATURE_KEYS`.
+Todas as rotas aceitam o mesmo filtro: `?period=hoje|7d|30d|mes|custom`
+(default `30d`; `custom` exige `from`/`to` em `YYYY-MM-DD`), `?barberIds=`
+(repetível) e `?unitId=`. A janela é resolvida no FUSO DA BARBEARIA.
 
 | Método | Rota | Observações |
 |---|---|---|
-| GET \| PATCH | `/settings/barbershop` | Nome/CNPJ/endereço/telefone/fuso + `TenantBusinessHour` (não repropaga pra `WorkSchedule` dos barbeiros — ver decisão). |
-| GET \| POST \| PATCH | `/settings/units(/:id)` | `Unit` — a primeira criada vira `isDefault`. |
-| GET \| POST | `/settings/plan` \| `/plan/change` | Plano atual + faturas (`SaasInvoice`) + troca (recusa downgrade se `maxBarbers` não comportar os barbeiros ativos). |
-| GET \| PATCH | `/settings/preferences` | `bloquearFaltasAtivo`/`bloquearFaltasQtd`/`antecedenciaMinima`/`cancelamentoHoras`. |
-| POST | `/settings/price-calculator` | Puro cálculo, sem persistência. |
-| GET \| PATCH | `/my-page` | Slug (valida com `SlugService`, mesma trava de reservados do onboarding), sobre, Instagram, endereço, toggles. |
-| POST \| DELETE | `/my-page/photos(/:id)` | Galeria — URL simples, mesma convenção de `logoUrl`/`coverUrl` (sem upload real). |
+| GET | `/reports/summary` | Faturamento do período + janela anterior + delta, série (por HORA em `hoje`, por dia no resto), faturamento por barbeiro e rosca de formas de pagamento. `scoped: true` quando o papel é `BARBER`. |
+| GET | `/reports/advanced` | 🔒 `relatoriosAvancados`. Faturamento por serviço, taxa de retorno (4 faixas + headline), heatmap dia×hora com rótulo de pico, taxa de faltas dos últimos 8 meses com o mês de ativação do lembrete, e ticket médio por barbeiro. |
+| GET | `/reports/export.csv` | 🔒 `relatoriosAvancados`. Planilha `;` + BOM (Excel pt-BR) montada do MESMO par de respostas que a tela desenha. |
+| GET | `/reports/export.pdf` | 🔒 `relatoriosAvancados`. Mesmo conteúdo em A4 (pdfkit), mesma paleta clara do relatório de comissão. |
+
+### Configurações e Minha Página (`/api/v1/settings`, `/api/v1/my-page`) — fase 07, revisto pelo agente 26
+
+`@Roles('OWNER','MANAGER')` no controller, **`@Roles('OWNER')` em tudo que é
+plano e cobrança** (`SPEC.md` → RBAC: o gerente não mexe no billing do SaaS).
+O gate `multiUnidades` está nas ESCRITAS de unidade, não na leitura — a
+sub-aba mostra a lista e o cadeado fica no botão "+ Nova unidade", como na
+topbar do protótipo. `/my-page` não tem gate — branding público não está em
+`FEATURE_KEYS` (o overlay `minhaPaginaLocked` do protótipo é código morto; ver
+decisão). A calculadora saiu daqui na fase 23 (`/price-calculator`).
+
+| Método | Rota | Papel | Observações |
+|---|---|---|---|
+| GET \| PATCH | `/settings/barbershop` | OWNER/MANAGER | Nome/CNPJ/endereço/telefone/fuso + `TenantBusinessHour`, agora **com almoço da casa** (`lunchStart`/`lunchEnd`). Fuso validado contra `TENANT_TIMEZONES`. Recusa 400 com o DIA no texto quando o almoço sai do expediente. Não repropaga pra `WorkSchedule` dos barbeiros — ver decisão. |
+| GET | `/settings/units` | OWNER/MANAGER | Sem gate (🆕 ag.26). Cada linha traz `status` DERIVADO: `INACTIVE` \| `SETUP` (ligada, zero barbeiro) \| `ACTIVE`. |
+| POST \| PATCH | `/settings/units(/:id)` | OWNER/MANAGER | `@RequireFeature('multiUnidades')`. A primeira criada vira `isDefault`. |
+| GET | `/settings/plan` | **OWNER** | Plano atual + faturas + planos disponíveis COM `marketing` (os bullets do card). `renewsAt` é **nulo** sem assinatura (era `new Date()`, e a tela anunciava renovação para hoje). Cada fatura traz `overdue` — `PENDING` + `BILLING_DUE_DAYS` (env, padrão 5). |
+| GET | `/settings/plan/preview/:planId` | **OWNER** | 🆕 ag.26. O corpo do `modalTrocarPlano`: `gained`/`lost` do diff REAL entre os `features` dos dois planos + os NOMES dos barbeiros que o downgrade desliga (mesma ordem de `applyPlanLimit`). 409 `PLAN_UNCHANGED` no plano atual. |
+| POST | `/settings/plan/change` | **OWNER** | Passa pelo `PAYMENT_ADAPTER` (`createCharge` → CONFIRMED → RECEIVED) e a `SaasInvoice` nasce com `externalId`. Downgrade não recusa: `applyPlanLimit` desliga os excedentes. 409 no plano atual. |
+| GET | `/settings/plan/invoices/:id.pdf` | **OWNER** | 🆕 ag.26. Recibo da fatura (pdfkit, mesma paleta clara dos outros exports). Busca por `id` **e** `tenantId` — fatura do vizinho é 404. |
+| GET \| PATCH | `/settings/preferences` | OWNER/MANAGER | `bloquearFaltasAtivo`/`bloquearFaltasQtd`/`antecedenciaMinima`/`cancelamentoHoras`/`monthlyGoalCents`. Validação por FAIXA, não por lista — ver decisão do seletor. |
+| GET \| PATCH | `/my-page` | Slug (valida com `SlugService`, mesma trava de reservados do onboarding), sobre, Instagram, endereço, toggles. Devolve também `publicBaseUrl` (prefixo do campo de URL). 409 `SLUG_IN_USE` quando o link já é de outra. |
+| GET | `/my-page/preview` | 🆕 ag.25. Payload da página pública, servido pelo MESMO `PublicPageService` de `/{slug}` — é o "Preview ao vivo". |
+| POST \| DELETE | `/my-page/images/:slot` | 🆕 ag.25. Upload REAL de logo/capa (`slot` ∈ `logo`\|`cover`), multipart, JPG/PNG/WebP até 5 MB, atrás de `StorageAdapter`. |
+| POST \| DELETE | `/my-page/photos(/:id)` | Galeria — o POST virou upload multipart (era URL digitada); teto de 12 fotos. |
+| GET \| PATCH | `/my-page/reviews(/:id)` | 🆕 ag.25. Tabela "Avaliações recebidas": lista TODAS (publicadas ou não) e liga/desliga `Review.published`, que controla a página pública E a média da nota. |
+
+### Meu perfil (`/api/v1/me`) — agente 27
+
+A PESSOA logada, não a barbearia. Prefixo próprio de propósito: `/settings` é
+do TENANT e vive inteiro sob `@Roles('OWNER','MANAGER')`; aqui os TRÊS papéis
+entram — o barbeiro também troca a própria senha e baixa os próprios dados. O
+recorte por papel não é "tem acesso ou não", é campo a campo, e por isso mora
+DENTRO do serviço. Os três `can*` do payload são o espelho exato desses 403 —
+a tela não recalcula permissão a partir do papel (regra 3).
+
+A troca de senha continua em `POST /auth/password/change` (fase 03), que já
+revoga as demais sessões e audita. Repetir a rota aqui daria dois caminhos
+para a mesma operação sensível.
+
+| Método | Rota | Papel | Observações |
+|---|---|---|---|
+| GET | `/me` | OWNER/MANAGER/BARBER | Nome, e-mail, WhatsApp, foto, `role`/`roleLabel` (o selo do desenho), `tenantName`, os três `can*` e `scheduledDeletion`. O WhatsApp CAI para `Barber.phone` quando o `User` não tem — quem entra pelo convite da Equipe não tem telefone próprio, e o campo vazio parecia dado perdido. |
+| PATCH | `/me` | OWNER/MANAGER/BARBER | Nome/e-mail/WhatsApp. **403 quando um BARBER tenta mudar o próprio nome** (a ficha é da Equipe). Reenviar o mesmo nome não conta como edição — a tela do funcionário manda o campo travado de volta. 409 `EMAIL_IN_USE`. Telefone normalizado para E.164; escreve TAMBÉM em `Barber.email`/`phone` das fichas deste usuário. |
+| POST \| DELETE | `/me/avatar` | OWNER/MANAGER | Upload REAL, multipart, JPG/PNG/WebP até 5 MB, atrás do `StorageAdapter` do agente 25 (pasta `{tenantId}/perfil`). **403 para BARBER** — o desenho do funcionário não tem "Alterar foto". |
+| GET | `/me/export` | OWNER/MANAGER/BARBER | LGPD art. 18 IV/V: perfil, vínculos, fichas de barbeiro, sessões abertas (sem token) e a trilha das próprias ações (teto de 500). Sai NA HORA — o protótipo prometia e-mail "em até 48h" para uma consulta de meio segundo. 5/h. |
+| POST | `/me/data-deletion-request` | MANAGER/BARBER | Encaminha o pedido ao(s) dono(s) por e-mail + `AuditLog`. **400 para OWNER** — ele tem o botão que exclui de fato. 3/h. |
+| POST | `/me/account-deletion` | **OWNER** | Exige `confirm: "EXCLUIR"` por extenso (validado no DTO E no serviço). AGENDA: `purgeAt = +30d`, tenant `CANCELED`, assinatura cancelada no `PAYMENT_ADAPTER`, e-mail com a data. **Não marca `deletedAt`** — é ele que o login e o `TenantGuard` filtram, e marcá-lo trancaria o dono para fora da janela em que deveria poder desistir. 409 `DELETION_ALREADY_SCHEDULED`. 10/h. |
+| DELETE | `/me/account-deletion` | **OWNER** | Desiste dentro da janela. Volta a `TRIAL`, não a `ACTIVE`: a assinatura foi cancelada no gateway e não se ressuscita cobrança recorrente por conta própria — reativar é escolher plano em Configurações. 409 `DELETION_NOT_SCHEDULED`. |
 
 ### Super Admin (`/api/v1/admin`) — fase 08
 
@@ -747,15 +1020,20 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   visível" do critério de aceite, verificado pela ESTRUTURA do layout
   (`overflow-y-auto` só no conteúdo, nunca envolvendo o rodapé), não por
   captura de tela — ver dívida sobre verificação visual.
-- **Financeiro** (`app/financeiro/`, `components/finance/`): 6 sub-abas
-  (Caixa/Contas a pagar/Contas a receber/Vales/Contas bancárias/Fluxo de
-  caixa) num `Tabs` só. `CashFlowChart` é SVG puro (sem lib de gráfico,
-  legenda abaixo, `overflow-x-auto` no container — regra 1).
-- **Comissões** (`app/comissoes/`): seletor de mês, cards expansíveis por
-  barbeiro com extrato, `RuleModal` (FIXED/TIERED com editor de faixas),
-  "Fechar período" com `confirm()` (é uma ação que trava o cálculo — vale a
-  fricção de uma confirmação nativa em vez de um modal próprio, dado o
-  tempo da sessão).
+- **Financeiro** (`app/financeiro/`, `components/dashboard/finance/`):
+  reconstruído na fase 18. A página é só a moldura — barra de 6 sub-abas em
+  pill group com cadeado nas travadas — e cada sub-aba é um componente que faz
+  as PRÓPRIAS consultas (`cash-tab`, `accounts-tab`, `vales-tab`,
+  `bank-accounts-tab`, `cash-flow-tab`). Sem isso, abrir "Caixa" dispararia as
+  cinco consultas das outras. `CashFlowChart` é SVG puro com barras (entradas ×
+  saídas) e a linha do acumulado por cima, em ESCALAS separadas: acumulado é
+  estoque, fluxo é vazão — na mesma escala uma das séries vira reta no eixo.
+- **Comissões** (`app/comissoes/`): reconstruída na fase 19. Faixa de recorte
+  (`Segmented` Semanal/Mensal + stepper `‹ ›`), 3 KPIs e a tabela de 9 colunas
+  com o extrato abrindo por barbeiro. `RuleModal` e `PdfModal` vivem em
+  `components/dashboard/commissions/`; rótulos e recortes de data em
+  `commissions-shared.ts`. "Fechar período" segue com `confirm()` nativo — é
+  uma ação que TRAVA o cálculo do mês, e a fricção é bem-vinda.
 - **Fidelidade** (`app/fidelidade/`): Pontos/Sorteios/Assinaturas.
   Assinaturas usa `FeatureLocked` (Avançado).
 - **WhatsApp**: card por automação, `Switch` + template editável;
@@ -862,6 +1140,2393 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   `TENANT_SUSPENDED` (403) e reativar devolvendo o acesso, impersonar
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
+
+## O que o agente 28 (auditoria da aba Assistente IA) entregou
+
+Rota: `/app/assistente-ia`. O protótipo é `Dashboard.dc.html` l.2818–3000.
+A aba existia desde a fase 07 como um chat cru — header genérico, balões sem
+geometria, campo com botão "Enviar" textual. O desenho tem MUITO mais: cartões
+estruturados ao lado das respostas, medidor de cota, banner de upsell, chips e
+microfone.
+
+### Desvios encontrados (18 blocos conferidos)
+
+| # | Bloco do protótipo | Situação anterior |
+|---|---|---|
+| 1–2 | Header 64px (selo, "Navalha — seu assistente", "online") + botão de ícone | `h1` genérico; botão inexistente |
+| 3–5 | Área de 760px, balão do usuário `14/14/4/14`, balão do assistente `4/14/14/14` com avatar | `Card` sem largura máxima, raio uniforme, cor errada |
+| 6 | Cartão de MÉTRICA (número + delta + sparkline) | inexistente |
+| 7 | Cartão "agendamento criado" + "Ver na agenda"/"Desfazer" | inexistente |
+| 8 | Balão de ÁUDIO (play + waveform + duração) | inexistente |
+| 9 | Cartão "bloqueio criado" | inexistente |
+| 10 | Cartão de clientes inativos + "Enviar reativação para todos" | inexistente |
+| 11 | Medidor de uso (rótulo + barra) | só o rótulo, sem barra |
+| 12 | Link "simular limite" | inexistente — e **não portado de propósito** |
+| 13 | Banner de limite + "Fazer upgrade" | inexistente |
+| 14 | Chips de sugestão | inexistente |
+| 15–16 | Microfone 44px + campo + seta dourada 44px | botão "Enviar" textual |
+| 17–18 | Badge "IA" no nav · recorte do BARBER | já corretos (agente 22 e fase 07) |
+
+Ao final, tabela zerada — com as três decisões de recorte registradas abaixo.
+
+### Backend
+
+- **`AiChatMessage.card` (JSONB)** — a resposta não é só texto: o cartão vai
+  gravado ao lado dela. Sem coluna, o histórico reabria como texto morto e o
+  bloco desenhado só existia no instante da resposta.
+- **`AiChatMessage.hiddenAt`** — "limpar conversa" ESCONDE, não apaga. A cota
+  do mês é contada nestas linhas: um `DELETE` zeraria o contador, e quem
+  estourasse o limite ganhava 50 mensagens novas clicando no botão. É a brecha
+  que o próprio botão criava, fechada antes de existir.
+- **A cota virou do TENANT** (era `count` por `userId`). A cota é do PLANO;
+  contar por usuário multiplicava o limite pelo número de donos e gerentes da
+  casa — exatamente o que o tier deveria limitar. O histórico continua por
+  usuário; só o contador mudou de recorte.
+- **`AssistantInsightsService`** — as consultas reais por trás dos cartões
+  (faturamento de 7 dias com série diária e variação, ticket médio de 30 dias,
+  inativos com o MESMO `CLIENT_INACTIVE_DAYS` da aba Clientes, agenda do dia).
+  Mora separada porque é a camada de FERRAMENTAS que o driver enxerga
+  (`AssistantInsightsPort`): quando o provedor real entrar, é este objeto que
+  vira o conjunto de tools do LLM, sem que o driver ganhe Prisma.
+- **`AiAssistantAdapter` passou a devolver `{ text, card }`** e a receber
+  `insights` já amarrado ao tenant — o driver não escolhe de quem é o número.
+  Ganhou também `suggestions()`: os chips saem do DRIVER, porque sugerir o que
+  ele não sabe responder seria um chip morto.
+- **`DELETE /assistant/messages`** (limpar conversa) — endpoint novo.
+- **Seed**: `resetDemoExtras` passou a limpar `aiChatMessage` do tenant demo.
+  `seedAssistant` é `createMany` puro; sem isso cada reseed empilhava outras 24
+  mensagens no mês e — com a cota agora por tenant — o contador subiria sozinho
+  até fechar a porta no tenant de demonstração.
+
+| Método | Rota | Observações |
+|---|---|---|
+| GET | `/assistant/messages` | Histórico (100 últimas, `hiddenAt IS NULL`) + uso do mês + sugestões. |
+| POST | `/assistant/messages` | 403 `AI_MESSAGE_LIMIT_REACHED` ao estourar a cota do tenant. |
+| DELETE | `/assistant/messages` | Esconde a conversa do usuário. A cota do mês PERMANECE contada. |
+
+### Frontend
+
+`components/dashboard/assistant/`: `chat-header`, `chat-message`,
+`assistant-card` (um render por `kind`, molduras com o `min-width` do
+protótipo: 220/280/320px), `sparkline`, `chat-composer`, `use-speech-input`.
+Ícones `ArrowRightIcon` e `MicIcon` portados dos `path` do bundle.
+
+- Nenhum valor do protótipo no front: número, nome de cliente, data e rótulo
+  de variação vêm todos do cartão que a API devolve.
+- Estados: skeleton com a SILHUETA da conversa (balão à direita, balão à
+  esquerda) para não empurrar layout; vazio próprio; erro com retry local;
+  turno otimista enquanto o assistente responde.
+- O botão "Enviar reativação para todos" NAVEGA para `/app/whatsapp`, onde
+  moram o gate de plano, a contagem e a confirmação — o assistente não
+  reimplementa envio em massa.
+
+### Três recortes deliberados (não são pendências de execução)
+
+1. **"Simular limite" (l.2943) não foi portado.** É afordância de demo do
+   protótipo (`toggleAssistantLimit`, l.4883), da mesma família do
+   `minhaPaginaLocked` que o agente 25 classificou como código morto. Um link
+   que mente sobre o estado do servidor não vai para produção.
+2. **O microfone virou DITADO, não gravação.** O balão de áudio do protótipo
+   (l.2884–2900) exigiria armazenamento de mídia e provedor de transcrição,
+   que esta fase não tem. O que dá para entregar de verdade é a Web Speech API
+   do navegador: a fala vira texto no campo e o dono revisa antes de enviar.
+   Onde a API não existe (Firefox), o botão SOME — microfone que não escuta é
+   o botão morto que a regra 2 proíbe.
+3. **Os cartões de ESCRITA ("agendamento criado", "bloqueio criado") ficaram
+   para o provedor real.** Produzi-los exige entender "agende o João amanhã às
+   14h com o Diego" — NLU, não classificador de palavra-chave. Criar
+   agendamento a partir de `includes('agenda')` seria pior que não criar. A
+   moldura do cartão de agenda já é a mesma geometria (ícone, título, linhas
+   de detalhe, botões), então o dia em que o driver real souber produzi-los o
+   desenho já está de pé.
+
+### Verificação
+
+- 12 e2e novos (`assistant.e2e-spec.ts`) e 4 de isolamento novos. Suítes
+  completas: **95 unit · 333 e2e · 177 isolamento**, todas verdes.
+- Um caso e2e pegou bug de verdade durante a escrita: `revenueThisWeek`
+  devolvia cartão zerado em vez de `null` num tenant sem comanda fechada, e a
+  frase de estado vazio do driver nunca aparecia.
+- Varredura responsiva: `/app/assistente-ia` passa nos 5 tamanhos.
+- Conferido no navegador como OWNER (demo, Avançado → "∞ Mensagens
+  ilimitadas"), no tenant secundário (Essencial → "12/50" com a barra em 24%),
+  com a cota cheia (banner vermelho + campo desabilitado + chips escondidos) e
+  como BARBER (nav sem o item; URL forçada explica o recorte em vez de
+  oferecer um retry que nunca passa).
+
+### Desvio visto de passagem, FORA desta aba (para o agente da área)
+
+Conferindo o nav do BARBER, o item **Clientes** não aparece — mas o
+`DashboardFuncionario.dc.html` (l.1614) TEM `clientes` em `NAV_DEFS`.
+`lib/dashboard/nav.ts` marca a rota como `roles: ['OWNER','MANAGER']`, e o
+`ClientsController` recusa o barbeiro. Ou o protótipo do funcionário está
+sendo contrariado, ou a decisão de restringir foi tomada e não ficou escrita.
+Não toquei: a aba Clientes é do agente 16. Fica anotado porque foi a única
+divergência de nav que a conferência por papel desta sessão levantou.
+
+## O que o agente 27 (auditoria da tela Meu perfil) entregou
+
+Rota: `/app/meu-perfil`, fora do nav, alcançada pelo menu do avatar. O agente
+26 a tirou de Configurações e a entregou de pé, com o que já tinha endpoint
+(dados da sessão + troca de senha); esta fase a completou.
+
+**Uma tela, dois desenhos.** `Dashboard.dc.html` l.2737–2817 é a do dono/gerente
+e `DashboardFuncionario.dc.html` l.776–845 é a do barbeiro — e a segunda NÃO é
+outra página: é a mesma, com o nome travado, sem "Alterar foto", com "Solicitar
+exclusão dos meus dados" no lugar de "Excluir minha conta" e sem o bloco
+vermelho. Quem decide isso são os `can*` de `GET /me`.
+
+O **gerente** é a UNIÃO dos dois: ele usa o painel do dono (nome editável,
+foto, link da Política de Privacidade), mas não exclui a barbearia — então
+ganha o "Solicitar exclusão dos meus dados" do desenho do funcionário. Por isso
+os recortes são por CAMPO (`canEditName`, `canUploadAvatar`,
+`canDeleteAccount`) e não por "qual dos dois desenhos renderizar": tratar o
+gerente como funcionário o deixaria sem a foto; como dono, com um botão de
+exclusão que o servidor recusa.
+
+### A tabela de desvios (o passo 1 da fase)
+
+| Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? |
+|---|---|---|---|
+| "‹ Voltar ao dashboard" (l.2740) | ❌ | — (havia um `<h1>` que o desenho não tem) | — |
+| Avatar 56px com borda dourada (l.2748) | ❌ | — | — |
+| Nome + selo do papel (l.2751) | ❌ | papel virava item de `<dl>` | — |
+| "Alterar foto" (l.2754) | ❌ | — | protótipo: toast "em breve" |
+| Nome / E-mail / WhatsApp editáveis (l.2758–2769) | ⚠️ | texto read-only; WhatsApp inexistente | — |
+| "Salvar alterações" (l.2772) | ❌ | — | sem endpoint |
+| "Segurança": 3 campos (l.2777–2789) | ⚠️ | 2 de 3, em grid de 2 colunas | ✅ |
+| Erro inline `mpSenhaErro` (l.2790) | ❌ | só toast | — |
+| "Privacidade e dados" + "Baixar meus dados" (l.2797–2805) | ❌ | — | — |
+| "ATENÇÃO" + "Excluir minha conta" (l.2807–2813) | ❌ | — | — |
+| `modalExcluirConta`, 2 passos (l.3511–3546) | ❌ | — | — |
+| BARBEIRO: nome travado + a frase (func. l.796) | ❌ | — | — |
+| BARBEIRO: "Solicitar exclusão" + modal (func. l.840/1212) | ❌ | — | — |
+
+### Os quatro achados
+
+1. **"Excluir minha conta" não existia — nem tela, nem endpoint.** A ação mais
+   destrutiva do produto (barbearia, unidades, equipe, agenda, histórico de
+   clientes, assinatura) estava desenhada e não implementada em lugar nenhum.
+2. **O "30 dias para reativar" do modal não tinha como ser cumprido.** Não
+   havia coluna de prazo nem faxina. `Tenant.deletedAt` não servia: ele já
+   significa "apagado" e é filtrado pelo login e pelo `TenantGuard` — marcá-lo
+   no pedido trancaria o dono para fora exatamente na janela em que ele deveria
+   poder desistir. Nasceu `Tenant.purgeAt`.
+3. **A foto do usuário não tinha onde morar.** `avatarUrl` só existia em
+   `Barber`, que é o profissional da agenda: um gerente sem ficha de barbeiro
+   não tinha onde guardar a própria foto. O protótipo respondia com um toast
+   "será habilitado em breve" — com o `StorageAdapter` do agente 25 já de pé,
+   isso não é limitação, é botão morto (regra 2).
+4. **O recorte do BARBEIRO não existia.** A tela do funcionário tem quatro
+   diferenças deliberadas, e nenhuma estava lá. Pior: sem o 403 no servidor,
+   o nome do barbeiro seria editável por ele — o que troca o dono da agenda e
+   da comissão pelas costas de quem administra a barbearia.
+
+### Schema (migration `20260825120000_meu_perfil_auditoria`)
+
+- `User.avatarUrl` — a foto da PESSOA, separada da foto do BARBEIRO.
+- `Tenant.purgeAt` (+ índice) — a data da faxina. `null` = nenhuma exclusão
+  agendada; `deletedAt` continua significando "apagado".
+
+### Backend
+
+- Módulo novo `apps/api/src/account/` com `MyProfileController`/`Service`. Fora
+  de `SettingsModule` de propósito: aquele é da barbearia e é OWNER/MANAGER.
+- `PATCH /me` grava em `User` **e** nas fichas `Barber` deste usuário (e-mail e
+  telefone). É `Barber.phone` que o WhatsApp da barbearia usa para falar com o
+  profissional: gravar só em `User` deixaria a tela e o envio divergindo.
+- `GET /me` cai para `Barber.phone` quando `User.phone` é nulo — quem entra
+  pelo convite da Equipe não tem telefone próprio, e o campo vazio parecia dado
+  perdido enquanto a aba Equipe mostrava o número.
+- `MaintenanceService.purgeScheduledTenants` — a faxina cumpre o prazo. Uma
+  barbearia por vez (um erro numa não derruba as outras), `ON DELETE CASCADE`
+  leva o resto, e o `AuditLog` fica (`tenantId` é `SetNull`) como prova.
+- Seis ações novas de auditoria: `user.profile_updated`, `user.avatar_updated`,
+  `user.data_exported`, `user.data_deletion_requested`,
+  `account.deletion_requested`/`_canceled` e `account.purged`.
+
+### Frontend
+
+- Os quatro cards na ordem do desenho, coluna de 720px centrada, com o link de
+  volta ACIMA deles (o `<h1>` que existia saiu — o protótipo não o tem).
+- "Segurança" virou coluna única com os TRÊS campos e o erro sob o último. A
+  régua da mensagem é a `isPasswordValid` compartilhada, a mesma que a API
+  aplica: prometer menos do que o servidor exige daria um 400 sem explicação.
+- `DeleteAccountModal` — dois passos no mesmo diálogo, "Excluir permanentemente"
+  só acende com a palavra exata, e o fundo NÃO fecha (`dismissOnOverlayClick`).
+- O bloco "ATENÇÃO" tem DOIS estados: o do desenho e o de exclusão agendada,
+  com a data e "Cancelar exclusão". Sem o segundo, os 30 dias seriam uma frase
+  sem botão — é o mesmo bloco, no mesmo lugar, em outro estado.
+- A foto entrou no menu do avatar da topbar; por isso o `PATCH`/upload renova a
+  sessão (`refresh()`), que é de onde aquele componente lê.
+- O formulário só reidrata quando os valores do SERVIDOR mudam, comparados por
+  conteúdo: reagindo à identidade do objeto, trocar a foto no meio de uma
+  edição apagaria o nome digitado e ainda não salvo.
+
+### Decisões e desvios conscientes do protótipo
+
+- **"Baixar meus dados" entrega o arquivo NA HORA.** O protótipo prometia
+  e-mail "em até 48h"; não há nada a processar em lote, e mandar a pessoa
+  esperar dois dias por uma consulta de meio segundo é fricção sem
+  contrapartida.
+- **"Alterar foto" virou upload de verdade**, contra o toast "será habilitado
+  em breve" do desenho. A regra 2 vence aqui porque a infraestrutura já
+  existia (`StorageAdapter`, agente 25).
+- **Nada de "preferências pessoais" nesta tela.** O enunciado da fase as
+  menciona, o protótipo NÃO as desenha, e as que existem no produto
+  (antecedência, faltas, cancelamento, meta) são da BARBEARIA e já moram em
+  Configurações → Preferências (agente 26). Inventar um bloco pessoal seria
+  criar uma configuração que ninguém lê.
+- **Durante a janela de 30 dias a barbearia continua funcionando com o plano
+  atual.** `Tenant.planId` não é limpo no pedido: o dono precisa do produto de
+  pé para exportar os dados e para poder desistir. O que para na hora é a
+  COBRANÇA (assinatura `CANCELED`), que é o que o modal promete.
+- **Desistir volta o tenant a `TRIAL`, não a `ACTIVE`.** A assinatura foi
+  cancelada no gateway e não se ressuscita cobrança recorrente por conta
+  própria — reativar é escolher plano em Configurações → Plano e cobrança,
+  caminho que já passa pelo `PAYMENT_ADAPTER`.
+- **Contorno vermelho é classe local, não variante do design system.** O
+  `Button` tem `danger` só na versão sólida (usada nos modais); o contorno que
+  o desenho pede aparece em dois botões desta tela e foi resolvido com
+  `DANGER_OUTLINE` no arquivo. Virar variante compartilhada mexeria em telas já
+  auditadas sem necessidade.
+
+### Testes
+
+- `test/profile.e2e-spec.ts` — 25 casos: o recorte dos três papéis, a
+  normalização do WhatsApp, a queda para `Barber.phone`, o 403 do nome do
+  barbeiro (e o "reenviar o mesmo nome não é edição"), o 409 de e-mail em uso,
+  o upload real (e o PDF disfarçado tomando 415), a exportação sem token, o
+  pedido de exclusão chegando ao dono, os 403 de gerente/barbeiro na exclusão
+  da conta, o agendamento que NÃO apaga nada, o 409 de duplicidade, a
+  desistência e a faxina cumprindo o prazo.
+- 5 casos novos na suíte de isolamento (`full-coverage`): o perfil de A sem
+  nada de B, o header de slug de B não trocando o tenant, a exportação sem a
+  barbearia vizinha e — os dois que mais importam — a exclusão e o pedido de
+  exclusão não caindo sobre B nem com o slug dela no header.
+- Suíte: **95 unit · 321 e2e · 173 isolamento**.
+
+### Conferido no navegador
+
+Dono, gerente e barbeiro em 1440, e o dono em 390: ordem dos blocos, selo do
+papel, nome travado com a frase no barbeiro, o gerente com os TRÊS controles de
+privacidade (exportar, solicitar exclusão, política), os dois passos do modal (bottom-
+sheet no celular, modal no desktop), o estado "Exclusão agendada para
+24/09/2026 — faltam 30 dias para desistir" e a desistência. Varredura
+responsiva nos 5 tamanhos: `/app/meu-perfil` limpa nos cinco (o alvo de toque
+de "Alterar foto" nasceu com 16px de altura e foi para 44px no dedo).
+
+### Dívidas que a tela deixa
+
+- **`/privacidade` não existe.** O link "Política de Privacidade" (l.2804)
+  aponta para a mesma rota que o cadastro do estabelecimento e o registro do
+  cliente já apontam desde as fases 03/05 — e ela nunca foi escrita. Não é
+  dívida desta tela, mas agora são TRÊS pontos de entrada para um 404. Escrever
+  a página (e a de termos) é trabalho de conteúdo, não de código.
+- **Reativar depois da exclusão é só pelo caminho do dono.** Se ele perder o
+  acesso ao login dentro dos 30 dias, não há rota de super admin que desfaça o
+  agendamento — `/admin/tenants` filtra por `deletedAt`, que aqui é nulo, então
+  a barbearia continua na lista, mas sem botão para limpar o `purgeAt`. Um
+  `POST /admin/tenants/:id/deletion/cancel` fecha isso em poucas linhas.
+- **A foto do usuário é gravada na pasta do tenant ATIVO.** Funciona (a URL é
+  pública como a do logo), mas um usuário que serve duas barbearias deixa a
+  foto na pasta daquela de onde subiu o arquivo. Se um dia o storage passar a
+  ter ciclo de vida por tenant, a foto pessoal precisa de um espaço próprio.
+- **A exportação LGPD não cobre o que o usuário produziu como OPERADOR.** Traz
+  perfil, vínculos, fichas de barbeiro, sessões e a trilha das próprias ações —
+  não as comandas que ele fechou nem as comissões que ganhou, que são dado da
+  BARBEARIA. É a leitura correta da LGPD, mas vale registrar a escolha.
+
+## O que o agente 26 (auditoria da aba Configurações) entregou
+
+Fonte: `Dashboard.dc.html` l.2466–2736 (as 4 sub-abas) + `modalUpgrade`
+(l.3461) e `modalTrocarPlano` (l.3483). Rota: `/app/configuracoes`.
+
+### A tabela de desvios (o passo 1 da fase)
+
+| Bloco do protótipo | Existe? | Layout igual? | Botões funcionam? | Ação tomada |
+|---|---|---|---|---|
+| Barra de 4 sub-abas | ⚠️ 5 | ❌ rótulo "Plano"; aba extra "Meu perfil" | ✅ | 4 abas, rótulos do desenho; Meu perfil virou tela própria |
+| Barbearia → dados (5 campos) | ⚠️ | ❌ grid 2 col., **sem Fuso**, card partido | ✅ | Card único, 1 coluna, seletor de fuso |
+| Barbearia → horário com **Almoço** | ⚠️ | ❌ almoço não existia nem no schema | ✅ | `lunchStart`/`lunchEnd` em `TenantBusinessHour` + linha 1:1 |
+| Barbearia → "Salvar alterações" | ✅ | ❌ fora do card | ✅ | Rodapé do card, à direita |
+| Unidades → banner de Relatórios | ❌ | — | — | Criado, com link real |
+| Unidades → "+ Nova unidade" com cadeado | ⚠️ | ❌ a aba inteira virava paywall | ⚠️ | Gate movido para a ESCRITA; cadeado no botão |
+| Unidades → tabela de 4 colunas | ❌ grade de cards | ❌ | ✅ | `ResponsiveTable` + status derivado |
+| Unidades → modal "Nova unidade" | ✅ | ❌ campo Telefone a mais | ✅ | Só Nome e Endereço |
+| Unidades → "Sincronização entre unidades" | ❌ | — | — | **Desvio consciente** (abaixo) |
+| Plano → card atual + "Mudar de plano" | ⚠️ | ❌ sem selo "Ativo", sem botão | ⚠️ `renewsAt` caía em hoje | Reconstruído 1:1 |
+| Plano → grade de comparação | ⚠️ | ❌ **sem lista de recursos** | ✅ | `marketing` exposto no `SaasPlanOption` |
+| `modalTrocarPlano` (GANHOS/PERDAS) | ❌ | — | ❌ `window.confirm()` | Modal real + `GET /plan/preview/:planId` |
+| Plano → histórico de faturas + **PDF** | ⚠️ `<ul>` | ❌ | ❌ PDF inexistente | Tabela + endpoint de recibo |
+| Preferências → 3 seletores + toggle | ⚠️ | ❌ inputs numéricos | ✅ | `<Select>` com as opções do desenho |
+| Preferências → "Tema escuro" | ❌ | — | — | **Desvio consciente** (abaixo) |
+| `modalUpgrade` | ✅ | ✅ | ✅ | — |
+| Papéis | ❌ | — | — | Plano e cobrança viraram OWNER-only |
+| Horário → motor de disponibilidade | ❌ | — | — | `closed` zera o dia; almoço da casa subtrai |
+
+Ao final, zerada — salvo os dois desvios conscientes registrados abaixo.
+
+### Os cinco achados
+
+1. **O gerente trocava o plano da barbearia.** `/settings/plan`,
+   `/plan/change` e as faturas eram `@Roles('OWNER','MANAGER')` (herdado do
+   controller) quando o `SPEC.md` é explícito: "MANAGER: dashboard completo
+   EXCETO configurações de billing/plano do SaaS". Não era uma imprecisão de
+   permissão: um gerente podia fazer downgrade e, com isso, desligar barbeiros
+   da equipe. Agora as quatro rotas de plano são `@Roles('OWNER')` (o
+   `RolesGuard` faz `getAllAndOverride` com o handler antes da classe, então o
+   decorator do método vence) e a sub-aba some do menu para quem não é dono.
+2. **"Fechado" não chegava ao motor de disponibilidade.** O
+   `AvailabilityService.planFor` fazia `if (business && !business.closed)` —
+   isto é, o dia fechado apenas deixava de RECORTAR o expediente do barbeiro,
+   em vez de zerá-lo. Um barbeiro com `WorkSchedule` no domingo enchia de
+   horários uma barbearia que não abre domingo. O interruptor mais visível da
+   aba não tinha efeito nenhum.
+3. **O "Almoço" do horário de funcionamento não tinha onde morar.** O desenho
+   desenha um toggle de almoço por dia (l.2521), mas só o `WorkSchedule` de
+   cada barbeiro tinha `lunchStart`/`lunchEnd` — a CASA não fechava para
+   almoço. Nasceram as duas colunas em `TenantBusinessHour`, com duas `CHECK`
+   no banco (par completo, janela dentro do expediente) e recusa 400 antes
+   disso, com o dia no texto.
+4. **A troca de plano era um `window.confirm()`.** Os blocos "Você vai ganhar"
+   e "Você vai perder" são a razão de o `modalTrocarPlano` existir, e não
+   existiam. Também não existia a lista de recursos nos cards de comparação:
+   a grade mostrava nome e preço, nada mais.
+5. **O link "PDF" de cada fatura era `href="#"`.**
+
+### Schema (migration `20260824120000_configuracoes_auditoria`)
+
+- `TenantBusinessHour.lunchStart` / `.lunchEnd` (`Int?`), com
+  `tenant_business_hour_lunch_pair` (os dois nulos ou os dois preenchidos) e
+  `tenant_business_hour_lunch_window` (dentro de `opensAt`/`closesAt`). Um
+  intervalo pela metade viraria `NaN` silencioso na grade.
+
+### Backend
+
+- **Papéis**: `@Roles('OWNER')` em `/settings/plan`, `/plan/preview/:planId`,
+  `/plan/change` e `/plan/invoices/:id.pdf`.
+- **Gate de unidade movido**: `GET /settings/units` perdeu o
+  `@RequireFeature`; `POST`/`PATCH` mantêm. O protótipo mostra a lista e tranca
+  o botão — esconder a aba inteira ensinava menos e vendia pior.
+- **`GET /settings/plan/preview/:planId`** monta o modal: percorre
+  `FEATURE_KEYS` comparando o `features` REAL dos dois planos (editável pelo
+  super admin — trocar uma flag lá muda o texto do modal sem deploy), soma o
+  ganho/perda de assentos e devolve os NOMES dos barbeiros que caem, na MESMA
+  ordem em que `PlanLimitsService.applyPlanLimit` vai desligá-los. As duas
+  contas precisam bater: o modal não pode prometer uma coisa e a troca fazer
+  outra.
+- **A troca passa pelo `PAYMENT_ADAPTER`**: `createCharge` → `CONFIRMED` →
+  `RECEIVED`, e a `SaasInvoice` nasce com `externalId`. Era a única
+  movimentação financeira do SaaS que o gateway nunca via — a rota gravava uma
+  fatura `PAID` direto no banco.
+- **`GET /settings/plan/invoices/:id.pdf`**: recibo em pdfkit, mesma paleta
+  clara do export de Relatórios e do relatório de comissões. Busca por `id`
+  **e** `tenantId`.
+- **`renewsAt` virou nulo** sem assinatura (era `new Date().toISOString()`, e
+  a tela anunciava que o plano renovava HOJE para todo tenant sem
+  `TenantSubscription`).
+- **"Atrasado"** não é status novo: é `PENDING` mais `BILLING_DUE_DAYS` (env
+  nova, padrão 5), calculado na API e devolvido como `overdue`.
+- **`SaasPlanOption.marketing`**: os bullets do card saem da MESMA coluna que
+  a landing consome. O dono lê a mesma promessa antes e depois de assinar.
+- **`UnitItem.status`** derivado: `INACTIVE` \| `SETUP` (ligada, zero
+  barbeiro) \| `ACTIVE`. Nunca digitado.
+- **Disponibilidade**: `business.closed` zera o dia; o almoço da casa é
+  subtraído ANTES do almoço do barbeiro (duas janelas independentes). Na
+  agenda interna o almoço da casa entra como bloqueio `wholeShop` com id
+  sintético — é faixa desenhada, não `ScheduleException` que alguém apague.
+- **Validação**: fuso contra `TENANT_TIMEZONES`; preferências por FAIXA
+  (`bloquearFaltasQtd` ≤ 10, `antecedenciaMinima` ≤ 7 dias, `cancelamentoHoras`
+  ≤ 168) — e não pela lista do seletor, ver decisão abaixo.
+
+### Frontend
+
+- `/app/configuracoes` com as QUATRO sub-abas do desenho, `?tab=` sincronizado
+  com a URL (é o destino de todo `UpgradeModal` da casca).
+- `BusinessHoursEditor` novo: dia, interruptor, entrada–saída, "Almoço" com as
+  duas horas, "Fechado". Semana em ordem de produto (segunda → domingo,
+  `WEEK_ORDER_MONDAY_FIRST`), rótulo curto (`WEEKDAY_SHORT_LABELS`).
+- `PlanChangeModal` novo: título com o preço real, os dois blocos condicionais
+  e "Confirmar" desabilitado até o impacto chegar — aprovar uma troca cujo
+  cálculo está em voo é assinar em branco.
+- Telefone com o par `formatPhone` + `maskPhoneInput` do cadastro de barbeiro
+  (mostrava `551133334444` cru).
+- A troca de plano invalida `settings-plan`, `dashboard-shell`,
+  `settings-units`, `barbers` e `team-plan-usage` — invalidar só a aba deixava
+  a topbar anunciando o plano antigo.
+- `BARBER` que digita a URL recebe a frase e um caminho de saída, não quatro
+  sub-abas com "Tentar de novo" que só sabe repetir um 403.
+
+### "Meu perfil" saiu de Configurações
+
+O protótipo tem uma TELA própria para ela (`isMeuPerfilScreen`, l.2737–2817),
+fora do nav, alcançada pelo menu do avatar. Ela vivia como quinta sub-aba de
+Configurações — uma aba que o desenho não tem. Agora é `/app/meu-perfil`, com
+o MESMO conteúdo que já existia (dados da sessão + troca de senha), e o item do
+menu aponta para lá. **"Privacidade e dados", "Baixar meus dados" e a exclusão
+de conta em dois passos (`modalExcluirConta`, l.3512) eram do agente 27**, dono
+desta tela — ele recebeu a rota de pé, não em branco, e **já a completou**: ver
+"O que o agente 27 entregou".
+
+### Decisões e desvios conscientes do protótipo
+
+- **"Sincronização entre unidades" (l.2576) NÃO foi portada.** Os dois toggles
+  ("Clientes", "Produtos") descrevem exatamente as duas entidades que o schema
+  NÃO escopa por unidade: `Client`/`ClientProfile` e `Product` não têm
+  `unitId` (quem tem é `Barber`, `Appointment`, `Order`, `CashRegister`).
+  Persistir as flags seria um par de interruptores sem efeito nenhum — a regra
+  2 ("todo botão tem função real") é mais forte aqui do que a regra 1. Fazer
+  valer exige escopar catálogo e base de clientes por unidade, o que atravessa
+  as abas Clientes (ag. 16) e Serviços & Produtos (ag. 23). Fica como dívida.
+- **"Tema escuro" (l.2730) NÃO foi portado.** O `SPEC.md` → Design system
+  fecha a questão: "tema escuro em todas as superfícies, sem alternância
+  claro/escuro no produto real". Não existe paleta clara no design system;
+  o interruptor seria decorativo.
+- **Os seletores de preferência validam por FAIXA, não pela lista.** A tela
+  oferece as opções do desenho (1–5 faltas, 30min–12h, 1h–24h), mas um valor
+  gravado fora dela continua válido: o seed nasce com `cancelamentoHoras: 2`, e
+  o desenho não oferece "2h antes". `optionsWithCurrent` injeta o valor atual
+  no `<select>` em tempo de render — sem isso, abrir a aba e salvar qualquer
+  outro campo trocaria, em silêncio, a política de cancelamento da barbearia.
+- **A coluna "Barbeiros" está alinhada à direita**, não centralizada como no
+  desenho: `TableColumn.align` do design system só tem `left`/`right`, e
+  número alinhado à direita é o padrão das outras tabelas do produto.
+- **O horário da casa continua NÃO repropagando para o `WorkSchedule`** dos
+  barbeiros (decisão da fase 07, mantida): o expediente da casa RECORTA o do
+  barbeiro no motor, que é o efeito que importa, sem sobrescrever a escala que
+  o dono montou na aba Equipe.
+
+### Achado fora do escopo (corrigido, porque aparecia na tela)
+
+**Suíte de teste interrompida deixava `SaasPlan` no banco para sempre.** O
+`reset()` do seed só apagava os três códigos do seed, então uma execução que
+morre antes do `teardown` deixava `iso-avancado-…`/`e2e-iso-d2-…` vivos — e a
+grade de comparação da aba Plano (e a landing, que lê a mesma tabela) listava
+"Avançado (isolamento)" e "profissional (iso e2e)" ao lado dos planos de
+verdade. `reset()` agora varre por prefixo, a mesma defesa já usada em
+`Client.phone`.
+
+### Seeds
+
+- `UNITS` (3 unidades do tenant demo, endereços coerentes com a barbearia
+  semeada, não os do desenho) + lotação dos barbeiros: matriz 3, Zona Sul 1,
+  Norte 0. A terceira nasce sem barbeiro de propósito — é ela que produz o
+  status "Em configuração", que nenhum ambiente exercitaria de outro jeito.
+  Também é o que dá conteúdo ao seletor de unidade da topbar.
+
+### Testes
+
+- `test/settings.e2e-spec.ts` novo — 24 casos: papéis (gerente barrado nas 4
+  rotas de plano, liberado no resto), ganhos/perdas do downgrade e do upgrade,
+  409 no plano atual, downgrade desligando os excedentes e upgrade trazendo de
+  volta, fatura com `externalId`, `marketing` no payload, "Atrasado", PDF de
+  verdade (`%PDF`) e 404 na fatura do vizinho, almoço da casa gravado/recusado
+  em três formas, fuso fora da lista, tenant recém-criado servindo as 4
+  sub-abas vazias com `renewsAt` nulo, e **o expediente chegando ao motor**
+  (domingo fechado zera o dia com o barbeiro escalado; o almoço da casa some
+  da grade pública).
+- Isolamento: `saasInvoiceId` no `tenant-fixture`, mais dois casos em
+  `full-coverage` (recibo do vizinho e histórico sem id de B) e o caso do gate
+  movido em `dashboard-ii` (Profissional LÊ as unidades, mas não cria nem
+  edita).
+- Suíte: **95 unit · 296 e2e · 168 isolamento**, tudo verde.
+
+### Conferido no navegador
+
+Owner, gerente e barbeiro, nos 5 tamanhos (360/390/768/1024/1440), com a
+varredura `scripts/responsive-sweep.mjs` estendida para as 4 sub-abas e para
+`/app/meu-perfil`. Duas correções de responsividade saíram daí, as duas em
+`packages/ui` e valendo para todo mundo: **a pílula `segmented` do `Tabs`
+tinha 36px** (agora 44 abaixo de `md`, 36 no desktop) e **o `Switch` sem
+rótulo visível tinha alvo real de 44×24** — o trilho continua com 24px, mas
+agora mora dentro de um `<label>` de 44 que é o que o dedo acerta.
+
+Gate conferido de olho: com o tenant no Essencial, a lista de unidades continua
+visível, "+ Nova unidade" ganha o cadeado e abre o upsell, e o `POST` responde
+403 (suíte de isolamento).
+
+### Dívidas que a aba deixa
+
+1. **Sincronização entre unidades** não existe (acima). Enquanto `Client` e
+   `Product` não tiverem `unitId`, catálogo e base de clientes são sempre
+   compartilhados — o que hoje é verdade, mas ninguém escolheu.
+2. **O filtro "Todas as unidades" de Relatórios não tem UI.** A API aceita
+   `unitId` (`ReportPeriodQuery`), mas a página manda `unitId: null` fixo. O
+   banner da aba Unidades leva para Relatórios, e lá não há seletor de unidade.
+   **Para o agente dono de Relatórios (ag. 20).**
+3. **`Appointment.unitId`/`Order.unitId` continuam nulos no seed**, mesmo com
+   os barbeiros lotados. Filtrar relatórios por unidade hoje devolveria zero.
+   Amarrar a unidade no fechamento da comanda e no agendamento é dos agentes
+   de POS e Agenda.
+4. **`/app/agenda` reprova a régua de toque** em 360/390 (`‹`/`›`/"Hoje" da
+   barra, 36×36 e 49×20). Não é desta aba — é o trabalho não registrado do
+   agente 15. **Para quem fechar o registro do 15.**
+5. **`/admin/mensagens` reprova a régua de toque** ("Anterior"/"Próxima",
+   79×34). Super admin, fase 09.
+6. O `<input type="time">` é nativo: em navegador com locale en-US mostra
+   AM/PM. É o mesmo controle do protótipo; trocar por um seletor próprio é uma
+   decisão de design system, não desta aba.
+
+## O que o agente 25 (auditoria da aba Minha Página) entregou
+
+Alvo: `Dashboard.dc.html` l.2240–2465, rota `/app/minha-pagina`.
+
+### Tabela de desvios (preenchida no início, zerada no fim)
+
+| # | Bloco do protótipo | Existia? | Layout igual? | Botões OK? | Resolução |
+|---|---|---|---|---|---|
+| 1 | Cabeçalho + subtítulo (l.2242) | sim | subtítulo divergente | — | texto do protótipo |
+| 2 | Grid `1fr / 380px` (l.2247) | **não** | era `lg:grid-cols-2`, coluna direita = galeria | — | grid refeito |
+| 3 | "Link de agendamento" (l.2250) | sim | botão Copiar inline | sim | botão em linha própria, `self-start` |
+| 4 | "URL personalizada" (l.2259) | sim | prefixo `/` no lugar do domínio | sim | prefixo vem de `publicBaseUrl` |
+| 5 | "Logo e capa" (l.2267) | **não** | — | — | bloco criado + upload real |
+| 6 | "Sobre" (l.2283) | sim | sim | — | — |
+| 7 | "Exibir no site" (l.2288) | sim | sim | **Fotos e Horário não faziam nada** | passaram a valer em `/{slug}` |
+| 8 | Instagram/Endereço (l.2309) | sim | header "Contato" a mais | sim | header removido |
+| 9 | Overlay `minhaPaginaLocked` (l.2319) | não | — | — | **nenhuma** — dead code, ver decisão |
+| 10 | "Preview ao vivo" + iPhone (l.2340) | **não** | — | — | criado, com dados reais |
+| 11 | "Avaliações recebidas" (l.2429) | **não** | — | — | criada + 2 endpoints |
+| 12 | Botão "Salvar alterações" | extra | — | — | protótipo não tem: virou autosave |
+| 13 | loading/vazio/erro | parcial | erro travava em skeleton eterno | — | skeleton fiel, retry, vazios por bloco |
+
+### Backend
+
+- **`StorageAdapter` (`src/adapters/storage/`) — dívida de upload de arquivo
+  fechada.** Mesmo padrão de `NOTIFICATION_ADAPTER`/`PAYMENT_ADAPTER`: símbolo
+  `STORAGE_ADAPTER`, driver `LocalStorageDriver` (grava em disco, serve como
+  estático por `useStaticAssets` em `main.ts`), factory em `AdaptersModule`.
+  Trocar por S3/R2 é um `case`. Nome do arquivo é aleatório (16 bytes hex) e a
+  chave começa SEMPRE pelo `tenantId`; `resolveKey` recusa `..`. Env novas:
+  `STORAGE_DRIVER`, `STORAGE_LOCAL_DIR`, `STORAGE_PUBLIC_BASE_URL`.
+- **`GET /my-page/preview`** reusa `PublicPageService.getBySlug` — o preview
+  serve o MESMO payload de `/{slug}`, não uma segunda montagem.
+- **`GET|PATCH /my-page/reviews(/:id)`** — a tabela do protótipo. O toggle é
+  `Review.published`, que já governava a página pública e a média da nota.
+- **`showPhotos`/`showBusinessHours` chegaram ao público.** Existiam desde a
+  fase 07 e NUNCA eram lidos por `PublicPageService`: o dono desligava e a
+  página continuava mostrando. `PublicBarbershop` ganhou `photos: PublicPhoto[]`
+  e `sections.photos`/`sections.businessHours`; `businessHours` volta `[]`
+  quando desligado.
+- **`publicUrl` passou a sair de `urls.publicBooking`** (era `urls.booking`) e
+  o erro de slug em uso virou `ErrorCode.SLUG_IN_USE` (era a string solta
+  `'SLUG_TAKEN'`, que o front não tinha como reconhecer).
+- **Isolamento**: fixture ganhou `reviewId` e `photoId` por tenant; 4 casos
+  novos em `full-coverage.isolation-spec.ts` (preview, lista de avaliações,
+  despublicar avaliação alheia, remover foto alheia). 86/86 verdes.
+
+### Frontend
+
+- `app/(dashboard)/app/minha-pagina/page.tsx` reescrita na ordem do protótipo:
+  Link de agendamento → URL personalizada → Logo e capa → **Fotos** → Sobre →
+  Exibir no site → Instagram/Endereço, com a coluna de preview de 380px à
+  direita (`xl:grid-cols-[minmax(0,1fr)_380px]`, `sticky`).
+- `components/dashboard/my-page/`: `phone-frame.tsx` (o `IOSDevice` do
+  protótipo, 320×660, rolando por dentro), `page-preview.tsx`,
+  `image-slot.tsx` (upload com validação de tipo/tamanho, drag-and-drop e
+  remoção), `reviews-table.tsx` (`ResponsiveTable` → cards < `md`).
+- **Autosave** no lugar do botão "Salvar alterações": o protótipo não tem
+  botão — os campos chamam `updMp*` no `onChange`. 700ms de debounce, toggles
+  salvam na hora, selo "Salvando… / Salvo automaticamente / Alterações não
+  salvas" no cabeçalho, e 409 `SLUG_IN_USE` vira erro no próprio campo.
+- **`/app/api/revalidate-minha-pagina`** (route handler): `fetchBarbershop`
+  marcava `barbershop:{slug}` com ISR de 60s e NINGUÉM invalidava a tag —
+  salvar só aparecia em `/{slug}` até um minuto depois. A rota repassa o
+  `Authorization` recebido para `GET /my-page` e revalida o slug que a API
+  devolver, então ninguém invalida a barbearia alheia.
+- `PhotosSection` nova na página pública e o horário de funcionamento agora
+  atrás de `sections.businessHours`.
+
+### Verificação
+
+- `pnpm turbo run typecheck lint` limpo no monorepo.
+- API: 95 unit + 272 e2e + 86 de isolamento, todos verdes.
+- Varredura responsiva: `/app/minha-pagina` ✓ nos 5 tamanhos (360/390/768/
+  1024/1440). Fechou a rolagem horizontal de +59px/+30px e os 2 inputs abaixo
+  de 44px que estavam anotados como dívida.
+- Papel BARBER: 403 em `GET /my-page`, `/preview`, `/reviews`, `PATCH
+  /my-page` e `POST /my-page/images/logo` (o item já não aparecia no nav).
+- Ponta a ponta no navegador: clicar em "Fotos"/"Horário" no painel muda
+  `/barbearia-central` na hora; upload de logo e de foto de galeria gravam,
+  aparecem no preview e na página pública, e o estático responde 200 com
+  `Cross-Origin-Resource-Policy: cross-origin`.
+- Tenant vazio (sem sobre/logo/fotos/avaliações) renderiza a aba inteira sem
+  quebrar, com o vazio próprio de cada bloco.
+
+### Desvios deliberados (alimentam as próximas auditorias)
+
+1. **Preview em tema ESCURO, não claro.** O protótipo desenha a página do
+   cliente em `#FAF9F7`; o projeto unificou as 4 superfícies no tema de
+   produto (README → Design system) e `/{slug}` é escura de verdade. Preview
+   claro mostraria uma página que não existe.
+2. **Sem o bloco "mapa estático"** do preview (l.2417): é placeholder de um
+   mapa que a página pública não tem. O preview não inventa seção.
+3. **Card "Fotos" no editor.** O protótipo mostra fotos no preview mas não
+   desenha onde enviá-las — um toggle "Fotos" sem galeria não teria o que
+   exibir.
+4. **Sem paywall.** Confirmado o que a fase 07 já havia decidido: o overlay
+   "Disponível no plano Avançado" (l.2319) tem `minhaPaginaLocked: false`
+   fixo na l.6990 do protótipo e nunca liga, e `minhaPagina` não está em
+   `FEATURE_KEYS` do SPEC. Toda barbearia edita a própria página, em qualquer
+   plano — regra 3 do enunciado não se aplica a bloco que o protótipo nunca
+   renderiza.
+
+### Dívidas que a aba deixa
+
+- **Driver `local` não escala horizontalmente**: o arquivo fica na máquina que
+  recebeu o POST. `docker-compose.prod.yml` mapeia o volume `api-uploads` e
+  documenta isso; produção com mais de uma réplica exige trocar para bucket.
+- **Sem redimensionamento/otimização de imagem** — o que o dono envia é o que
+  a página serve (até 5 MB). Entra junto com o driver de bucket.
+- **`next/image` continua fora**: a URL pode ser do storage próprio OU um
+  endereço digitado à mão desde a fase 03, e o loader exigiria allowlist de
+  domínio. Com o domínio conhecido (bucket/CDN), o `<img>` cru sai.
+- **Galeria sem reordenação** — `TenantPhoto.sortOrder` existe e é respeitado,
+  mas não há arrastar-e-soltar; a ordem é a de envio.
+- **`onboarding.service.ts` continua gravando `logoUrl`/`coverUrl` por URL
+  digitada** (passo 3 do wizard). O `StorageAdapter` já existe; trocar o campo
+  pelo seletor de arquivo é trabalho da aba de onboarding.
+
+## O que o agente 24 (auditoria da aba Equipe) entregou
+
+Fase 24 ✅. A `/app/equipe` foi reconstruída contra `Dashboard.dc.html`
+**l.2023–2239** e o modal de barbeiro (l.2159–2237).
+
+### A tabela de desvios (o passo 1 da fase)
+
+| # | Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? |
+|---|---|---|---|---|
+| 1 | Banner de downgrade + "Fazer upgrade" (l.2025) | ❌ | ❌ | ❌ |
+| 2 | Pílulas Equipe / Escala semanal / Convites enviados (l.2032) | ⚠️ rótulos "Time/Escala/Convites" | ❌ contador nas 3, o desenho só na 3ª | ✅ |
+| 3 | "Barbeiros: X de Y" + barra de uso (l.2043) | ❌ | ❌ | — |
+| 4 | "+ Novo barbeiro" no corpo, à direita (l.2050) | ⚠️ na topbar, "Convidar barbeiro" | ❌ | ✅ |
+| 5 | Card do barbeiro (l.2054–2087) | ⚠️ | ❌ sem WhatsApp, chips, dias nem comissão | ❌ só um kebab |
+| 6 | Matriz barbeiros × 7 dias + ícone de férias (l.2092) | ❌ era 1 barbeiro por vez num `Select` | ❌ | ⚠️ |
+| 7 | Linha de convite (l.2121–2147) | ⚠️ era tabela | ❌ | ⚠️ faltava a 3ª ação |
+| 8 | Vazio de convites com envelope (l.2149) | ⚠️ | ❌ sem ícone nem o texto do desenho | — |
+| 9 | Modal único de barbeiro (l.2159–2237) | ⚠️ eram DOIS modais | ❌ sem foto, TODAS, horários nem link de comissão | ⚠️ |
+
+Zerada ao final: as 9 linhas viraram ✅/✅/✅, com os desvios conscientes
+listados adiante.
+
+### Os quatro achados
+
+**1. O downgrade RECUSAVA em vez de desligar.** `SettingsService.changePlan`
+respondia 400 com "Desative barbeiros antes de fazer o downgrade" — ou seja,
+exigia que o dono desmontasse a equipe na mão para depois poder economizar.
+O protótipo desenha o contrário (l.2027): a troca acontece e os excedentes
+ficam marcados. Não existia coluna nenhuma para "marcado pelo plano", então
+nem o banner nem o selo tinham de onde sair.
+
+**2. O teto do plano não era reconferido no ACEITE.** Convite pendente já
+contava na EMISSÃO, mas `InvitesService.accept` não olhava o limite. Dois
+convites emitidos com uma vaga sobrando entravam os dois; um downgrade entre
+o envio e o aceite também passava batido. Agora a conferência é dentro da
+transação do aceite.
+
+**3. Reativar barbeiro furava o teto.** `PATCH /barbers/:id {active:true}` não
+passava por gate nenhum — o dono desfazia o efeito de um downgrade com um
+clique. Reativar ocupa vaga igual a contratar, e agora responde 403.
+
+**4. WhatsApp digitado pela metade era apagado em silêncio.**
+`normalizeMobilePhone` devolve `null` tanto para "campo vazio" quanto para
+"número inválido", e o serviço tratava os dois como "grave `null`". Errar um
+dígito ao editar zerava o telefone sem avisar. Agora recusa com 400.
+
+### Schema (migration `20260823180000_equipe_auditoria`)
+
+- `Barber.inactiveByPlan` (`boolean`, default `false`) + `CHECK`
+  `barber_inactive_by_plan_implies_inactive`: quem está inativo pelo plano é,
+  antes de tudo, inativo. A agenda, o booking e a contagem do teto filtram por
+  `active` e **não precisam conhecer o motivo** — o motivo só serve à tela e à
+  reativação automática.
+- `StaffInvite.schedule` (`jsonb`, nulo nos convites antigos): a semana inteira
+  montada no modal. `workDays` sozinho perdia entrada, saída e almoço.
+
+### Backend
+
+- `PlanLimitsService` virou o dono da regra de teto, e passou a ser
+  **exportado** pelo `TeamModule` — Configurações e Super Admin usam o mesmo
+  código na troca de plano em vez de duplicá-lo (agentes 24 e 26 compartilham).
+  - `usage()` — a fonte única do "X de Y", da barra e do banner.
+  - `assertCanAcceptInvite(tx, …)` — o teto no aceite, dentro da transação.
+  - `applyPlanLimit(tx, …)` — desliga do fim da fila para o começo (maior
+    `sortOrder` primeiro), **nunca** o barbeiro-dono, e no upgrade reativa só
+    quem o PLANO desligou. Quem o dono desativou na mão continua desativado:
+    upgrade compra vaga, não desfaz decisão de ninguém.
+- `SettingsService.changePlan` e `AdminTenantsService.changePlan` chamam
+  `applyPlanLimit` dentro da própria transação da troca.
+- `BarberListItem` ganhou `serviceNames`, `commissionRuleId`,
+  `commissionLabel` e `inactiveByPlan`. A regra por FAIXAS sai como
+  "Por faixas", e não como a primeira faixa: mostrar um número daria a
+  impressão de que o barbeiro ganha aquilo sempre. Sem regra sai `null` — a
+  tela escreve "Sem regra", e não um `0%` que seria mentira.
+- `PATCH /barbers/:id` aceita `avatarUrl` e `schedule`. A semana é validada
+  INTEIRA antes de qualquer escrita (fim depois do início, almoço coerente e
+  **dentro** do expediente): meia semana salva e meia recusada deixaria a
+  escala num estado que ninguém pediu.
+- `POST /team/invites/:id/link` reemite o token e devolve a URL sem mandar
+  e-mail — ver adiante.
+
+### "Simular cadastro concluído" virou "Gerar link de cadastro"
+
+A terceira ação da linha de convite (l.2145) era o atalho de DEMONSTRAÇÃO do
+protótipo. Fingir o aceite criaria um `Membership` que ninguém pediu, o que a
+regra 2 do enunciado proíbe. Ela ficou na mesma posição e com o mesmo peso
+visual, fazendo a coisa real: reemitir o link do `CadastroFuncionario` para o
+dono concluir o cadastro com o barbeiro ao lado. O token vive em hash, então
+não é recuperável — é reemitido, e o anterior morre na hora (a tela avisa).
+
+### A matriz da escala é de LEITURA, e a semana tem data
+
+No desenho não há campo editável na matriz; clicar numa célula abre o mesmo
+modal do "Editar" do card, para a escala ter **um** lugar de edição em vez de
+dois que podem discordar.
+
+O ícone de férias (l.2110) sai das `ScheduleException` que caem dentro da
+semana mostrada — por isso o cabeçalho diz "Semana de X a Y". Uma matriz de
+"dias da semana" sem data não teria como marcar férias nenhuma. O desenho
+também não desenha por onde a folga é cadastrada, então a visão ganhou um
+botão "Registrar folga ou férias" — sem ele a coluna nunca se preencheria.
+
+### Frontend
+
+- `app/(dashboard)/app/equipe/page.tsx` reescrita: pílulas com `?tab=`
+  (mesmo padrão do catálogo), banner de downgrade, "Barbeiros: X de Y" com
+  barra (vermelha ao encostar no teto; sem barra no plano ilimitado, porque
+  barra sem teto não representa nada) e "+ Novo barbeiro" no corpo.
+- `components/dashboard/team/`: `barber-card.tsx`, `week-schedule-matrix.tsx`,
+  `invite-row.tsx`, `schedule-exception-modal.tsx` e `barber-modal.tsx`
+  (unificado). `invite-modal.tsx` e `work-schedule-editor.tsx` foram
+  **removidos** — o modal único cobre os dois casos, como no desenho.
+- O modal é UM só para os dois modos: "+ Novo barbeiro" emite convite
+  (`POST /team/invites`), "Editar" faz `PATCH /barbers/:id` com dados,
+  serviços e semana na MESMA requisição. O e-mail trava na edição de quem já
+  tem login — trocá-lo trocaria o login do barbeiro por baixo.
+- `?barbeiro=` na Agenda é o contrato do "Ver agenda" do card (mesmo padrão do
+  `?cliente=` que o agente 16 criou).
+- `useUpdateWorkScheduleMutation` saiu do front (o modal salva por `PATCH`);
+  o `PUT /barbers/:id/work-schedule` continua no contrato e coberto pelo
+  isolamento.
+
+### Seeds
+
+`BARBERS` ganhou `phone` (faixa 9880xxxx, separada da dos clientes 9876xxxx):
+o card do protótipo mostra o WhatsApp sob o nome, e sem o dado os cinco cards
+do tenant demo abriam com "Sem WhatsApp cadastrado".
+
+### Testes
+
+- `test/team.e2e-spec.ts` (13 casos): rótulos do card, teto contando convite
+  pendente na emissão E no aceite, downgrade marcando excedentes, upgrade
+  devolvendo só quem o plano desligou, reativação barrada por 403, semana
+  salva junto com o resto do modal, almoço fora do expediente recusado sem
+  gravar nada, WhatsApp quebrado recusado, e o `BARBER` fora das três rotas.
+- 8 casos novos na suíte de isolamento (`full-coverage`), incluindo o mais
+  sensível: `POST /team/invites/:id/link` do tenant B, onde um 200 entregaria
+  um token de cadastro válido dentro do outro tenant. O fixture ganhou
+  `staffInviteId`.
+- Varredura responsiva: as três visões entraram no `responsive-sweep.mjs` e
+  passam nos 5 tamanhos (15/15), sem rolagem horizontal e com alvo ≥ 44px.
+
+### Conferido no navegador
+
+Tenant demo cheio (5 barbeiros, 1 convite pendente), tenant recém-registrado
+(1 barbeiro, sem serviço, sem convite — a aba inteira renderiza com os estados
+vazios próprios), papel `BARBER` (a aba some do menu e a URL direta mostra a
+mensagem restrita, sem bloco de erro), e o cenário de downgrade forçado, com o
+banner citando o barbeiro pelo nome e a barra em "2 de 2" vermelha.
+
+## O que o agente 23 (auditoria da aba Serviços & Produtos) entregou
+
+Fase 23 ✅. A `/app/servicos-produtos` foi reconstruída contra
+`Dashboard.dc.html` **l.1723–2022** e o modal de serviço (l.1949–2016).
+
+### A tabela de desvios (o passo 1 da fase)
+
+| # | Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? |
+|---|---|---|---|---|
+| 1 | Barra de 3 sub-abas (l.1725) | ⚠️ só 2 | ❌ tinha contadores que o desenho não tem | — |
+| 2 | `+ Novo serviço` à direita (l.1733) | ⚠️ | ❌ estava na topbar, não no corpo | ✅ |
+| 3 | Tabela de serviços, 6 colunas (l.1737) | ⚠️ tinha 4 | ❌ | — |
+| 4 | Kebab `Editar`/`Excluir` (l.1766) | ⚠️ | ❌ | ❌ `Excluir` não existia |
+| 5 | Tabela de produtos, 7 colunas (l.1786) | ⚠️ tinha 4 | ❌ | — |
+| 6 | Kebab `Repor estoque`/`Excluir` (l.1815) | ❌ | ❌ | ❌ nenhum dos dois |
+| 7 | Paywall da calculadora (l.1836) | ❌ na aba | ❌ | ❌ |
+| 8 | "Custos e parâmetros" (l.1858) | ❌ | ❌ | ❌ |
+| 9 | KPIs rateio + preço mínimo (l.1910) | ⚠️ só o preço | ❌ | — |
+| 10 | Ponto de equilíbrio com barra (l.1922) | ❌ | ❌ | ❌ |
+| 11 | Simulação de lucro (l.1935) | ❌ | ❌ | ❌ |
+| 12 | Modal de serviço (l.1949) | ⚠️ | ❌ | ⚠️ |
+
+Zerada ao final: as 12 linhas viraram ✅/✅/✅, com os desvios conscientes
+listados adiante.
+
+### Os quatro achados
+
+**1. A calculadora de preço estava na aba errada — e era o desenho, não o
+dado.** O protótipo desenha a calculadora como a TERCEIRA sub-aba do catálogo
+(l.1856). A implementação tinha uma aba "Calculadora de preço" em
+**Configurações** — uma aba que o protótipo não tem — com um `POST
+/settings/price-calculator` sem estado: cinco campos, um botão "Calcular", um
+número, nada persistido. Pior: os valores iniciais do formulário eram os do
+protótipo hardcodados (`fixos = '3459'`, que é `2500+450+120+89+300` da fixture
+l.4762; `atendimentos = '480'`; `comissao = '40'`). A regra 1 do enunciado
+proíbe exatamente isso, e aqui ela estava violada dentro de um `useState`.
+
+**2. Serviço não tinha cor nem comissão no schema.** O protótipo pinta uma
+bolinha colorida ao lado do nome e cobra uma coluna "Comissão padrão"; o
+`Service` do Prisma não tinha nenhuma das duas. A tabela na tela mostrava 4
+colunas onde o desenho mostra 6, e as duas que faltavam eram justamente as que
+não tinham de onde sair.
+
+**3. "Excluir" não existia em lugar nenhum do catálogo.** Nem para serviço, nem
+para produto. Só havia `activate`/`deactivate`. "Repor estoque", o outro item
+do kebab de produto, também não existia — o estoque só descia (fechamento de
+comanda) e nunca subia por dentro do produto.
+
+**4. O "Ativo" era um selo, não um interruptor.** No desenho é um toggle na
+linha: um clique tira o serviço do site. A implementação mostrava um `Badge`
+"Ativo"/"Inativo" e escondia a ação dentro do kebab — a operação mais
+frequente da tela custava dois cliques e uma descoberta.
+
+### Schema (migration `20260823120000_catalogo_auditoria`)
+
+- `Service.color` (`text?`) e `Service.commissionBps` (`int?`, `CHECK` 0–10000).
+- `PriceCalculatorConfig` (1:1 com o tenant) — custo variável, comissão média,
+  atendimentos/mês, margem, preço praticado. `CHECK price_calc_ranges` grava no
+  banco as faixas dos dois sliders do protótipo (100–1200 e 0–60%).
+- `PriceCalcFixedCost` (N por tenant) — a lista "Custos fixos mensais". Linha
+  própria, e não `Json`: o dono renomeia, remove e reordena item a item.
+
+### Backend
+
+- `DELETE /services/:id` e `DELETE /products/:id` — **soft-delete**, com o nome
+  carimbado para liberar o `@@unique([tenantId, name])` (senão o dono não
+  recadastraria "Corte Masculino" depois de excluí-lo). Cada um recusa quando o
+  estrago seria real: serviço com agendamento FUTURO (409, com "desative" na
+  mensagem) e produto com estoque > 0 ou item em comanda ABERTA.
+- `POST /products/:id/restock` — `increment`, nunca `SET` absoluto: duas
+  reposições simultâneas perderiam uma. O protótipo repunha para
+  `estoqueMin + 10`, um número que ninguém escolheu; agora a quantidade é de
+  quem está guardando a mercadoria.
+- `GET|PUT /price-calculator` — `@RequireFeature('calculadoraPreco')` no
+  **controller inteiro**. A LEITURA é gated também, porque no desenho o cadeado
+  está na aba, não num botão de calcular.
+- `ServiceListResponse` ganhou `defaultCommissionBps` no envelope, e cada linha
+  ganhou `color`/`commissionBps`/`effectiveCommissionBps`. `ProductListItem`
+  ganhou `marginBps` (`null` sem custo — dividir por zero na tela daria
+  "Infinity%").
+- `CommissionCalcService.recordServiceEntry` passou a receber `serviceId` e a
+  honrar `Service.commissionBps`: o override do serviço vence a faixa/regra do
+  barbeiro. O acumulado do mês continua somando o serviço — o faturamento do
+  barbeiro é um só.
+- `/settings/price-calculator` foi **removido** (controller, service, DTO,
+  tipos e a aba de Configurações que o consumia).
+
+### A fórmula mora em um lugar só
+
+`computePriceCalculator` é uma **função pura em `@barbervp/types`**, importada
+pela API e pela página. Os dois sliders precisam de resposta imediata (o front
+recalcula a cada pixel) e o valor gravado precisa ser autoritativo (o gate é
+server-side). Duas implementações da mesma fórmula divergiriam no primeiro
+arredondamento; esta é a única, e o e2e compara a resposta da API com ela.
+
+### Os valores iniciais saem do tenant, não do protótipo
+
+No primeiro acesso o `PriceCalculatorService` deriva a **comissão média** das
+`CommissionRule` ativas, os **atendimentos/mês** dos `Appointment` `DONE` dos
+últimos 30 dias (com clamp na faixa do slider, para uma barbearia nova não
+abrir travada num valor que o controle não representa) e o **preço praticado**
+da média do catálogo. A lista de custos fixos começa **vazia**, com estado
+vazio próprio: não há de onde deduzir o aluguel de alguém, e inventá-lo daria
+um preço mínimo convincente e falso. Os seis custos do protótipo entraram no
+**seed demo** (`DEMO_PRICE_CALC_FIXED_COSTS`), que é o lugar deles.
+
+### Frontend
+
+- `app/(dashboard)/app/servicos-produtos/page.tsx` reescrita: 3 sub-abas com
+  `?tab=` (o sino da home aponta para `?tab=produtos`), pílulas feitas à mão em
+  vez de `<Tabs>` para o cadeado caber no rótulo **sem** desabilitar a aba,
+  tabela de serviços com bolinha de cor / comissão efetiva / toggle "Ativo", e
+  tabela de produtos com estoque + selo `Repor`, mínimo, custo, venda e margem.
+- `catalog/service-modal.tsx` reescrito: stepper de duração ±5, Preço +
+  Comissão padrão lado a lado, toggle de comissão específica, os 6 swatches de
+  cor e a lista de barbeiros com iniciais.
+- `catalog/restock-modal.tsx` e `catalog/price-calculator.tsx` novos.
+- `MinusIcon`, `TrashIcon` e `BoxIcon` portados para `packages/ui` a partir dos
+  paths do protótipo.
+- **Invalidação de cache**: salvar serviço invalida `services`, `staff-agenda`
+  (+ `-month`/`-detail`), `pos-catalog`, `orders` e `barbers` — mudar duração
+  ou preço muda a grade da agenda e o preço que o balcão puxa. Produto invalida
+  ainda `dashboard-notifications` e `dashboard-overview`, para repor estoque
+  apagar o alerta do sino na mesma hora. (O booking público não entra: é SSR,
+  lê o banco a cada requisição.)
+
+### Desvios conscientes do protótipo (e por quê)
+
+- **"Comissão padrão" no modal virou leitura.** No desenho é um `input` por
+  serviço que abre em 40% para todos e nunca salva. Editável, seriam dois
+  campos de percentual na mesma ficha disputando o mesmo significado. Aqui ele
+  mostra a regra da casa (definida em Comissões, um lugar só) e o toggle
+  "Comissão específica" — que no protótipo descartava o valor — é o que grava.
+- **A sub-aba Produtos ganhou `+ Novo produto`.** O desenho não desenha esse
+  botão, e também não desenha nenhum outro caminho para cadastrar um produto:
+  uma barbearia nova ficaria com a lista permanentemente vazia.
+- **`Repor` acende em `stock <= estoqueMin`, não em `<`.** O protótipo usa `<`
+  no selo, mas o sino da home diz "está no estoque mínimo", que exige `<=`. Com
+  `<` os dois blocos discordariam sobre o produto que acabou de encostar no
+  mínimo — e encostar no mínimo é a hora de repor. Um caso de e2e trava os dois
+  no mesmo predicado.
+- **Margem negativa sai em vermelho.** O protótipo pinta a coluna inteira de
+  `#3FB68B`; vender abaixo do custo passaria por lucro.
+- **Ponto de equilíbrio inexistente ganhou explicação.** O desenho mostra "—" e
+  uma barra vazia quando a contribuição marginal é ≤ 0. Um traço não conta que
+  o preço praticado não paga nem a comissão do corte.
+- **A calculadora tem "Salvar".** O protótipo não salvava nada, então também
+  não tinha o botão.
+
+### Papéis
+
+`BARBER` não vê o item no nav (já era assim) e, chegando pela URL, vê uma
+mensagem clara em vez de três blocos de erro genérico com um "Novo serviço" que
+só sabe devolver 403. As rotas novas (`DELETE`, `restock`, `price-calculator`)
+entraram no caso de papel da suíte de isolamento.
+
+### Estados e responsividade
+
+Skeleton na altura da tabela (sem empurrar layout), erro POR BLOCO com "Tentar
+de novo" (a sub-aba não derruba a página), e estado vazio próprio em cada uma
+das três — inclusive na lista de custos fixos. Tenant recém-registrado abre as
+três sub-abas sem quebrar. Varredura responsiva: **15/15 verdes**
+(3 sub-abas × 360/390/768/1024/1440), sem rolagem horizontal; tabelas viram
+cards abaixo de `md`. Os swatches de cor ganharam alvo de 44px com a bolinha
+de 26px desenhada dentro — no protótipo o alvo É a bolinha, o que no celular
+vira um botão de 26px que ninguém acerta.
+
+### Testes
+
+`test/catalog.e2e-spec.ts` novo — 21 casos. Além do CRUD, travam: o
+soft-delete preservando o agendamento passado, os dois 409, o nome liberado
+para recadastro, a margem `null` sem custo, o `increment` da reposição, o
+alerta do sino contando os mesmos produtos do selo, a comissão específica
+chegando no `CommissionEntry` (70% do serviço, não 40% da regra) e a
+calculadora gated na leitura e na gravação. `src/catalog-admin/price-calculator.spec.ts`
+cobre a fórmula pura (7 casos, incluindo o piso do divisor e o ponto de
+equilíbrio inexistente). Isolamento: 4 casos novos.
+
+**Suíte: 95 unit · 259 e2e · 153 isolamento — toda verde.**
+
+### Achados fora do escopo (para os agentes donos)
+
+- **`/app/equipe` @ 360/390** — rolagem horizontal (+77px) na barra de
+  sub-abas e três `button` de 36px de altura (Time/Escala/Convites).
+- **`/app/configuracoes` @ 360/390** — cinco `input` abaixo de 44px
+  (dois 42×44, dois 117×36, um 42×44).
+- **`/app/minha-pagina` @ 360/390** — rolagem horizontal (+59px em 360, +30px
+  em 390) e dois `input` de 40px de altura.
+
+Nenhum dos três foi tocado: são de outras abas, com agentes próprios.
+
+### Dívidas do agente 23
+
+- **Reposição de estoque não gera lançamento financeiro.** Repor mercadoria é
+  uma compra, e o protótipo não desenha isso em lugar nenhum. Fica como
+  `AuditLog` e nada mais — quem for auditar a aba Financeiro decide se o
+  `AccountPayable` deve nascer daqui.
+- **Regra de comissão por FAIXAS na coluna "Comissão padrão".** Faixa depende
+  do faturamento acumulado do barbeiro no mês, que a tela do catálogo não
+  conhece; a coluna mostra a faixa mais baixa como piso. O cálculo real segue
+  correto no fechamento.
+- **`Service.color` não é lido pela agenda ainda.** A coluna existe, o seed
+  planta e a tabela mostra, mas os blocos de `components/dashboard/agenda/`
+  continuam colorindo por status. É trabalho do agente da aba Agenda (o 15,
+  cujo registro segue em aberto).
+- **A lista de custos fixos não importa de Contas a Pagar.** Seria a evolução
+  natural (o dono já cadastrou aluguel e energia lá), mas está fora do desenho.
+
+## O que o agente 22 (auditoria da aba WhatsApp) entregou
+
+Auditoria 1:1 da aba **WhatsApp** (`/app/whatsapp`) contra
+`Dashboard.dc.html` l.1624–1722 e os dois modais pendurados nela: "Editar
+mensagem" (l.4285) e "Enviar reativação em massa" (l.4318).
+
+> **A decisão que define a fase.** O protótipo desenha um pareamento por QR
+> code ("🟢 Conectado como (54) 9 9918-8533", com um toggle "Demonstração:
+> conectado" e um QR gerado por fórmula — `qrCells`, l.6044). Isso é
+> cenografia: o toggle existe para o revisor ver os dois estados, e o QR não
+> codifica nada. Enquanto o `NOTIFICATION_ADAPTER` estiver no driver mock, o
+> card diz "Modo de demonstração" e mostra a trilha REAL (quantas mensagens já
+> foram para o outbox). Fingir um número pareado seria a única mentira possível
+> numa tela cujo assunto é justamente se as mensagens saem.
+
+### A tabela de desvios (o passo 1 da fase)
+
+| Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? | Ação |
+|---|---|---|---|---|
+| Card "Conexão com WhatsApp" (l.1626) | ❌ | — | — | Criado + `GET /whatsapp-config/connection` |
+| Estado conectado / QR + 3 passos (l.1636–1656) | ❌ | — | — | Estado honesto do adapter no mesmo slot (ver decisão acima) |
+| Card "Automações" — UMA lista, 6 linhas com `border-bottom` (l.1659) | ⚠️ grid de 6 cards 2-col | ❌ | parcial | Reconstruído como lista num painel só |
+| Ordem lembrete→confirmação→cancelamento→aniversário→reativação→avaliação | ❌ ordem do `findMany` | ❌ | — | `WHATSAPP_EVENT_ORDER` ordena no servidor |
+| Link "editar mensagem" → modal (l.1667) | ❌ textarea inline + "Salvar template" | ❌ | sim, mas errado | Link + modal do protótipo |
+| Lembrete: `Enviar [1h/3h/24h/48h] antes` | ❌ input de texto livre | ❌ | — | `<select>` com `options` da API |
+| Aniversário: `às [HH:MM]` | ❌ | ❌ | — | `<input type=time>`, persiste em `offsetMinutes` |
+| Reativação: `Após [15/30/45/60] dias` | ❌ | ❌ | — | `<select>`; é a janela da faixa dourada |
+| 🔒 no título + toggle `not-allowed` sem plano (l.6023) | ⚠️ cadeado solto, toggle clicável | ❌ | abria upsell só DEPOIS do 403 | Cadeado antecipado; toggle trancado abre upsell |
+| Os 6 eventos sempre presentes | ❌ **tenant novo = bloco vazio** | — | — | `list()` com padrão de fábrica; `update()` virou upsert |
+| Faixa dourada "N clientes inativos há 30+ dias" (l.1688) | ❌ | — | — | Criada + `GET /whatsapp-config/reactivation` |
+| Botão "Enviar mensagem de reativação agora" | ❌ | — | — | Criado + `POST .../reactivation/send` com 403 server-side |
+| Tabela "Histórico de envios" (l.1695) | ❌ | — | — | Criada + `GET /whatsapp-config/history` sobre o `NotificationOutbox` |
+| Status ✓✓ Entregue / ✓ Enviado / ⚠ Falhou (l.6071) | ❌ | — | — | Derivado de `OutboxStatus` + `sentAt` |
+| Modal "Editar mensagem" com chips no cursor e preview (l.4285) | ❌ | — | — | Criado |
+| Modal "Enviar reativação em massa" (l.4318) | ❌ | — | — | Criado |
+| `?evento=REACTIVATION` / `?evento=BIRTHDAY` do Dashboard | ❌ **ignorado** | — | ❌ | Lidos; evento trancado abre o upsell, não o editor |
+| Cadeado do nav: WhatsApp NÃO é trancado | ✅ | ✅ | ✅ | — |
+| `BARBER` não tem a aba | ✅ | ✅ | ✅ | Coberto por teste |
+| Loading / vazio / erro por bloco | ❌ um `Skeleton` genérico | ❌ | — | Esqueleto na altura real, vazio próprio e retry local por bloco |
+| `<h1>WhatsApp</h1>` acima do conteúdo | ⚠️ existia, o protótipo NÃO tem | ❌ | — | Removido |
+
+Ao final da fase, zerada.
+
+### O conflito interno do protótipo (fica registrado, não foi "resolvido")
+
+`LOCKED_AUTOMACOES` (l.6015) inclui `cancelamento` entre os eventos trancados,
+mas o `FEATURE_LABELS` do MESMO arquivo (l.4370) descreve o recurso como
+"WhatsApp completo (aniversário, reativação, avaliação)" e os bullets do
+upgrade modal desta aba (l.6035) repetem exatamente esses três. Dois sinais
+contra um. **Mantivemos `CANCELLATION` no básico** — é também o contrato que o
+servidor já tinha e o que o e2e da fase 07 cobria. Se o produto quiser o
+cadeado no cancelamento, é uma linha em `WHATSAPP_BASIC_EVENTS`
+(`packages/types/src/whatsapp-config.ts`) e dois casos de teste.
+
+### Backend
+
+- **`GET /whatsapp-config` devolve `{ items, sample }`, não mais um array.**
+  Único consumidor é esta aba. `items` traz os SEIS eventos sempre, na ordem do
+  desenho, com padrão de fábrica (`WHATSAPP_DEFAULT_TEMPLATES` /
+  `WHATSAPP_DEFAULT_OFFSET_MINUTES`) para quem nunca configurou — **a leitura
+  não escreve nada**, a linha nasce no primeiro `PATCH`.
+- **`PATCH` virou `upsert`.** Antes era `update` + `notFound`, e como o
+  `register` da fase 03 nunca criou as linhas, toda barbearia nova via a aba
+  vazia e não conseguia sair do lugar.
+- **`offsetMinutes` ganhou unidade por evento** (`WHATSAPP_CONTROL`): o mesmo
+  campo carrega antecedência, hora do dia e janela de inatividade. As opções
+  aceitas viajam na resposta (`options`) e são validadas no servidor — mandar
+  7h de antecedência é 400, e o `<select>` da tela nunca fica sem opção
+  correspondente selecionada.
+- **A janela da reativação é a da automação, não 30 dias fixos.** A faixa
+  dourada conta pelo `offsetMinutes` do evento `REACTIVATION`; mexer no
+  `<select>` muda a contagem. É a mesma pergunta feita uma vez só.
+- **O corpo do disparo em massa sai do TEMPLATE, não do `preview`.** O preview
+  já teve `{barbeiro}`/`{servico}` resolvidos com o exemplo da casa; mandar
+  isso ao cliente diria o serviço errado para quase todo mundo. Só `{nome}` é
+  trocado, cliente a cliente.
+- **O gate cobre a linha inteira.** Editar o template de uma automação fora do
+  plano também é 403 — senão o dono ajusta a mensagem de aniversário e fica
+  achando que comprou o recurso.
+- **`GET /whatsapp-config/history` é do TENANT.** `/admin/outbox` já existia,
+  mas é do super admin e cruza todas as barbearias. O nome do cliente sai de
+  UMA consulta a mais sobre os telefones da página (nunca N+1), porque o
+  `NotificationOutbox` guarda o destino e não o `clientId` — ele também serve a
+  mensagens de quem ainda não é cliente. **Telefone sem cliente na base sai
+  mascarado**: a tela não é lugar de despejar número inteiro.
+- **`eventOf` aceita três formatos de `templateKey`** que já convivem no
+  outbox: `appointment.reminder` (fase 07), `whatsapp.reactivation` (esta aba)
+  e o nome cru do evento (`CONFIRMATION`), que é o que o seed de demonstração
+  grava.
+- **Fonte única de template padrão.** O `FALLBACK_TEMPLATES` local do
+  `BookingNotificationsService` foi trocado por `WHATSAPP_DEFAULT_TEMPLATES`:
+  duas cópias divergiriam no primeiro ajuste de texto, e a mensagem ENVIADA
+  deixaria de ser a que o dono leu na tela.
+- **Nenhuma chamada externa.** Tudo passa pelo `NOTIFICATION_ADAPTER`; com o
+  driver mock cada mensagem vira uma linha no `NotificationOutbox` e reaparece
+  no "Histórico de envios" logo abaixo. É o que torna a aba verificável sem
+  provedor nenhum ligado.
+
+### Frontend
+
+- A ordem dos blocos é a do desenho: conexão → automações → faixa de reativação
+  → histórico. **Cada bloco tem consulta, esqueleto e retry próprios** — o
+  histórico cair não leva as automações junto.
+- **A pré-visualização usa dado REAL do tenant.** O protótipo resolve o balão
+  com um cliente inventado (`SAMPLE`, l.6053: "João Pedro", "Corte + Barba",
+  "Diego"). O `sample` do servidor sai de um serviço do catálogo, de um
+  barbeiro da equipe, de um cliente da base e do link público de verdade.
+  Barbearia recém-cadastrada não tem nada disso: aí o placeholder fica visível,
+  que é honesto — não há o que pré-visualizar.
+- **A faixa dourada some quando não há ninguém inativo.** O protótipo a desenha
+  como alerta, e alerta de "0 clientes" é ruído.
+- **O "Desconectar" (l.1639) não foi renderizado.** Só existe com provedor real
+  do outro lado, e o endpoint que o desfaria nasce junto com ele; um botão
+  desligado ali seria decoração (regra 2).
+- **O modal do editor usa `className="md:w-[720px]"`** — é a largura do diálogo
+  no protótipo (l.4287). Com os 480px padrão do `Modal`, os chips quebram em
+  três linhas e o preview fica espremido.
+- **O alvo de toque do interruptor.** O trilho do protótipo tem 44×22 e
+  reprovava a varredura no celular. O `Switch` compartilhado ficou intocado (é
+  de todas as abas): aqui ele vai dentro de um `<label>` de 44×44, que é o que
+  a `responsive-sweep` mede quando o checkbox tem rótulo associado.
+
+### Seeds
+
+`WHATSAPP_TEMPLATES` ganhou `offsetMinutes` real em BIRTHDAY (9×60 = 09:00) e
+REACTIVATION (30×1440 = 30 dias), que antes eram `null` — sem isso o
+`<input type=time>` e o `<select>` da tela mostrariam o padrão de fábrica em
+vez do que a barbearia demo tem configurado.
+
+### Testes
+
+- `apps/api/test/whatsapp.e2e-spec.ts` — **14 casos novos**: tenant sem
+  configuração alguma, `sample` de dado real, upsert, opção inválida (400),
+  evento inexistente (400), gate do Essencial na leitura/no template/no
+  disparo, `BARBER` 403 nas quatro rotas, driver mock na conexão, contagem por
+  janela + `skipped` de quem recusou, e o envio reaparecendo no histórico.
+- `full-coverage.isolation-spec.ts` — 4 casos novos: a linha criada pelo upsert
+  nasce no tenant certo; o histórico de A não traz a mensagem de B; o disparo
+  em massa de A não alcança cliente de B; a conexão de A conta só o outbox de A.
+  A fixture ganhou uma linha de `NotificationOutbox` por tenant.
+- **Um teste antigo foi corrigido, não afrouxado**: o caso de isolamento de
+  WhatsApp mandava `offsetMinutes: 120`, que a validação nova (correta) recusa —
+  2h não é uma das opções do desenho. Passou a mandar 180 (3h).
+- Suíte: **88 unit · 238 e2e · 148 isolamento**, tudo verde.
+- `responsive-sweep --app=dashboard`: `/app/whatsapp` ✅ nos 5 tamanhos, sem
+  erro de console. Continuam vermelhas `/app/configuracoes` e
+  `/app/minha-pagina` — **não foram tocadas**, são dos agentes 25 e 26.
+
+## O que o agente 21 (auditoria da aba Fidelidade) entregou
+
+Auditoria 1:1 da aba **Fidelidade** (`/app/fidelidade`) contra
+`Dashboard.dc.html` l.1497–1623, o modal `modalNewPlano` (l.3323, modos em
+l.3364) e os dois diálogos pendurados nele: "Impacto nos assinantes" (l.3376) e
+"Excluir plano" (l.3384).
+
+> **A decisão que define a fase.** O protótipo foi editado antes desta sessão
+> para deixar SOMENTE a sub-aba Assinaturas (`isLoyaltyAssinaturas`, l.1523):
+> "Pontos" e "Sorteios" saíram do desenho. O enunciado manda **remover da
+> implementação, não completar** — e foi o que se fez, inclusive no backend.
+
+### A tabela de desvios (o passo 1 da fase)
+
+| Bloco do protótipo | Existe? | Layout igual? | Botões funcionam? | Ação |
+|---|---|---|---|---|
+| Sub-aba única "Assinaturas" (l.1501) | ✗ — havia 3 sub-abas (Pontos/Sorteios/Assinaturas) | ✗ | — | Removidas Pontos e Sorteios; sobrou o título "Assinaturas" |
+| Paywall INLINE "Disponível no plano Avançado" (l.1503) | ~ — existia, mas atrás do gate errado | ~ | ✓ | Gate passou a ser `fidelidadeAssinaturas` na aba INTEIRA |
+| Botão "+ Novo plano" (l.1525) | ✓ | ✓ | ✓ | — |
+| Grid de cards `auto-fit minmax(260px)` (l.1527) | ~ — grid fixo 1/2/3 colunas | ✗ | — | Trocado pelo `auto-fit` do desenho |
+| Card: selo "Arquivado" + opacidade 0.6 (l.1533) | ✗ — arquivado sumia da lista | ✗ | — | `listPlans` passou a trazer arquivados, no fim |
+| Card: preço `R$ x/mês` em ouro 22px (l.1537) | ~ | ✗ | — | Tipografia e cor do desenho |
+| Card: "N assinantes" + **MRR** (l.1540) | ✗ — MRR não existia | ✗ | — | `mrrCents` novo, calculado no servidor |
+| Card: botão "Editar" (l.1549) | ✓ | ✓ | ✓ | — |
+| Card: botão "Reativar" no arquivado (l.1544) | ✗ | ✗ | ✗ | `PATCH /plans/:id/reactivate` criada |
+| Tabela de assinantes, 6 colunas (l.1553) | ~ — 4 colunas | ✗ | — | Reconstruída com as 6 |
+| Coluna "Usos no mês" com barra (l.1571) | ✗ — texto corrido `Corte 3/4 · Barba 1/2` | ✗ | — | `usedTotal`/`quotaTotal` + a barrinha de 70px |
+| Coluna "Pagamento" Pago/Pendente/Atrasado (l.1580) | ✗ — mostrava `ACTIVE`/`PAST_DUE` cru | ✗ | — | `paymentStatus` derivado, com as cores do desenho |
+| Coluna "Próxima cobrança" (l.1581) | ✗ | ✗ | — | `nextChargeAt` já vinha da API, faltava a coluna |
+| Menu ⋯ da linha: Pausar / Cancelar (l.1583) | ✗ | ✗ | ✗ | Duas rotas novas + "Retomar" (ver desvios conscientes) |
+| Modal `modalNewPlano` (l.3323) | ~ | ✗ | ~ | Refeito: título e CTA por modo, "Excluir plano" no rodapé |
+| Modal: "Dia de cobrança", 28 opções (l.3355) | ~ — `input type=number` | ✗ | ✓ | Virou `select` de 1 a 28, com `@Max(28)` no DTO |
+| Diálogo "Impacto nos assinantes" (l.3376) | ✗ | ✗ | ✗ | Criado — só dispara se preço/serviços mudaram e há assinante |
+| Diálogo "Excluir plano" com 2 variantes (l.3384) | ✗ — só existia "Arquivar" solto no card | ✗ | ✗ | Criado; `DELETE /plans/:id` nova, com 409 quando há histórico |
+| Sub-aba "Pontos" | ✗ no desenho, ✓ na implementação | — | — | **Removida** (tela, hooks e `GET /loyalty/clients`) |
+| Sub-aba "Sorteios" + `modalNewSorteio` (l.3414) | ✗ no desenho, ✓ na implementação | — | — | **Removida** (tela, modal, hooks, rotas e seed) |
+| Cadeado do item no nav | ~ — apontava para `fidelidadePontos` | — | — | Passou a `fidelidadeAssinaturas` |
+| Item "Fidelidade" no nav do BARBER | ✗ no `DashboardFuncionario` (l.1612), ✓ na implementação | — | — | Restrito a OWNER/MANAGER |
+
+Ao final da sessão a tabela está **zerada**.
+
+### Os quatro achados
+
+1. **A aba inteira estava trancada pelo gate errado.** O item do nav acendia o
+   cadeado por `fidelidadePontos` (Profissional) e a sub-aba de Assinaturas por
+   `fidelidadeAssinaturas` (Avançado). Com Pontos fora do desenho, o único
+   conteúdo da aba é do Avançado — um tenant Profissional via a aba "aberta" no
+   menu e o paywall só depois de entrar. Gate unificado em
+   `fidelidadeAssinaturas`, no nav e na tela.
+
+2. **Metade dos botões do desenho não tinha endpoint.** "Reativar", "Excluir
+   plano", "Pausar" e "Cancelar" existem no protótipo; no produto, nenhum deles
+   existia. Entraram quatro rotas. O par pausar/cancelar **delega ao
+   `ClientSubscriptionService` da fase 05** de propósito: a regra de retomada
+   (ciclo vencido reinicia, ciclo vivo só destrava) e a de cancelamento (perde
+   os usos, sem estorno) não podem divergir conforme quem clicou.
+
+3. **Excluir um plano é quase sempre errado, e a tela não sabia disso.** O
+   `ClientSubscription` tem FK obrigatória para o `ClientPlan`: apagar um plano
+   com histórico apagaria a assinatura junto. O protótipo já resolve isso
+   trocando o CTA do diálogo por "Arquivar plano"; faltava o servidor concordar.
+   Agora `canDelete` vem calculado (zero assinaturas, **canceladas inclusive**) e
+   o `DELETE` devolve 409 quando não pode.
+
+4. **A coluna "Pagamento" não tinha de onde sair.** O desenho pede
+   Pago/Pendente/Atrasado; o banco só tem `SubscriptionStatus`
+   (ACTIVE/PAST_DUE/PAUSED/CANCELED), que é outra coisa. A situação de pagamento
+   passou a ser derivada do `Payment` do ciclo corrente cruzado com o
+   `nextChargeAt` (`paymentStatusOf`, com teste unitário próprio) — e o seed
+   demo ganhou um assinante em cada estado, porque um seed com os três
+   "Pendente" não exercita a tela.
+
+### Backend
+
+- `loyalty.service.ts` reescrito. Saíram `clientBalances`, `listRaffles`,
+  `createRaffle`, `announceRaffle` e `drawRaffle`; entraram `reactivatePlan`,
+  `deletePlan`, `pauseSubscriber`, `resumeSubscriber`, `cancelSubscriber` e a
+  função pura `paymentStatusOf`.
+- `listPlans` ganhou `mrrCents` (preço × assinantes que **faturam** — ACTIVE e
+  PAST_DUE; pausado não entra) e `canDelete`, e passou a ordenar
+  `active desc, sortOrder asc` para o card arquivado cair no fim.
+- `upsertPlan` ganhou três recusas que antes viravam 500 ou dado torto: serviço
+  repetido no mesmo plano, contagem de serviços por `length` em vez de `Set`
+  (deixava passar id duplicado) e **nome repetido**, que batia na
+  `@@unique([tenantId, name])` e subia como erro de chave.
+- `billingDay` ganhou `@Max(28)` — o `select` do modal tem 28 opções porque o
+  dia 29+ não existe em fevereiro, e o DTO aceitava 31.
+- `ClientSubscriptionService.pause/resume/cancel` ganharam um 4º parâmetro
+  opcional `actorUserId`. Sem ele o log registra `actorClientId` (cliente na
+  `MinhaConta`), com ele registra `actorUserId` (dono no painel) — as duas
+  portas da mesma operação ficam distinguíveis na auditoria.
+- `AuditAction`: saíram `RAFFLE_CREATED`/`RAFFLE_DRAWN`, entraram
+  `CLIENT_PLAN_REACTIVATED`/`CLIENT_PLAN_DELETED`.
+- `LoyaltyModule` passou a importar `ClientAccountModule`.
+
+### Frontend
+
+- `app/(dashboard)/app/fidelidade/page.tsx` reescrita: uma tela só, cards
+  `auto-fit` e a tabela de 6 colunas com menu por linha.
+- `components/dashboard/loyalty/client-plan-modal.tsx` refeito com os dois
+  modos e os dois diálogos de confirmação; `raffle-modal.tsx` **apagado**.
+- `components/booking/minha-conta/confirm-dialog.tsx` promovido a
+  `components/shared/confirm-dialog.tsx` — o mesmo diálogo serve os quatro
+  confirmes desta aba e os quatro da área do cliente.
+- `lib/dashboard/api/loyalty.ts` enxugado: sumiram os cinco hooks de pontos e
+  sorteios, entraram reativar, excluir e a ação de assinante. Toda escrita
+  invalida os DOIS blocos (mexer no plano muda a linha do assinante e
+  vice-versa).
+- `lib/dashboard/nav.ts`: Fidelidade restrita a OWNER/MANAGER.
+- `dashboard-chrome.tsx`: `NAV_FEATURE.fidelidade` → `fidelidadeAssinaturas`.
+- `clients/client-drawer.tsx`: a mensagem "Ligue o programa na aba Fidelidade"
+  mandava para uma tela que não liga mais nada — trocada pelo efeito real.
+
+### Desvios conscientes do protótipo (e por quê)
+
+- **O serviço do plano é um `<select>` do catálogo, não texto livre.** A quota
+  é abatida do saldo do cliente (`SubscriptionUsage`) contra um `Service` real;
+  texto livre não teria em que descontar.
+- **"Retomar" no menu da linha, que o desenho não tem.** Os dados de exemplo do
+  protótipo não têm assinatura pausada, então o menu dele só precisa de
+  Pausar/Cancelar. Pausar pelo painel CRIA esse estado — sem "Retomar" a ação
+  seria um beco sem saída.
+- **Selo "Pausado" na coluna Pagamento.** Mesma razão: o estado existe, precisa
+  ter como aparecer. Cinza neutro, fora da escala verde/amarelo/vermelho, porque
+  pausado não é uma situação de cobrança.
+- **`MRR` e `canDelete` vêm do servidor**, embora o protótipo calcule MRR na
+  tela (`preço × assinantes`). Na tela a conta ignoraria que assinatura pausada
+  não fatura.
+- **`GET /loyalty/program` continua de pé sem tela.** Apagá-lo deixaria o
+  resgate de pontos da comanda e o saldo da aba Clientes sem interruptor
+  nenhum. Ver dívida.
+
+### Papéis
+
+- `BARBER`: item some do nav (o `DashboardFuncionario.dc.html` l.1612 não tem
+  Fidelidade) e, na URL direta, a tela explica e aponta para as Comandas — que
+  é onde a assinatura aparece de fato para ele, no débito do uso. As duas
+  queries ficam `enabled: false` para não render dois blocos de erro genérico.
+- `OWNER`/`MANAGER`: tela completa.
+
+### Estados e responsividade
+
+- Loading: skeleton dos cards com a MESMA altura (214px) e da tabela, sem
+  deslocamento de layout.
+- Vazio: mensagem própria por bloco — "Nenhum plano de assinatura ainda" com
+  CTA de criar, e "Nenhum assinante ainda" explicando de onde ele vem. Tenant
+  novo renderiza a aba inteira.
+- Erro: `BlockError` com "Tentar de novo" por bloco; um bloco quebrado não
+  derruba o outro.
+- `node scripts/responsive-sweep.mjs --app=dashboard`: `/app/fidelidade` passa
+  nos 5 tamanhos (360/390/768/1024/1440), sem rolagem horizontal e sem alvo de
+  toque abaixo de 44px. Tabela vira cards abaixo de `md`; modais viram
+  bottom-sheet.
+
+### Testes
+
+- `test/loyalty.e2e-spec.ts` **novo**, 16 casos — inclusive dois que guardam a
+  decisão da fase (`/loyalty/raffles` e `/loyalty/clients` devem continuar 404).
+- `src/loyalty/loyalty.service.spec.ts` **novo**, 7 casos sobre
+  `paymentStatusOf`.
+- Isolamento: os casos de sorteio deram lugar a reativar, excluir, pausar,
+  retomar e cancelar; a fixture trocou o `raffleId` por um
+  `clientSubscriptionId` real. `dashboard-ii.isolation-spec` ganhou um caso para
+  as ESCRITAS da aba — sem ele, um gate esquecido em `reactivate`/`pause`
+  passaria batido com a leitura trancada e a escrita aberta.
+- Suíte: **88 unit · 224 e2e · 144 isolamento**, toda verde.
+
+### Achados fora do escopo (para os agentes donos)
+
+- **Agente 20 (Relatórios) — defeito real, corrigido aqui porque deixava a
+  suíte vermelha.** `wednesdayOffset()` em `test/reports.e2e-spec.ts` escolhia a
+  quarta-feira por `getUTCDay()` enquanto `localAt()` monta as datas em São
+  Paulo. Das 21h à meia-noite local o UTC já virou o dia seguinte e o caso caía
+  numa terça — flaky de três horas por dia. Passou a medir no mesmo relógio.
+- **Agente 16 (Clientes).** `nav.ts` restringe "Clientes" a OWNER/MANAGER, mas o
+  `DashboardFuncionario.dc.html` (l.1615) TEM o item no nav do barbeiro. Ou o
+  item volta com recorte próprio, ou o desvio precisa ser registrado como
+  consciente.
+- **Agente 15 (Agenda).** `app/agenda/page.tsx` usa `gap-4.5` duas vezes
+  (l.113 e l.263); a escala padrão do Tailwind 3.4 não tem `4.5` — a classe não
+  gera nada e o gap fica zero.
+- **Agentes 22 (WhatsApp), 25 (Minha Página) e 26 (Configurações).** A varredura
+  responsiva reprova essas três abas: alvo de toque abaixo de 44px nas três e
+  rolagem horizontal de +59px/+30px na Minha Página, a 360 e 390.
+
+### Dívidas do agente 21
+
+- **O programa de pontos ficou sem tela.** `GET|PATCH /loyalty/program` existe e
+  é o único interruptor de um recurso vivo (resgate na comanda, saldo na aba
+  Clientes, coluna "Pontos" da lista), mas nenhuma tela o edita desde que a
+  sub-aba saiu do desenho. **Ninguém consegue LIGAR o programa pela interface.**
+  O lugar natural é Configurações — é do **agente 26**.
+- **As tabelas `LoyaltyRaffle`/`LoyaltyRaffleEntry` continuam no schema** sem
+  nenhum consumidor: rotas, serviço, tipos, frontend e seed foram removidos,
+  mas derrubar tabela é migration destrutiva e não cabia decidir aqui. Fica para
+  uma limpeza de schema, com o `RaffleStatus` de `packages/types/src/enums.ts`
+  junto.
+- **`pauseSubscriber` resolve a assinatura pelo `clientId`**, porque é essa a
+  assinatura do `ClientSubscriptionService`. O invariante "uma assinatura não
+  cancelada por cliente" é garantido na venda (fase 05); se algum dia ele cair,
+  as rotas do painel passam a agir na assinatura errada.
+- **Não há paginação em `/loyalty/subscribers`.** Uma barbearia com centenas de
+  mensalistas devolve tudo de uma vez. O protótipo também não pagina, mas a
+  tabela pede o mesmo `Pager` das outras abas quando o volume crescer.
+- **A cobrança recorrente segue no driver mock.** "Próxima cobrança" mostra a
+  data real, mas quem cobra de verdade é a fase 12/gateway.
+
+### Como conferir o agente 21 rodando
+
+```bash
+docker compose up -d db redis      # a stack inteira não cabe em 7,5 GB
+cd apps/api && pnpm dev            # api em :3333
+cd apps/web && pnpm dev            # web em :3000
+```
+
+1. `dono@barbeariacentral.com.br` / `BarberVP@2026` → **Fidelidade**. Três
+   cards com MRR (R$ 120 / R$ 150 / R$ 220) e três assinantes, um em cada
+   situação: **Daniel Prado — Pendente**, **André Martins — Pago**, **Gustavo
+   Teixeira — Atrasado**.
+2. "Editar" num plano, muda o preço, "Salvar alterações" → aparece **"Impacto
+   nos assinantes"** com a contagem real. "Voltar" mantém o modal aberto.
+3. "Editar" → "Excluir plano" → como o plano tem histórico, o diálogo vem como
+   **"Arquivar plano"**. Crie um plano novo e repita: aí sim vem "Excluir plano"
+   em vermelho, e o nome volta a ficar livre depois.
+4. Arquive um plano: o card fica esmaecido, com selo "Arquivado", vai para o fim
+   da grade e troca o botão por "Reativar".
+5. Menu ⋯ de um assinante → "Pausar". O MRR do card daquele plano cai (pausado
+   não fatura) e a linha vira "Pausado", com "Retomar" no menu.
+6. `carlos@barbeariacentral.com.br` (BARBER): **Fidelidade não aparece no nav**;
+   em `/app/fidelidade` na mão, a tela explica e oferece as Comandas.
+7. Um tenant Profissional vê o paywall inline "Disponível no plano Avançado"
+   com os três bullets do desenho.
+
+## O que o agente 20 (auditoria da aba Relatórios) entregou
+
+Auditoria 1:1 da aba **Relatórios** (`/app/relatorios`) contra
+`Dashboard.dc.html` l.1229–1496 e a versão restrita do barbeiro em
+`DashboardFuncionario.dc.html` l.667–775 (nav em l.1617).
+
+### A tabela de desvios que abriu a sessão
+
+| # | Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? |
+|---|---|---|---|---|
+| 1 | Pílulas de período (Hoje/7d/30d/Este mês/Personalizado) | ❌ | — | — |
+| 2 | Intervalo personalizado (`isRelCustom`, l.1238) | ❌ | — | — |
+| 3 | Filtro de barbeiros (multi, checkbox + iniciais) | ❌ | — | — |
+| 4 | Filtro de unidade | ❌ | — | — |
+| 5 | Exportar PDF | ❌ | — | — |
+| 6 | Exportar CSV | ❌ | — | — |
+| 7 | Faturamento por período (total + Δ + área + eixos) | ⚠️ 3 `StatCard` | ❌ | — |
+| 8 | Faturamento por barbeiro | ⚠️ **trancado por plano** | ❌ | — |
+| 9 | Faturamento por serviço 🔒 | ✅ | ❌ | — |
+| 10 | Forma de pagamento (rosca + legenda %) | ⚠️ eram barras | ❌ | — |
+| 11 | Taxa de retorno 🔒 | ⚠️ faixas erradas, sem headline | ❌ | — |
+| 12 | Heatmap de horários de pico 🔒 | ❌ nem na API | — | — |
+| 13 | Taxa de faltas por mês 🔒 + marcador do WhatsApp | ❌ (só um escalar) | — | — |
+| 14 | Ticket médio por barbeiro 🔒 (l.1465) | ❌ | — | — |
+| 15 | Cadeado POR BLOCO (véu + upsell) | ❌ a página inteira caía num `FeatureLocked` | ❌ | — |
+| 16 | KPIs "Ocupação"/"No-show" | ⚠️ existiam e **não estão no protótipo** | ❌ | — |
+| 17 | Papel `BARBER` | ❌ fora do nav e 403 no controller | — | — |
+| 18 | Período no fuso da barbearia | ❌ resolvido em UTC | — | — |
+| 19 | Estados (loading/vazio/erro por bloco) | ⚠️ um `Skeleton` genérico | ❌ | — |
+
+Zerada ao fim da sessão.
+
+### Os quatro achados
+
+1. **A aba inteira era uma página de cadeado.** O protótipo tranca CINCO dos
+   oito blocos (`relatoriosLocked` embrulha serviço, retorno, heatmap, faltas e
+   ticket médio) e deixa TRÊS servindo em qualquer plano: faturamento por
+   período, por barbeiro e por forma de pagamento. A implementação anterior
+   punha `revenueByBarber` dentro de `/reports/advanced` e, ao ver o 403,
+   substituía metade da tela por um cartaz único. O Essencial via paywall onde
+   o desenho mostra números. `revenueByBarber` mudou de rota; o cadeado passou
+   a ser por bloco (véu + `UpgradeModal` com os três benefícios de l.6916), e
+   o `dashboard-ii.isolation-spec.ts` ganhou um caso que afirma o contrário do
+   desvio — "Essencial ENXERGA `/reports/summary` COM faturamento por
+   barbeiro". Mesmo formato do desvio que o agente 18 achou no Financeiro:
+   **trancar "por simetria" é o erro recorrente desta auditoria.**
+
+2. **O período era resolvido em UTC.** `resolvePeriod` montava as datas com
+   um literal terminado em `T00:00:00.000Z`. Uma barbearia fechando comanda às 22h
+   via o faturamento de "hoje" saltar para o dia seguinte, porque o container
+   roda em UTC — o mesmo defeito que a fase 13 já tinha resolvido no Dashboard
+   com `dashboard-window.ts`. As janelas agora saem de `resolveWindow`, que
+   usa `zonedTimeToUtc` como o resto do painel.
+
+3. **`@Transform` de `class-transformer` roda mesmo quando o parâmetro não
+   veio.** O filtro de barbeiros normaliza a query string; com `barberIds`
+   ausente, `[undefined].flatMap(e => String(e).split(','))` devolvia
+   `['undefined']` — e TODA consulta sem filtro passava a procurar um barbeiro
+   que não existe. Efeito: a aba inteira zerava para quem não tocasse no
+   filtro, enquanto filtrar por um barbeiro funcionava. Custou o tempo que
+   custa qualquer bug que se manifesta ao contrário da intuição. **Vale para
+   qualquer DTO do produto**: `@IsOptional()` NÃO impede o `@Transform`, e um
+   `@Transform` que não trata `undefined` é uma armadilha silenciosa.
+
+4. **O gráfico de faltas afirma uma data que o banco não guardava.** A linha
+   tracejada "WhatsApp de lembrete ativado" (l.1440) diz QUANDO a automação foi
+   ligada; `WhatsappAutomationConfig` só sabia se ela está ligada AGORA, e
+   `updatedAt` muda a cada edição de template. Entrou
+   `WhatsappAutomationConfig.enabledAt`, gravado na primeira vez que a
+   automação é ligada e nunca reescrito depois (desligar não apaga o marco — o
+   lembrete de fato saiu naquele período). Sem a data, o gráfico simplesmente
+   não desenha o balão: anunciar uma ativação que não houve daria ao dono um
+   mérito que a fila de mensagens não sustenta.
+
+### Decisões técnicas
+
+1. **A rosca reparte EXATAMENTE o faturamento do card acima dela.** Os
+   pagamentos entram pela comanda (`JOIN "Order"`) e pela data de FECHAMENTO
+   dela, não por `paidAt`. Somar por `paidAt` faria a legenda dar 100% de um
+   total que não é o do card, e um pagamento de assinatura — que não tem
+   comanda — apareceria numa fatia que o "Faturamento por período" não contou.
+   Há um caso de e2e que soma as fatias e compara com `revenueCents`.
+2. **"Atend." do ticket médio é COMANDA FECHADA**, o mesmo denominador do
+   ticket médio do Dashboard e do KPI logo acima. Contar itens de serviço daria
+   um número maior e um ticket menor, e as duas telas passariam a discordar.
+   (É a escolha oposta à do agente 19 no extrato de comissão, onde
+   `atendimentos` conta lançamentos de SERVIÇO — lá o número serve para
+   conferir a comissão, aqui para dividir o faturamento.)
+3. **O delta compara com a janela de MESMO TAMANHO imediatamente anterior**,
+   não com "o mês passado". "Este mês" no dia 22 compara com os 22 dias
+   anteriores; comparar com um mês inteiro faria todo relatório de começo de
+   mês parecer uma queda. `deltaPct` é `null` — e não `0` — quando a base é
+   zero, e a tela escreve "sem período anterior para comparar" em cinza.
+4. **A taxa de faltas ignora as pílulas de propósito.** São sempre os 8 meses
+   que terminam no mês final do período: é um bloco de TENDÊNCIA, e um
+   relatório de "Hoje" com um ponto só não mostraria queda nenhuma. Mesmo
+   número de pontos das sparklines do Dashboard.
+5. **A taxa de retorno conta a partir do FIM do período, não de `NOW()`.**
+   Olhando um mês fechado do ano passado, `NOW()` jogaria a base inteira em
+   "46+ dias" e o bloco diria que ninguém volta. O filtro de barbeiros usa
+   `ClientProfile.favoriteBarberId` — retorno é propriedade do cliente, e é o
+   barbeiro preferido que a aba Clientes já registra.
+6. **O headline "62% voltam em até 45 dias" é derivado, não um segundo
+   número.** É a soma das três primeiras faixas (o próprio protótipo fecha:
+   24+22+16 = 62). Os cortes 15/30/45 são definição de negócio, como as faixas
+   de comissão — não valor copiado do desenho.
+7. **O rótulo de pico do heatmap é calculado**: a janela de 3 horas mais cheia
+   do dia mais cheio ("Pico: sábado, 9h–12h" nos dados do seed demo, contra o
+   "sábado, 10h–13h" cravado no protótipo). Sem atendimento no período o bloco
+   cai no vazio próprio em vez de desenhar uma grade transparente.
+8. **A série de "Hoje" é por HORA e as horas saem do expediente cadastrado**
+   (`TenantBusinessHour`, com recuo para 8h–22h). O protótipo cravou 08h–22h;
+   uma barbearia que abre às 9h não tem por que ver uma coluna morta.
+9. **O filtro de unidade é o PRIMEIRO `unitId` que o produto realmente
+   filtra.** A dívida 3 da fase 13 registra que o seletor da topbar só troca o
+   rótulo; aqui `Order.unitId` e `Appointment.unitId` entram no `WHERE` de
+   todas as consultas da aba. O seletor da barra só aparece quando o tenant tem
+   unidades (`/dashboard/shell` devolve lista vazia sem `multiUnidades`) — um
+   dropdown com uma opção só seria um controle que não decide nada.
+10. **`BARBER` NÃO escolhe barbeiro.** O recorte vem do `StaffScope`, venha o
+    que vier na query: pedir o `barberIds` de um colega devolve os próprios
+    números, e o id do colega não aparece na resposta. Há caso de e2e e de
+    isolamento para os dois ângulos.
+11. **Os dois botões de exportação não somem fora do plano** — ficam a 50% e
+    abrem o upsell, como `exportBtnOpacity`/`exportBtnTitle` (l.6931). Esconder
+    o botão esconderia o motivo. Do lado do servidor as duas rotas são 403.
+12. **Os KPIs "Ocupação" e "No-show" saíram da aba.** Não estão no protótipo de
+    Relatórios, ninguém mais consumia `ReportsAdvancedResponse`, e ocupação já
+    é um KPI do Dashboard. O método `occupancy()` foi removido junto.
+
+### Backend
+
+- `src/reports/reports-period.ts` (novo) — resolve as 5 pílulas no fuso do
+  tenant e a janela de comparação.
+- `src/reports/reports.service.ts` — reescrito. Tudo em `$queryRaw` agregado
+  (nenhum N+1); `AT TIME ZONE` faz o agrupamento por hora/dia/mês no relógio da
+  barbearia; os filtros de barbeiro/unidade viram fragmentos `Prisma.Sql`.
+- `src/reports/reports-export.service.ts` (novo) — CSV (`;` + BOM, que é o que
+  o Excel pt-BR abre em colunas) e PDF (pdfkit, mesma paleta clara do
+  relatório de comissão), ambos montados do MESMO par de respostas da tela.
+- `src/reports/dto/reports.dto.ts` — `period`, `from`/`to`, `barberIds`
+  (repetível ou separado por vírgula) e `unitId`.
+- `src/whatsapp-config/whatsapp-config.service.ts` — grava `enabledAt` na
+  primeira ativação. **Aviso para o agente 22**: é a única linha desta sessão
+  fora de Relatórios.
+- `prisma/schema.prisma` + migration `20260822180000_relatorios_auditoria` —
+  `WhatsappAutomationConfig.enabledAt`, com `UPDATE` que herda `createdAt` para
+  quem já tinha a automação ligada.
+- `prisma/seed.ts` / `seed-demo.ts` / `seed-data.ts` — plantam `enabledAt`
+  (`WHATSAPP_REMINDER_ENABLED_MONTHS_AGO = 3`), para o marcador cair num mês em
+  que a curva de faltas de fato cai.
+
+### Frontend
+
+- `components/dashboard/reports/` (novo): `report-card.tsx` (a caixa com os
+  quatro estados e o cadeado), `report-toolbar.tsx`, `revenue-chart.tsx`,
+  `bar-list.tsx`, `payment-donut.tsx`, `return-rate-card.tsx`,
+  `peak-heatmap.tsx`, `no-show-chart.tsx`, `ticket-table.tsx` e
+  `reports-shared.ts`.
+- `lib/dashboard/api/reports.ts` — as duas consultas com `placeholderData` (a
+  troca de pílula não pode piscar a grade vazia) e a mutation de exportação,
+  que baixa por blob autenticado como o PDF de comissão.
+- `lib/dashboard/api/team.ts` — `useBarbersQuery({ enabled })`, para o `BARBER`
+  não colecionar 403 no console.
+- `lib/dashboard/nav.ts` — `relatorios` perdeu a restrição de papel.
+- Nenhum componente novo entrou em `packages/ui`: `Segmented`, `Popover`,
+  `Donut`, `Avatar` e `ResponsiveTable` já cobriam a barra e a tabela.
+
+### Papéis
+
+`BARBER` vê a aba com o desenho do `DashboardFuncionario`: três KPIs (Minha
+produção / Atendimentos / Ticket médio), "Minha produção por período", "Meus
+serviços realizados" e "Forma de pagamento dos meus atendimentos" — sem filtro
+de barbeiro, sem filtro de unidade e sem os cinco blocos de gestão. O subtítulo
+diz "· seus atendimentos" para ele não confundir a própria produção com a da
+barbearia.
+
+### Estados e responsividade
+
+- `/app/relatorios` passa nos 5 tamanhos (`node scripts/responsive-sweep.mjs
+  --app=dashboard`). Duas correções foram necessárias: o trilho do `Segmented`
+  é `shrink-0` no design system e as CINCO pílulas não cabiam a 360 (a aba usa
+  `shrink flex-wrap`, que é o que o protótipo faz em l.1233), e os 8 rótulos do
+  eixo X viram 4 abaixo de `sm` (duas linhas por breakpoint — medir a largura
+  no cliente causaria salto na primeira pintura).
+- Cada bloco tem esqueleto na PRÓPRIA altura, vazio com mensagem sua e erro com
+  "Tentar de novo" local: uma consulta que falha não derruba a aba.
+- Bloco trancado mantém a altura do bloco liberado. Sem isso o cadeado encolhe
+  até encavalar no título, e a grade se reorganiza ao trocar de plano.
+- Tenant secundário (`barbearia-isolamento`, Essencial e quase vazio) abre a
+  aba inteira: R$ 93,00, "sem período anterior para comparar" e os cinco
+  cadeados no lugar.
+- Abaixo de `md` o heatmap rola por dentro do próprio contêiner
+  (`min-w-[760px]` num `overflow-x-auto`) e a tabela de ticket vira cards, com
+  a unidade colada no número ("155 atend.") porque o card perde o cabeçalho.
+
+### Dívidas técnicas desta fase
+
+- **O bloco trancado não mostra o formato do que se está comprando.** No
+  protótipo o cadeado embaça CONTEÚDO; aqui o servidor responde 403 e não há
+  payload para embaçar, então o véu cobre uma caixa vazia. Inventar valores de
+  exemplo seria hardcodar dado do protótipo (regra 1). A saída honesta seria o
+  `/reports/advanced` devolver, no 403, uma amostra explicitamente rotulada
+  como exemplo — decisão de produto, não de auditoria de tela.
+- **O seletor de unidade da TOPBAR continua sem filtrar nada** (dívida 3 da
+  fase 13). Relatórios tem o seu, e ele funciona; as outras 13 telas não. Agora
+  há duas maneiras de escolher unidade na mesma tela dizendo coisas
+  diferentes — quem fizer multi-unidade de verdade deve unificar as duas.
+- **`export.csv`/`export.pdf` recalculam `summary` + `advanced`.** São 11
+  consultas por download, e o usuário acabou de ver os mesmos números na tela.
+  Cachear a resposta por (tenant, filtros) resolveria; não foi feito porque o
+  download é raro e o cache erraria no primeiro fechamento de comanda.
+- **O PDF de exportação não tem gráfico nenhum** — é tabela. As séries viram
+  linhas de números. Desenhar SVG no pdfkit é possível; o valor está em cruzar
+  os números, não em reproduzir a curva.
+- **`revenueSeries` de um período personalizado longo devolve um ponto por
+  dia** — um ano são 365 pontos numa resposta e num SVG. Acima de ~90 dias
+  valeria agrupar por semana; a tela aguenta, a resposta cresce.
+- **O heatmap conta agendamentos `DONE`+`CONFIRMED`, não ocupação em minutos.**
+  Um atendimento de 2h pesa igual a um de 30min. É "quando o telefone toca",
+  não "quando a cadeira está cheia" — as duas leituras são úteis e o protótipo
+  não diz qual é.
+
+### Achados fora do escopo (para os agentes donos)
+
+- A varredura responsiva fecha com **20 pendências, nenhuma em
+  `/app/relatorios`** — as mesmas que o agente 19 listou, menos as 2 que eram
+  desta aba. O padrão continua: **quase toda barra de sub-abas do painel tem
+  botões de 36px de altura**.
+- **`@Transform` sem guarda de `undefined` é uma armadilha do produto inteiro,
+  não desta aba.** Vale um `grep -rn "@Transform" apps/api/src` na próxima
+  sessão que sobrar tempo — este agente só corrigiu o DTO de Relatórios.
+
+### Como conferir o agente 20 rodando
+
+**Cuidado com RAM** (7,5GB): `docker compose up -d db redis api` para os passos
+1–4, e suba `web` sozinho só para olhar a tela.
+
+1. **Os números batem com o Financeiro/POS** — `period=mes` tem de dar
+   exatamente o "faturamento do mês" que o `seed:demo` imprime:
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:3333/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email":"dono@barbeariacentral.com.br","password":"BarberVP@2026"}' \
+     | python3 -c 'import sys,json;print(json.load(sys.stdin)["accessToken"])')
+   curl -s "http://localhost:3333/api/v1/reports/summary?period=mes" \
+     -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -20
+   ```
+   A soma de `paymentDistribution[].amountCents` tem de dar `revenueCents`.
+2. **Exportação de verdade**:
+   ```bash
+   curl -s -o /tmp/rel.pdf "http://localhost:3333/api/v1/reports/export.pdf?period=mes" -H "Authorization: Bearer $TOKEN"
+   file /tmp/rel.pdf   # PDF document
+   curl -s "http://localhost:3333/api/v1/reports/export.csv?period=mes" -H "Authorization: Bearer $TOKEN" | head -8
+   ```
+3. **Gate de plano** (baixar o tier na marra e restaurar):
+   ```bash
+   docker exec barbervp-db psql -U barbervp -d barbervp -c \
+     "UPDATE \"Tenant\" SET \"planId\"=(SELECT id FROM \"SaasPlan\" WHERE code='essencial') WHERE slug='barbearia-central';"
+   for P in summary advanced export.csv export.pdf; do
+     curl -s -o /dev/null -w "$P %{http_code}\n" "http://localhost:3333/api/v1/reports/$P?period=mes" -H "Authorization: Bearer $TOKEN"
+   done
+   # summary 200 · advanced 403 · export.csv 403 · export.pdf 403 — e a tela
+   # mantém os 3 blocos abertos com os 5 cadeados. Depois:
+   docker exec barbervp-db psql -U barbervp -d barbervp -c \
+     "UPDATE \"Tenant\" SET \"planId\"=(SELECT id FROM \"SaasPlan\" WHERE code='avancado') WHERE slug='barbearia-central';"
+   ```
+4. **Recorte do barbeiro** — entre como `carlos@barbeariacentral.com.br` e peça
+   o `barberId` de um colega em `barberIds`: a resposta continua sendo a dele.
+5. **Front** (`docker compose up -d web`, sozinho):
+   `http://localhost:3000/app/relatorios` como
+   `dono@barbeariacentral.com.br` / `BarberVP@2026` — ande pelas 5 pílulas,
+   abra "Personalizado", desmarque um barbeiro, exporte os dois arquivos.
+   Depois entre como `carlos@barbeariacentral.com.br` (mesma senha): 3 KPIs,
+   3 blocos, sem filtro de barbeiro.
+6. **Testes**: `make test` (81 unit), `pnpm --filter @barbervp/api test:e2e`
+   (208), `make test-isolation` (139). Rode com a stack **parada** ou só com
+   `db`+`redis` — a suíte junto do container `api` já estourou a RAM nesta
+   máquina.
+7. **`make seed-demo` antes de auditar a próxima aba** — o `make seed` básico
+   não tem os 8 meses de histórico que o heatmap e a curva de faltas precisam.
+
+## O que o agente 19 (auditoria da aba Comissões) entregou
+
+Auditoria 1:1 da aba **Comissões** (`/app/comissoes`) contra
+`Dashboard.dc.html` l.1089–1228, o modal de regras (l.4154, com os modos
+Percentual l.4167 e Faixas l.4184) e o modal de PDF (l.4228).
+
+### A tabela de desvios que abriu a sessão
+
+| Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? |
+|---|---|---|---|
+| Toggle Semanal/Mensal | ❌ | — | — |
+| Stepper `‹ período ›` | ❌ (era `<input type=month>`) | ❌ | parcial |
+| KPIs Total a pagar / Período / Status | ❌ (só um selo solto) | ❌ | — |
+| Tabela de 9 colunas | ❌ (era lista de `Card`) | ❌ | — |
+| Col. Fat. produtos | ⚠️ vinha na API, não na tela | ❌ | — |
+| Col. **Comissão produtos** | ❌ **nem no banco** | ❌ | — |
+| Col. Regra aplicada (chip ✎ por barbeiro) | ❌ (lista "Regras" à parte) | ❌ | ⚠️ abria a regra global |
+| Col. (−) Vales | ⚠️ só aparecia se > 0 | ❌ | — |
+| Botão PDF por linha | ❌ | — | — |
+| Extrato: tabela + `% aplicado` + nota | ⚠️ era lista rasa, sem % nem nota | ❌ | ✅ |
+| Modal de regras por barbeiro, com % produtos, add/remover faixa e toggle de vales | ❌ (era CRUD de regra, 3 faixas fixas, sem % produtos, sem toggle) | ❌ | parcial |
+| Modal de PDF | ❌ inexistente | — | — |
+| Paywall com os 3 benefícios do protótipo | ⚠️ existia com outros textos | ✅ | ✅ |
+
+Zerada ao fim da sessão.
+
+### Os três achados
+
+1. **Produto não gerava comissão nenhuma.** A fase 07 decidiu "comissão sobre
+   o serviço, produto não gera comissão nesta regra" e o seed carregava esse
+   comentário. Só que o protótipo tem uma coluna "Comissão produtos" NA
+   TABELA e um campo "% produtos" nos DOIS modos do modal de regras — não é
+   uma regra de negócio opcional, é metade da conta que o barbeiro confere.
+   Entraram `CommissionRule.percentProdutosBps`, `CommissionEntry.kind`
+   (`SERVICE`/`PRODUCT`) e `CommissionCalcService.recordProductEntry`.
+   **Produto nunca progride por faixa** — o próprio protótipo rotula o campo
+   como "% produtos (todas as faixas)" —, então o acumulado que escolhe a
+   faixa passou a contar SÓ os lançamentos de serviço. Sem essa separação, a
+   venda de pomada empurraria o barbeiro para a faixa de 50% sem nunca ser
+   comissionada por ela. `percentProdutosBps` nasce em 0: quem não configurar
+   não vê mudança.
+
+2. **Período fechado exibia um total MAIOR do que o que foi pago.** `period()`
+   somava vales com `settledAt: null`; `closePeriod()` quita os vales. Ou
+   seja: no instante seguinte ao fechamento o vale saía da conta e o "Total a
+   receber" subia — a tela contradizia o pagamento que ela mesma acabara de
+   travar. O filtro passou a ser por `Vale.date` dentro do recorte,
+   independente de quitação. De quebra, isso é o que faz a coluna fechar
+   também na visão Semanal, já que `Vale.date` é o dia do adiantamento (a
+   `referenceMonth` é derivada dele desde a fase 18).
+
+3. **O cadeado anunciava outros benefícios.** O bloco `comissoesLocked`
+   (l.1214–1216) lista "Cálculo automático por barbeiro", "Faixas progressivas
+   de comissão" e "Relatório em PDF" — e o terceiro era exatamente o que NÃO
+   existia. O upsell prometia um recurso inexistente; agora os três são reais.
+
+### Decisões técnicas
+
+1. **"Semanal" é um recorte de LEITURA; a competência continua sendo o mês.**
+   A faixa da regra é escolhida pelo faturamento MENSAL (SPEC: até R$5.000 →
+   40%…) e é o mês que `closePeriod` trava. Fechar semana a semana pagaria
+   sempre pela faixa mais baixa. Por isso o `confirm()` do botão nomeia a
+   COMPETÊNCIA ("Fechar a competência de agosto?") mesmo com a tela na visão
+   semanal — é onde o usuário mais precisa ouvir isso.
+2. **Numa semana que atravessa a virada do mês, a competência é a do dia
+   âncora**, não a do começo da semana: é o dia escolhido no stepper que diz
+   de qual fechamento aquela leitura faz parte.
+3. **O extrato filtra por `Order.closedAt`, não por `CommissionEntry.createdAt`.**
+   É a data que a coluna "Data" mostra, e a única que sobrevive a um seed com
+   histórico retroativo — `createdAt` jogaria todo o histórico na semana em
+   que o seed rodou. (O `seed.ts` também passou a gravar `createdAt: closedAt`,
+   como o `seed-demo.ts` já fazia.)
+4. **O modal de regras edita a regra REAL e avisa quem mais muda junto.** O
+   protótipo escreve "Regras de comissão · Fulano" como se a regra fosse do
+   barbeiro, mas no modelo ela é compartilhada. Duplicar a regra por barbeiro
+   encheria a barbearia de regras iguais; então o modal edita a regra
+   existente e mostra, em faixa dourada, "Esta regra também vale para X e Y".
+   Barbeiro sem regra ganha uma nova, nomeada com o próprio nome. O `submit`
+   manda `barberIds` = os antigos ∪ este, porque o endpoint SUBSTITUI a lista.
+5. **`deductVales` desligado não quita o vale no fechamento.** O adiantamento
+   não entrou no total pago — dar baixa nele apagaria uma dívida que ninguém
+   cobrou. Na tabela o valor aparece riscado e em cinza, não em vermelho.
+6. **O total nunca fica negativo, mas o saldo não some.** Quando o vale supera
+   a comissão, `totalCents` é 0 (ninguém paga para trabalhar) e a nota do
+   extrato diz quanto seguiu em aberto — um zero sem explicação pareceria
+   quitação.
+7. **O PDF é montado no servidor a partir do MESMO `CommissionPeriodResponse`
+   que alimenta a tabela**, nunca de um segundo cálculo: papel e tela não
+   podem divergir no dia em que uma das fórmulas mudar. O modal na tela é a
+   pré-visualização (as cores claras dele são fixas de propósito — representam
+   o arquivo, não o tema).
+8. **`pdfkit` entrou como dependência do `apps/api`.** As fontes padrão do PDF
+   são WinAnsi: acentos passam, mas o MINUS SIGN (U+2212) do "(−) Vales" sai
+   como `"`. No PDF vai hífen; na tela, o sinal tipográfico.
+9. **`ResponsiveTable` ganhou `expansion`** (opcional, aditivo — nenhum
+   chamador existente mudou). O gatilho é um `<button aria-expanded>` numa
+   coluna própria à esquerda, e não a `<tr>` inteira clicável do protótipo:
+   a linha tem um botão "PDF" dentro, e um clique nele também abriria o
+   extrato.
+10. **`finance-blocks.tsx` virou `components/dashboard/blocks.tsx`.** Os KPIs,
+    o `Panel` e o `BlockError` da fase 18 não são do Financeiro — são das abas
+    de números. Os 5 importadores foram atualizados; nenhum shim de
+    re-export ficou para trás.
+
+### Papéis
+
+`BARBER` vê só a própria linha (`scoped: true` na resposta), o KPI troca de
+rótulo para "Você tem a receber", "Fechar período" some, e o chip da regra vira
+selo sem o `✎` — porque `/commissions/rules` é `OWNER`/`MANAGER` e um lápis ali
+levaria a um 403. O PDF do próprio extrato continua disponível; o de um colega
+devolve 404, já que o extrato que alimenta o relatório já vem filtrado.
+
+### Estados e responsividade
+
+- `/app/comissoes` passa nos 5 tamanhos (`node scripts/responsive-sweep.mjs
+  --app=dashboard`). A pendência histórica dela — rolagem horizontal de +121px
+  a 360/390, registrada pelo agente 18 — está fechada.
+- Abaixo de `md` a tabela vira cards, com o botão PDF em cada um (a coluna tem
+  `mobile: 'meta'`; sem isso o botão sumia no celular) e o extrato rolando por
+  dentro do card (`min-w-[460px]` no `overflow-x-auto`, senão "% aplicado" era
+  esmagado).
+- Mês sem lançamento nenhum renderiza a aba inteira com zeros e **desabilita
+  "Fechar período"** — o endpoint aceitaria a chamada e não faria nada, e o
+  dono ficaria achando que fechou algo. Tenant sem barbeiro cai no `EmptyState`.
+- Falha de carga mostra `BlockError` com "Tentar de novo" — a página não cai.
+
+### Dívidas técnicas desta fase
+
+- **O extrato não pagina.** Um barbeiro com centenas de atendimentos no mês
+  devolve tudo numa consulta; a tela aguenta, a resposta cresce. Mesmo caso do
+  extrato de caixa da fase 18.
+- **`period()` roda 3 consultas POR BARBEIRO** (lançamentos, faturamento
+  agrupado, vales). Com 4 barbeiros são 12; com 40, 120. Dá para virar 3
+  consultas agrupadas por barbeiro — não foi feito porque o `N` real é a
+  equipe de uma barbearia.
+- **O PDF não tem o logotipo da barbearia.** O protótipo desenha um bloco
+  "LOGO" hachurado, e é isso que o modal e o arquivo mostram: não existe
+  upload de imagem no produto (a galeria de Minha Página é URL simples).
+  Quando existir, o `CommissionReportService` já tem onde encaixar.
+- **`normalizeTiers` conserta faixa fora de ordem no servidor** reordenando
+  pelos tetos, mas não avisa quem salvou. O modal valida antes ("Os tetos das
+  faixas precisam estar em ordem crescente"), então na prática só um cliente
+  fora da UI cairia nisso em silêncio.
+- **`atendimentos` conta só lançamentos de SERVIÇO.** É o número que a palavra
+  significa, mas quem ler o campo esperando "linhas do extrato" vai errar por
+  causa das linhas de produto.
+
+### Achados fora do escopo (para os agentes donos)
+
+A varredura responsiva (`--app=dashboard`, com os dados de `make seed`) fecha
+com **20 pendências, nenhuma em `/app/comissoes`** — todas a 360 e/ou 390:
+
+- `/app/agenda`: 5 alvos de toque < 44px (stepper `‹ ›`, "Hoje", input).
+- `/app/servicos-produtos`: rolagem horizontal (+47px / +17px) e 2 abas < 44px.
+- `/app/equipe`: rolagem horizontal (+77px / +47px) e 3 abas < 44px.
+- `/app/fidelidade`: 3 abas e 1 input < 44px.
+- `/app/whatsapp`: 5 inputs < 44px.
+- `/app/configuracoes`: 5 inputs < 44px.
+- `/app/minha-pagina`: rolagem horizontal (+59px / +30px) e 2 inputs < 44px.
+
+Note o padrão: **quase toda barra de sub-abas do painel tem botões de 36px de
+altura**. Quem pegar qualquer uma dessas abas deve arrumar a barra inteira, não
+só a própria — provavelmente vale um componente compartilhado, como o
+`Segmented` já é.
+
+### Como conferir a fase 19 rodando
+
+**Cuidado com RAM** (7,5GB): `docker compose up -d db redis api` para os passos
+1–3, e suba `web` sozinho só para olhar a tela.
+
+1. **Extrato mensal e semanal**:
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:3333/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"email":"dono@barbeariacentral.com.br","password":"BarberVP@2026"}' \
+     | python3 -c 'import sys,json;print(json.load(sys.stdin)["accessToken"])')
+   curl -s "http://localhost:3333/api/v1/commissions/period?month=$(date +%Y-%m)" \
+     -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -40
+   curl -s "http://localhost:3333/api/v1/commissions/period?type=WEEKLY&anchor=$(date +%Y-%m-%d)" \
+     -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -20
+   ```
+   `comissaoProdutosCents` > 0 confirma o achado 1; a semana precisa somar
+   menos que o mês que a contém.
+2. **PDF de verdade** (troque `<ID>` por um `barberId` da resposta acima):
+   ```bash
+   curl -s -o /tmp/rel.pdf \
+     "http://localhost:3333/api/v1/commissions/period/report.pdf?month=$(date +%Y-%m)&barberId=<ID>" \
+     -H "Authorization: Bearer $TOKEN"
+   file /tmp/rel.pdf   # PDF document
+   ```
+3. **Gate de plano** (baixar o tier na marra e restaurar):
+   ```bash
+   docker exec barbervp-db psql -U barbervp -d barbervp -c \
+     "UPDATE \"Tenant\" SET \"planId\"=(SELECT id FROM \"SaasPlan\" WHERE code='essencial') WHERE slug='barbearia-central';"
+   curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3333/api/v1/commissions/period?month=$(date +%Y-%m)" -H "Authorization: Bearer $TOKEN"
+   # 403 — e a tela mostra o cadeado com os 3 benefícios do protótipo. Depois:
+   docker exec barbervp-db psql -U barbervp -d barbervp -c \
+     "UPDATE \"Tenant\" SET \"planId\"=(SELECT id FROM \"SaasPlan\" WHERE code='avancado') WHERE slug='barbearia-central';"
+   ```
+4. **Front** (`docker compose up -d web`, sozinho): `http://localhost:3000/app/comissoes`
+   como `dono@barbeariacentral.com.br` / `BarberVP@2026` — alterne
+   Semanal/Mensal, ande com `‹ ›`, abra o extrato de um barbeiro, clique no
+   chip da regra (o aviso "esta regra também vale para…" aparece) e no "PDF".
+   Depois entre como `carlos@barbeariacentral.com.br` (mesma senha): só a
+   própria linha, sem "Fechar período" e sem o `✎`.
+5. **Testes**: `make test` (81 unit), `pnpm --filter @barbervp/api test:e2e`
+   (189), `make test-isolation` (133). Rode com a stack **parada** ou só com
+   `db`+`redis` — a suíte junto do container `api` já estourou a RAM
+   (exit 137) nesta máquina.
+6. **`make seed` ao terminar** e `docker compose stop`.
+
+## O que o agente 18 (auditoria da aba Financeiro) entregou
+
+Auditoria 1:1 da aba **Financeiro** (`/app/financeiro`) contra
+`Dashboard.dc.html` l.718–1088 e os modais l.3876 (fechar caixa), l.3914 (nova
+conta a pagar), l.3990 (nova conta a receber), l.4066 (novo vale) e l.4109
+(nova conta bancária).
+
+### A tabela de desvios (o passo 1 da fase)
+
+A aba tinha **as 6 sub-abas de nome e 2 de conteúdo**. Por sub-aba:
+
+| Sub-aba | Desvio |
+|---|---|
+| Caixa (l.736) | Sem os 4 KPIs, sem os botões de entrada/sangria, sem o extrato do dia. Abrir caixa era um modal, não o card central. Fechamento sem resumo por forma nem faixa de diferença. |
+| Contas a pagar (l.835) | Sem os 3 KPIs. Tabela com 5 das 8 colunas (faltavam Fornecedor e Parcela). "Marcar como pago" escondido num kebab. Modal sem recorrente/parcelado. |
+| Contas a receber (l.893) | Idem, e o modal não abria por "Cliente" como no protótipo. |
+| Vales (l.951) | Sem a faixa dourada. Mostrava "Mês" no lugar de "Data" — **o `Vale` não guardava o dia**, só a competência. Status genérico em vez de "Descontar na comissão de \<mês\>". |
+| Contas bancárias (l.986) | **Travada por plano sem o protótipo trancar.** Cards sem tipo nem formas aceitas; faltava o bloco "forma de pagamento → conta de destino". |
+| Fluxo de caixa (l.1014) | **Travada por plano sem o protótipo trancar.** Só barras, sem a linha do acumulado; grid de cards no lugar da tabela; sem o detalhe por categoria. |
+
+### Os três achados que passam das telas
+
+1. **O gate de plano estava largo demais.** `LOCKED_FIN_TABS` do protótipo tem
+   3 chaves; a implementação trancava 5 endpoints. Um tenant Essencial abria
+   Contas bancárias e Fluxo de caixa e via paywall onde o produto promete a
+   tela. Corrigido no controller e cravado na suíte de isolamento com um caso
+   que afirma **200**, não 403 — a assimetria é fácil de "consertar de volta"
+   por simetria aparente.
+
+2. **A conferência de caixa somava o que não está na gaveta.** O fechamento
+   comparava o contado contra a soma de TODAS as movimentações. Uma barbearia
+   que vende no cartão fecharia todo dia com uma "quebra" do tamanho das vendas
+   na maquininha. Agora `expectedCents` é só `method = CASH`; o extrato segue
+   mostrando as três formas, porque é o diário do dia — só a conferência é do
+   dinheiro. O `CashMovement` ganhou `method` e `category` para isso (o POS
+   passou a gravar UMA movimentação por forma de pagamento, não só as em
+   dinheiro).
+
+3. **Os KPIs somavam a página, não o conjunto.** Não existiam ainda, mas a
+   armadilha estava montada: com `perPage: 50` na tela, somar
+   `data.reduce(...)` daria "Total do mês" dos 50 primeiros. Os três recortes
+   viraram um `FILTER (WHERE ...)` único no banco, devolvido como `summary` na
+   própria listagem.
+
+### Endpoints criados/alterados
+
+- **`POST /finance/cash-register/movements`** (novo) — entrada avulsa e
+  saída/sangria. No protótipo os dois botões só disparavam um toast.
+- `GET /finance/cash-register` — devolve `entriesCents`, `exitsCents`,
+  `expectedCashCents` e `byMethod[]`.
+- `GET /finance/payables|receivables` — ganham `summary`; a criação
+  materializa parcelas (`installments`) e recorrência (`recurrence`, 12
+  ocorrências) com `seriesId` comum.
+- `PATCH .../pay|receive` — liquidar de novo virou 409, não uma segunda baixa.
+- `GET|POST|PATCH /finance/bank-accounts` — `type` e `acceptedMethods`
+  expostos; nome único por tenant; **sem gate de plano**.
+- `GET /finance/cash-flow` — agregação em SQL com categorias e acumulado;
+  **sem gate de plano**.
+
+### Schema (migration `20260822120000_financeiro_auditoria`)
+
+- `CashMovement.method` (`PaymentMethod?`) e `.category` (`String?`).
+- `AccountPayable`/`AccountReceivable`: `seriesId` e `recurrence`
+  (`enum AccountRecurrence { WEEKLY, MONTHLY, YEARLY }`).
+- `Vale.date` (`@db.Date`) — a coluna "Data" da tabela não tinha de onde sair;
+  as linhas antigas herdaram a competência.
+
+### Decisões que valem para as próximas abas
+
+- **`FeatureLocked` foi corrigido para o bloco real do protótipo** (l.815):
+  bullets VISÍVEIS no card e dois botões ("Ver planos" → `/#bvp-plans`,
+  "Fazer upgrade" → `/app/configuracoes?tab=plano`). Antes escondia os
+  benefícios atrás de um modal. As 5 páginas que já o usavam (relatórios,
+  comissões, fidelidade, configurações) herdaram a correção **sem mudar de
+  chamada** — os agentes 19–26 não precisam refazer o upsell.
+- **Sangria maior que a gaveta é 400.** O protótipo não modela; permitir
+  deixaria o caixa negativo e o fechamento sem sentido. Só o dinheiro é
+  limitado — um estorno no cartão sai da conta do adquirente.
+- **A conta bancária dos modais não vem pré-selecionada.** Atribuir a conta
+  errada em silêncio é pior que não atribuir nenhuma.
+- **`modalExcluirConta` (l.3511) NÃO é do Financeiro.** É "Excluir sua conta e
+  barbearia", o fluxo de 2 passos de **Configurações** — o enunciado do agente
+  18 o listava por engano. **Agente 26: é seu.**
+
+### O que ficou de fora (dívida desta aba)
+
+- A recorrência materializa 12 ocorrências na criação e para. Não há job que
+  renove a série quando as 12 acabarem — o `seriesId` existe justamente para
+  uma renovação futura conseguir continuar de onde parou.
+- Conta a pagar/receber não tem edição nem exclusão: o protótipo também não
+  tem, mas um erro de digitação hoje só se resolve no banco.
+- O extrato de caixa não pagina. Um dia com centenas de comandas devolve tudo
+  numa consulta; a tela aguenta, a resposta cresce.
+- A varredura responsiva só visita a sub-aba padrão (Caixa) — as outras cinco
+  foram conferidas por captura manual nos 5 tamanhos, não pelo script.
+
+### Achados fora do escopo (para os agentes donos)
+
+A varredura responsiva reprovou, em 360/390, telas de OUTRAS abas — nenhuma
+tocada nesta sessão:
+
+- `/app/comissoes`: rolagem horizontal (+121px) no cabeçalho.
+- `/app/minha-pagina`: rolagem horizontal (+59px) e 2 inputs abaixo de 44px.
+- `/app/fidelidade`: 3 botões de sub-aba e 1 input abaixo de 44px.
+- `/app/whatsapp`: 5 inputs abaixo de 44px.
+- `/app/configuracoes`: 5 inputs abaixo de 44px.
+
+## O que o agente 17 (auditoria da aba Comandas/POS) entregou
+
+Auditoria 1:1 da aba **Comandas** (`/app/comandas`) contra `Dashboard.dc.html`
+l.639–717 e o modal `modalComandaOpen` l.3123–3320.
+
+### A tabela de desvios (o passo 1 da fase)
+
+| # | Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? | Gravidade |
+|---|---|---|---|---|---|
+| 1 | Abas segmentadas **3**: `Abertas N` · `Fechadas hoje N` · `Todas` | Parcial — 2 abas | Não | Contagem só em "Abertas" | Alta |
+| 2 | Busca "Buscar por cliente ou nº" | **Não** — o backend já aceitava `search` | — | — | Alta |
+| 3 | "+ Nova comanda" na mesma linha da busca | Sim, mas na topbar | Não | Sim | Média |
+| 4 | **Grid de cards** das abertas: #nº, selo, cliente, `barbeiro · aberta HH:MM`, resumo dos itens, Subtotal + "Continuar" | **Não** — era tabela | Não | — | Alta |
+| 5 | Tabela das fechadas, 6 colunas na ordem Nº·Cliente·Barbeiro·**Fechada às**·Pagamento·Total | Parcial — 5 colunas, sem "Fechada às", Total antes de Pagamento | Não | — | Média |
+| 6 | Vazio "Nenhuma comanda encontrada" (resultado de busca) | Parcial — só vazio por status | Não | — | Média |
+| 7 | Modal passo 1 "Nova comanda #N" — busca de cliente, lista com iniciais, vazio próprio | Parcial — Select de barbeiro + toggle cadastrado/walk-in, sem o nº, lista só após digitar | Não | Sim | Alta |
+| 8 | Modal passo 2 **880×680, 3 colunas** (catálogo \| itens \| resumo) | **Não** — substituía a página inteira (`PosWorkspace`, 2 colunas) | Não | — | Alta |
+| 9 | Cabeçalho: `Comanda #N`, avatar, `cliente · barbeiro`, link **"trocar"** | **Não** — e não existia endpoint para trocar | — | — | Alta |
+| 10 | Catálogo: 1 busca + seções empilhadas SERVIÇOS/PRODUTOS em linha | Parcial — `Tabs` + grid de 2–3 colunas | Não | Sim | Média |
+| 11 | Itens: `ITENS (N)`, preço unitário, lixeira, stepper, subtotal do item | Parcial — sem contador, sem "un.", ✕ no lugar da lixeira | Não | Sim | Média |
+| 12 | Resumo: desconto com alternador **R$ \| %** inline; Total em gold/Sora | Parcial — `Select` + input + botão "Aplicar" (3 controles) | Não | Sim | Alta |
+| 13 | Card de fidelidade sempre visível: `— R$ X · usa N pts` + saldo | Parcial — sumia com saldo 0; nunca mostrava o valor antes de ligar | Não | Sim | Média |
+| 14 | Chips de pagamento (Pix/Dinheiro/Débito/Crédito/**Dividir**) + split com sobra, dentro da comanda | **Não** — modal separado com 4 campos fixos | Não | Sim | Alta |
+| 15 | Rodapé "**Salvar e deixar aberta**" / "Fechar comanda" | Parcial — só o segundo | Não | — | Alta |
+| 16 | Reabertura MANAGER+ (`POST /orders/:id/reopen` existia) | **Nenhuma tela chamava** | — | Função sem botão | Alta |
+| 17 | Mobile: subtotal sempre visível, 2 colunas só ≥ lg | Sim | Sim | Sim | — |
+| 18 | Estados loading/erro com retry | **Não** — lista sem skeleton e sem erro | — | — | Média |
+| 19 | `PAYMENT_METHOD_LABEL` de `@barbervp/types` | Duplicado em 3 arquivos do POS | — | — | Baixa |
+
+Ao final, zerada.
+
+### Os dois achados que valem para TODO o produto
+
+1. **Duas renovações de sessão simultâneas revogavam a família do refresh.**
+   `establishment-auth.tsx` (e `client-auth.tsx`) chamava
+   `establishmentApi.refresh()` DIRETO no efeito de montagem, enquanto o
+   interceptor do axios chamava o seu próprio refresh ao ver um 401. O
+   interceptor tem single-flight, mas ele não cobria a chamada do provider: as
+   duas POSTs saíam juntas, a segunda mandava o cookie que a primeira já tinha
+   rotacionado, e a API — corretamente — tratava como reuso e revogava a
+   FAMÍLIA inteira. Sintoma: a tela monta, e toda chamada seguinte toma 401 até
+   recarregar. Não era da aba Comandas — era de qualquer tela que dispare uma
+   requisição cedo o bastante para correr com o bootstrap. **Corrigido nos dois
+   providers**: o `refresh` virou voo único guardado num `useRef`, e o efeito de
+   montagem passou a usar esse mesmo `refresh` em vez de chamar a API por fora.
+2. **O `responsive-sweep.mjs` estava passando por engano em 8 abas.** Por causa
+   do achado #1, as telas que a varredura abria perdiam a sessão e renderizavam
+   só a casca — sem tabela, sem chip, sem card, nada para medir. Corrigido o
+   refresh, elas passaram a carregar os dados de verdade e apareceram
+   **24 pendências reais** em `/app/agenda`, `/app/comissoes`,
+   `/app/configuracoes`, `/app/equipe`, `/app/fidelidade`, `/app/minha-pagina`,
+   `/app/servicos-produtos` e `/app/whatsapp` (todas a 360 e 390: rolagem
+   horizontal e alvo de toque < 44px). **Não foram tocadas** — cada uma tem
+   agente próprio (15, 18–28). Quem pegar essas abas deve rodar
+   `node scripts/responsive-sweep.mjs --app=dashboard` ANTES de começar: o verde
+   histórico delas não valia. `/app/comandas`, `/app/clientes`, `/app`,
+   `/app/financeiro`, `/app/relatorios` e `/app/assistente-ia` passam.
+
+### Backend
+
+- **`PATCH /orders/:id` é novo** — o "trocar" do protótipo não tinha endpoint.
+  Trocar o cliente não é trocar um rótulo: o preço de cada item de SERVIÇO foi
+  fotografado em nome do cliente anterior, então a rota **reavalia a cobertura
+  de assinatura item a item** (o que era R$0 volta ao preço cheio se o novo
+  cliente não assina, e vice-versa) e **derruba `useLoyalty`**, porque o saldo
+  de pontos é de quem saiu. Sem isso, trocar o cliente entregaria de graça um
+  serviço que ninguém pagou.
+- **"Fechadas hoje" é o dia da BARBEARIA, não o do servidor.** O recorte usa
+  `Tenant.timezone` (`toDateKey` + `zonedTimeToUtc`, os mesmos utilitários da
+  agenda). Com o dia do servidor, a aba viraria às 21h em qualquer deploy fora
+  de -03.
+- **As contagens seguem a regra do agente 16**: ignoram a aba escolhida e
+  respeitam a busca. Se ignorassem a busca, a contagem contradiria a lista logo
+  abaixo; se respeitassem a aba, a aba ativa seria a única diferente de zero.
+- **A lista entrega `subtotalCents` e `lines[]`, não uma string pronta.** O
+  resumo "2× Corte R$ 45,00 · 1× Pomada R$ 30,00" é montado na tela: quem
+  formata R$ e o "×" é o front, o servidor manda os números.
+- **A prévia do resgate (`loyaltyEnabled`/`PointsRequired`/`RewardCents`) existe
+  porque o card do protótipo mostra quanto vale o resgate ANTES de ligar o
+  toggle.** `loyaltyEnabled` é falso para walk-in: sem `clientId` não há saldo,
+  e o bloco não deve prometer um desconto que não vai existir.
+- **`nextNumber` no catálogo é uma PREVISÃO, e está documentado como tal** — se
+  outro caixa abrir uma comanda no meio, o número real (do `OrderDetail`) sai
+  diferente e é ele que vale.
+
+### Frontend
+
+- `packages/ui`: `Modal`/`Drawer` ganharam `bodyClassName` — o diálogo da
+  comanda traz o próprio grid de 3 colunas com divisórias de altura total, e o
+  `p-5` padrão empurraria as bordas para dentro. Opt-in; nada mais mudou.
+- `apps/web/components/dashboard/pos/` foi refeito: saíram `pos-workspace.tsx`,
+  `open-order-modal.tsx`, `close-order-modal.tsx` e `comanda-panel.tsx`;
+  entraram `comanda-modal.tsx` (os dois passos), `client-picker.tsx` (a mesma
+  busca serve o passo 1 e o "trocar"), `reopen-order-modal.tsx` e
+  `pos-shared.ts`. As 3 cópias do mapa de método de pagamento viraram um
+  `methodLabel` que lê o `PAYMENT_METHOD_LABEL` de `@barbervp/types`.
+- **O catálogo só é buscado com o modal aberto** (`usePosCatalogQuery({
+  enabled })`). A lista de comandas não mostra serviço nem produto; pedi-lo no
+  load da página era uma requisição a mais — e foi ela que expôs o achado #1.
+- **`formatTime` usa o fuso do TENANT**, vindo de `/dashboard/shell` (que toda
+  tela do painel já pede). Como a aba "Fechadas hoje" é recortada no fuso da
+  barbearia no servidor, formatar no fuso de quem olha faria uma comanda
+  listada como de hoje aparecer com hora de ontem para um dono viajando.
+
+### Desvios conscientes do protótipo (e por quê)
+
+1. **O walk-in não está no protótipo e ficou.** O passo 1 tem "Abrir sem
+   cadastro (avulso)" abaixo da lista: `Order.guestName` existe desde a fase 07
+   justamente porque quem chega sem cadastro não pode travar a fila.
+2. **O "trocar" abre um painel que EMPURRA o conteúdo, não um flutuante.** Um
+   painel absoluto seria recortado pelo `overflow-hidden` do diálogo e viraria
+   sheet-dentro-de-sheet abaixo de 768px. Mesmo gatilho, mesma busca, mesma
+   lista, mesmo vazio.
+3. **A faixa `cliente · barbeiro · trocar` fica logo ABAIXO da barra de título,
+   não dentro dela.** Na barra ela dividiria espaço com o `#N` e o ✕ e quebraria
+   de linha; como faixa de largura total ela cabe inteira, que é como o
+   protótipo se parece.
+4. **O "trocar" também troca o BARBEIRO.** O protótipo exibe o barbeiro no
+   cabeçalho e não dá como mudá-lo — um dado morto numa comanda que gera
+   comissão. `BARBER` não vê esse seletor (e o endpoint recusa).
+5. **"Salvar e deixar aberta" só fecha o diálogo.** Cada clique já grava contra
+   a API; não existe rascunho para salvar. O botão está lá porque é o par visual
+   do "Fechar comanda", e faz o que o nome diz.
+6. **A lista de clientes do passo 1 já vem preenchida antes de digitar.** O
+   protótipo espera a digitação; o balconista quase sempre quer alguém que
+   acabou de chegar.
+7. **Paginação real (30/bloco)** onde o protótipo renderiza a lista inteira.
+8. **Estoque zerado não some do catálogo** — aparece com "Sem estoque" e
+   desabilitado. Sumir faria parecer que o produto nunca foi cadastrado.
+
+### Como conferir rodando
+
+`make seed-demo`, depois `dono@barbeariacentral.com.br` / `BarberVP@2026`:
+
+1. `/app/comandas` — 3 abas com contagem (`Abertas 3 · Fechadas hoje 0 ·
+   Todas`); cada card traz `#nº`, cliente, `barbeiro · aberta HH:MM`, o resumo
+   dos itens, o subtotal e "Continuar".
+2. "Todas" mostra os DOIS blocos: o grid das abertas e a tabela das fechadas de
+   hoje, com as 6 colunas na ordem do protótipo.
+3. "+ Nova comanda" abre em `Nova comanda #N` com a busca de cliente; escolher
+   alguém abre a comanda e o diálogo vira as 3 colunas.
+4. Na comanda: clicar num serviço adiciona; o stepper e a lixeira operam; o
+   alternador `R$ | %` grava no blur; o card de fidelidade mostra o valor do
+   resgate e o saldo; as 5 pastilhas de pagamento incluem "Dividir", que abre as
+   4 linhas com a sobra em vermelho até bater com o total.
+5. Numa comanda fechada, o menu ⋯ da linha traz "Reabrir comanda" (só OWNER/
+   MANAGER), que exige motivo e grava `AuditLog`.
+6. Busque por `#1231` ou por um nome inexistente: o vazio é "Nenhuma comanda
+   encontrada", com "Limpar busca".
+7. Como `carlos@barbeariacentral.com.br` (BARBER): a aba aparece, mas só com as
+   comandas dele — e a CONTAGEM da aba também é recortada.
+8. Como `dono@barbeariaisolamento.com.br`: a aba renderiza os dados do outro
+   tenant, sem vazamento.
+
+> **Atenção ao conferir "Fechadas hoje" logo depois do seed:** o
+> `make seed-demo` não fecha comanda no dia corrente, então a aba nasce em 0.
+> Feche uma comanda pela tela para ver a tabela preencher.
+
+### Dívidas do agente 17
+
+- **A troca de cliente reprecifica, mas a comanda não avisa o operador.** Se um
+  item que estava coberto pela assinatura voltar ao preço cheio, o total muda em
+  silêncio. O certo é um aviso na hora da troca dizendo quais itens mudaram de
+  preço — pequeno, mas fora do escopo desta aba.
+- **A cobertura de assinatura é reavaliada com um `UPDATE` por item.** Numa
+  comanda de 3–5 itens é irrelevante; se um dia existir comanda com dezenas,
+  vira um `updateMany` por faixa de preço.
+- **Dois itens do MESMO serviço coberto podem ambos nascer a R$0.** É
+  pré-existente (a fase 07 já se comportava assim) e o fechamento corrige: o
+  segundo `debit` falha e o item é recobrado ao preço cheio dentro da transação.
+  Mas o total mostrado ANTES de fechar fica otimista.
+- **`nextNumber` é uma previsão sem reserva.** Dois caixas abrindo ao mesmo
+  tempo veem o mesmo `#N` no cabeçalho do passo 1; os números reais saem
+  diferentes e corretos.
+- **O split não tem "Tudo"/preencher o restante.** O protótipo também não tem,
+  mas o `CloseOrderModal` antigo tinha, e era conveniente.
+
+## O que o agente 16 (auditoria da aba Clientes) entregou
+
+Auditoria 1:1 da aba **Clientes** (`/app/clientes`) contra `Dashboard.dc.html`
+l.564–638, o drawer l.3001 e o modal l.3080.
+
+### A tabela de desvios (o passo 1 da fase)
+
+| # | Bloco do protótipo | Existia? | Layout igual? | Botões funcionavam? | Gravidade |
+|---|---|---|---|---|---|
+| 1 | Chips de filtro com contagem (Todos/Ativos/Inativos 30+/Mensalistas/Bloqueados) | **Não** | — | — | Alta |
+| 2 | Tabela de 8 colunas (+ caixa e kebab) | Parcial — 6 colunas, faltavam **Última visita**, **Pontos** e **Faltas**; "Barbeiro favorito" era coluna inventada | Não | Sem menu de linha | Alta |
+| 3 | Coluna **Status** com 4 estados | Não — só `Ativo`/`Bloqueado`; não existia `Inativo` nem `Mensalista` em lugar nenhum do produto | Não | — | Alta |
+| 4 | Seleção em massa + barra flutuante (4 ações) | **Não** | — | — | Alta |
+| 5 | Menu ⋯ da linha (Ver perfil · Agendar · Enviar WhatsApp · Bloquear) | **Não** | — | — | Alta |
+| 6 | "Exportar CSV" | **Não** | — | — | Média |
+| 7 | Modal "+ Novo cliente" com 6 campos | **Não** — só existia o cadastro rápido (nome + telefone) dentro do modal de agendamento | — | — | Alta |
+| 8 | Drawer: KPI **Ticket médio** | Não — os 4 quadros eram Visitas/Total gasto/Faltas/Status | Não | — | Média |
+| 9 | Drawer: **4 sub-abas** (Histórico · Fidelidade · Assinatura · Preferências) | **Nenhuma** — o drawer era um formulário de notas | Não | — | Alta |
+| 10 | Drawer: rodapé "+ Agendar" / "Enviar mensagem" | **Não** | — | — | Alta |
+| 11 | Cabeçalho do drawer com aniversário e selo de pontos | Não | Não | — | Baixa |
+| 12 | Busca com debounce no servidor | Parcial — ia à API, mas sem debounce (uma requisição por tecla) | — | — | Média |
+| 13 | Estados de erro/vazio próprios | Não — só um vazio genérico; erro derrubava a tabela sem retry | — | — | Média |
+| 14 | Papel BARBER | Nav já escondia o item, mas a URL direta montava a aba inteira e só o `fetch` falhava | — | Botões levavam a 403 | Média |
+
+Ao final, zerada.
+
+### Dois achados que valem para as próximas auditorias
+
+1. **`sr-only` dentro de `overflow-x-auto` fura o recorte.** A tabela larga
+   rolava a PÁGINA inteira na horizontal a 768px (`scrollWidth` 942 numa
+   viewport de 768) — o sintoma que o `responsive-sweep.mjs` reprova. A causa
+   não era a tabela: `caption`/`span` com `.sr-only` são `position:absolute`, e
+   sem ancestral posicionado o bloco que os contém vira a página, então eles
+   escapam do recorte do contêiner de rolagem e esticam o `scrollWidth` do
+   documento. Corrigido com `relative` no contêiner, em `packages/ui` — vale
+   para TODA tabela larga do produto (Comandas, Financeiro, Relatórios).
+2. **Caixa de seleção no card mobile precisa de `<label>` de 44px.** O input é
+   24×24 de propósito; o `responsive-sweep.mjs` mede o `label` em volta quando
+   existe. Sem ele, cada linha da lista vira uma reprovação de alvo de toque.
+
+### Backend
+
+- **Status é derivado, nunca gravado** (`ClientStatus` em `@barbervp/types`,
+  precedência `BLOQUEADO > MENSALISTA > INATIVO > ATIVO`). Um campo persistido
+  envelheceria sozinho — quem marcaria "Inativo" no trigésimo primeiro dia? A
+  regra vive em UM lugar (`statusWhere` + `deriveStatus`, lado a lado no
+  serviço) porque os chips filtram no banco e a coluna pinta na tela: se as
+  duas divergirem, o chip "Ativos" lista gente marcada como "Inativo".
+- **As contagens são disjuntas e somam o total.** O protótipo cravava números
+  que não fechavam (412 ≠ 361+38+24+13). Aqui `all = ativo + inativo +
+  mensalista + bloqueado`, com um caso de e2e que afirma isso.
+- **Os chips respeitam a busca e ignoram o status escolhido** — senão o chip
+  ativo seria o único diferente de zero durante a digitação.
+- **"Sem visita nenhuma" não é "inativo".** Quem nasceu há menos de 30 dias e
+  ainda não veio é cliente NOVO. O corte usa `lastVisitAt ?? createdAt`.
+- **`GET /clients/:id` entrega as 4 sub-abas numa resposta só** — trocar de aba
+  no drawer não pede nada ao servidor, e histórico/pontos/assinatura são
+  consultas pequenas de UM cliente, não listagens.
+- **O histórico sai de `Order` fechada**, não de `Appointment`: é a comanda que
+  carrega valor e forma de pagamento, que é o que a linha do protótipo mostra.
+- **Mensagem em lote respeita `Client.notifyWhatsapp`** e devolve
+  `{ queued, skipped }` — a tela precisa poder dizer que 3 de 10 não vão
+  receber, em vez de mentir que foram 10.
+- **CSV escapa injeção de fórmula** (`=`/`+`/`-`/`@` no início da célula viram
+  fórmula no Excel) e sai com BOM + `;`, que é o que o Excel pt-BR espera.
+
+### Frontend
+
+- `packages/ui`: `ResponsiveTable` ganhou `selection` (coluna de caixas na
+  tabela, caixa com alvo de 44px no card mobile) e o `relative` do achado #1.
+  `PAYMENT_METHOD_LABEL` foi para `@barbervp/types` — o rótulo do método de
+  pagamento estava copiado em 4 telas.
+- `apps/web/components/dashboard/clients/`: `client-drawer.tsx` (as 4
+  sub-abas), `new-client-modal.tsx`, `bulk-message-modal.tsx` e
+  `clients-shared.ts` (aparência de status e de cobrança, formatação, link do
+  `wa.me`).
+- **Todo botão tem função real**: "Enviar WhatsApp"/"Enviar mensagem" abrem o
+  `wa.me` do cliente; "Agendar" navega para `/app/agenda?novo=1&cliente=<id>` e
+  o modal de agendamento abre com o cliente JÁ escolhido (novo
+  `preselectedClientId`, que busca o cliente pelo id em vez de empurrar o nome
+  pela URL); "Exportar" baixa o CSV pelo mesmo cliente axios das outras
+  chamadas (um `<a href>` para a API baixaria um 401 em forma de planilha).
+
+### Desvios conscientes do protótipo (e por quê)
+
+1. **Aba "Preferências" é editável.** O protótipo mostra barbeiro favorito e
+   observações como texto morto. `PATCH /clients/:id` existe desde a fase 06 e
+   esta é a única tela que grava esses dois campos — deixá-los somente-leitura
+   tiraria a função sem tirar o bloco.
+2. **"Enviar mensagem" em lote ganhou um passo de composição.** O protótipo tem
+   o botão e nada mais. Um botão que dispara texto nenhum não é função real.
+3. **`Pontos` é `null`, não `0`, quando a barbearia não tem programa.** Regra 2
+   da fase 13: "não pontua" e "pontuou zero" são afirmações diferentes. A
+   coluna mostra `—` no primeiro caso.
+4. **`BARBER` que digita a URL vê uma tela de "sem acesso"**, não a aba com
+   botões que só sabem devolver 403.
+5. **Paginação real (20/página)** onde o protótipo renderiza a lista inteira.
+6. **Não há "selecionar todos" abaixo de `md`** — a caixa do cabeçalho é da
+   tabela, e abaixo de `md` não há tabela. A seleção por card continua.
+
+### Como conferir rodando
+
+`make seed-demo`, depois `dono@barbeariacentral.com.br` / `BarberVP@2026`:
+
+1. `/app/clientes` — chips somam 40 (22+12+5+1); a tabela mostra as 8 colunas.
+2. Clique numa linha: o drawer traz ticket médio calculado, histórico de
+   comandas fechadas com serviço·barbeiro·pagamento, extrato de pontos e — em
+   quem é mensalista — plano, "Usos neste ciclo: X/Y" e o selo de cobrança
+   (`PAST_DUE` do seed aparece como "Cobrança atrasada").
+3. Menu ⋯ → "Agendar": cai na Agenda com o cliente já no passo 1.
+4. Marque 2 linhas: a barra flutuante acende com as 4 ações.
+5. Como `carlos@barbeariacentral.com.br` (BARBER): o item some do nav e a URL
+   direta mostra a tela restrita.
+6. Tenant sem cliente nenhum: chips em 0 e o vazio com CTA — a aba inteira
+   renderiza sem quebrar.
+
+### Dívidas do agente 16
+
+- **Contagem dos chips = 5 `COUNT(*)` por página.** No volume de uma barbearia
+  (centenas de clientes) é irrelevante; se um tenant passar de dezenas de
+  milhares, vira uma agregação só com `GROUP BY` sobre a expressão de status.
+- **`GET /clients/export` é síncrono, com teto de 5.000 linhas.** Acima disso o
+  CSV precisa virar job + download por link.
+- **Mensagem em lote não tem histórico na UI.** O envio grava em
+  `NotificationOutbox` e em `AuditLog`, mas a aba WhatsApp ainda não lista
+  disparos avulsos — entra na auditoria do agente 22.
+- **Sem ordenação por clique no cabeçalho.** O backend aceita `sort`/`order`
+  desde a fase 06; a tabela ainda fixa `lastVisitAt desc`, como o protótipo.
+
+## O que o agente 14 (seeds de auditoria) entregou
+
+Pré-requisito das auditorias de aba 15–28: **sem dado, bloco vazio e bloco
+faltando são indistinguíveis**. O trabalho foi separar o seed do SPEC do seed
+de demonstração e fazer o segundo encher todas as 14 abas com números que
+fecham entre si.
+
+### A separação
+
+| Comando | Arquivo | O que planta |
+|---|---|---|
+| `make seed` | `prisma/seed.ts` | O do SPEC, inalterado: 2 tenants, 4 barbeiros do booking, 10 clientes, 24 agendamentos, 12 comandas. |
+| `make seed-demo` | `prisma/seed-demo.ts` + `seed-demo-data.ts` | Roda o seed base e **engorda** o tenant demo; enche o secundário com o mínimo de cada módulo. |
+
+`seed.ts` mudou o mínimo para isso: exporta os helpers de data/`prisma`, o
+`main` virou `seedBase()` e a auto-execução ficou atrás de
+`require.main === module`. A limpeza de clientes passou a ser por PREFIXO de
+telefone (`SEED_CLIENT_PHONE_PREFIX`), porque o demo planta 30 clientes a mais
+na mesma faixa e a 2ª execução colidiria no `@unique`.
+
+### O que o demo planta (tenant `barbearia-central`)
+
+- **Equipe**: 5 barbeiros (Maria Fernanda entra só aqui — o SPEC fixa a equipe
+  do booking em 4), escalas diferentes com folga própria, 1 exceção de folga
+  avulsa e 1 convite PENDENTE cujo link de aceite é impresso no fim do seed.
+- **Clientes**: 40, com a distribuição que ACENDE cada alerta — 12 sem visita
+  há 30+ dias, 3 aniversariantes na semana corrente, 2 com exatamente 2 faltas
+  (o ⚠ da agenda) e 1 com 3 (bloqueado).
+- **Agenda**: ~1.360 agendamentos — 8 meses de histórico esparso (para as
+  sparklines de 8 pontos), 60 dias densos e 7 dias à frente, nos 5 status.
+- **Comandas**: ~1.200 fechadas, com serviço e produto, 5 formas de pagamento,
+  desconto percentual/fixo, pagamento dividido e cobertura por assinatura;
+  3 abertas agora.
+- **Financeiro**: caixa de ONTEM fechado com diferença de R$ 2,00 e nenhum
+  aberto hoje (é a ausência que acende o alerta), 12 contas a pagar (3 na
+  semana), 8 a receber, 2 vales, 2 contas bancárias.
+- **Assinaturas**: 5 assinantes com uso parcial do ciclo e 1 cobrança recusada
+  (`PAST_DUE` + `Payment` `FAILED`).
+- **Resto**: 10 produtos (2 no mínimo), 15 mensagens no `NotificationOutbox`,
+  12 `AuditLog`, 24 mensagens do Assistente IA, 13 avaliações.
+
+### O tenant secundário deixou de ser vazio
+
+`barbearia-isolamento` ganhou login próprio
+(`dono@barbeariaisolamento.com.br`) e o mínimo em CADA módulo. Ele é a prova
+visual de isolamento — e o único lugar onde dois gates dá para exercitar, já
+que o demo assina o Avançado (ilimitado nos dois): o **limite de barbeiros do
+plano** (Essencial, 2 de 2 em uso) e a **cota do Assistente IA** (12 de 50).
+A suíte `test:isolation` não usa nenhum dos dois: ela monta os próprios
+fixtures e continua verde.
+
+### Decisões
+
+1. **Volume acima do pedido, e de propósito.** O enunciado pedia ~60 comandas
+   no mês; o seed planta ~350 no mês corrente e ~540 no anterior. Com 60, o
+   gráfico "Faturamento — últimos 30 dias" ficaria 20x abaixo da linha de meta
+   (R$ 28.000) e a home pareceria quebrada. Com o volume atual a média diária
+   (R$ ~980) encosta na meta diária (R$ ~903) — que é como o protótipo desenha.
+2. **Janela densa de 60 dias, não 30.** Com 30, o mês anterior ficava pela
+   metade e nenhum barbeiro cruzava a 1ª faixa da comissão por faturamento —
+   a aba Comissões nunca exibiria uma faixa que não a primeira. Com 60, o Diego
+   fecha o mês anterior com 40% + 45% e existe um mês inteiro fechado para
+   cruzar com os relatórios.
+3. **Faltas por calendário, não por probabilidade.** Sortear "8% dos
+   atendimentos" concentrava as faltas na janela densa (20x mais atendimentos
+   por dia que o histórico): o KPI ficava com um pico solitário e zero no
+   resto. Uma falta a cada 5–9 dias, com fila de clientes que não repete,
+   distribui as ~35 faltas uniformemente e mantém a distribuição exata que a
+   auditoria pede (2 clientes com 2 faltas, 1 com 3).
+4. **`entryDay` por cliente.** `ClientProfile.firstVisitAt` é o eixo do KPI
+   "Novos clientes"; sem uma data de estreia por cliente, todo mundo estreava
+   no mês mais antigo e a sparkline caía a zero e ficava lá.
+5. **`updatedAt` gravado à mão nos agendamentos.** O sino lista confirmações e
+   cancelamentos cujo `updatedAt` cai HOJE. Com o default do `@updatedAt`, os
+   ~1.300 agendamentos nasciam "atualizados agora" e o feed virava uma lista
+   aleatória de eventos de meses atrás.
+6. **Lembretes só de D+2 em diante.** O lembrete sai 24h antes; para um
+   atendimento de amanhã ele já nasce vencido, e o dreno da fila (fase 09) o
+   entrega no primeiro minuto de API no ar — a aba WhatsApp abriria sem
+   nenhuma mensagem "agendada".
+7. **Fidelidade sem pontos/sorteios novos.** O design atual da aba só tem
+   Assinaturas (ver `auditoria/agente-21-fidelidade.md`), então o demo não
+   engorda razão de pontos nem sorteio: fica o que o seed base já planta.
+8. **PRNG determinístico.** Mesmo dia, mesmo banco, linha por linha — "sumiu um
+   dado" nunca é dúvida entre bug e sorteio.
+
+### Como conferir que continua coerente
+
+O seed imprime os números que a home deve mostrar. Além disso, estas 12
+consultas devem devolver ZERO (rodam em `make psql`): pagamento ≠ total da
+comanda · subtotal ≠ soma dos itens · total ≠ subtotal − desconto · comissão ≠
+base × percentual · comissão com base ≠ item · comissão sobre item coberto por
+assinatura · serviço faturado sem comissão · uso de assinatura > quota ·
+estoque negativo · perfil com visita e sem `lastVisitAt` · agendamento antes do
+início da escala · agendamento em dia de folga.
 
 ## O que a fase 13 entregou
 
@@ -1189,6 +3854,26 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 
 ## Decisões tomadas
 
+- 2026-08-24 (agente 25) — **`StorageAdapter` em vez de upload direto no
+  serviço.** `MyPageService` grava um `Buffer` e recebe uma URL; quem sabe se
+  o byte vai para o disco do container ou para um bucket é a factory de
+  `AdaptersModule`, como já acontece com notificação, pagamento e e-mail. Foi
+  o que permitiu fechar a dívida de upload sem escolher provedor de nuvem
+  agora.
+- 2026-08-24 (agente 25) — **O "Preview ao vivo" consome
+  `PublicPageService`, não uma consulta própria.** Um preview que monta o
+  próprio payload é um segundo renderizador da página pública, e o primeiro
+  bug de divergência mostraria ao dono uma página que não existe.
+- 2026-08-24 (agente 25) — **Autosave no lugar do botão "Salvar
+  alterações".** O protótipo (l.2262–2311) não desenha botão: os campos
+  chamam `updMp*` no `onChange`. Como a regra desta auditoria inclui as
+  INTERAÇÕES no 1:1, o botão saiu e entrou debounce de 700ms com selo de
+  estado no cabeçalho — sem ele o dono não teria confirmação de nada.
+- 2026-08-24 (agente 25) — **Preview em tema escuro, contrariando o desenho.**
+  O protótipo desenha a página do cliente em `#FAF9F7`, mas a decisão de
+  2026-08-14 unificou as 4 superfícies no tema de produto e `/{slug}` é
+  escura. Entre ser fiel ao desenho e ser fiel ao resultado, um preview escolhe
+  o resultado.
 - 2026-08-14 — Design system unificado no tema de produto (`#0F1115` +
   Sora/Inter) para as 4 apps — o bundle tem duas identidades visuais
   (produto vs. editorial do site) e um seletor de 4 paletes em
@@ -1493,9 +4178,12 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   caro demais para rodar por período inteiro num relatório). Suficiente para
   o indicador do dashboard; documentado aqui para não ser lido como
   precisão de agenda.
-- **`Unit`/multi-unidade e `TenantPhoto`/Minha Página não têm upload real de
-  arquivo** — mesma dívida herdada de `logoUrl`/`coverUrl` desde a fase 01/03
-  (campo é uma URL string; não há pipeline de upload no projeto ainda).
+- ~~**`TenantPhoto`/Minha Página não tem upload real de arquivo**~~ —
+  **resolvido pelo agente 25**: `StorageAdapter` + `LocalStorageDriver`
+  (`src/adapters/storage/`), com `POST /my-page/images/:slot` e
+  `POST /my-page/photos` em multipart. Segue de pé para o passo 3 do
+  ONBOARDING (`logoUrl`/`coverUrl` por URL digitada) e para `Barber.avatarUrl`
+  — o pipeline existe, falta plugá-lo nessas duas telas.
   `Minha Página` NÃO é gate de plano: o overlay "disponível no plano
   Avançado" que aparece no protótipo (`minhaPaginaLocked`) é código morto lá
   mesmo — hardcoded `false`, nunca liga — e `minhaPagina`/branding público
@@ -1985,6 +4673,150 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   limites em env (`BOOKING_GUEST_IP_HOURLY_LIMIT`, `BOOKING_GUEST_OPEN_LIMIT`,
   `BOOKING_CREATE_HOURLY_LIMIT`). Ver decisão da fase 04.
 
+### Dívidas novas do agente 28 (aba Assistente IA)
+
+- **O driver mock responde 4 intenções, por palavra-chave.** Faturamento,
+  ticket médio, agenda do dia e inativos — o resto cai num fallback que DIZ
+  que não sabe, em vez de inventar. É o combinado da fase ("sem integração
+  real"), mas registra-se o tamanho real do repertório: os chips do rodapé são
+  exatamente essas quatro perguntas, porque sugerir uma quinta seria oferecer
+  um botão que cai no fallback.
+- **Cartões de ESCRITA ficaram de fora.** "Agendamento criado" e "bloqueio
+  criado" (protótipo l.2862–2880 e l.2902–2912) exigem NLU para virar ação.
+  Quando o provedor real entrar, o caminho é: driver devolve o `card` novo,
+  `AiChatCard` ganha o `kind`, e `assistant-card.tsx` ganha o render — a
+  moldura e os botões já existem no cartão de agenda.
+- **"Desfazer" não existe porque não há ação para desfazer.** O botão do
+  protótipo desfaz o agendamento que o assistente criou; sem cartão de escrita
+  ele não tem alvo. Entra junto com o item acima.
+- **O microfone depende da Web Speech API do navegador** (Chrome/Edge/Safari).
+  No Firefox o botão some. Transcrição no servidor — que valeria para todos e
+  permitiria guardar o áudio como o protótipo desenha — é integração de fase
+  posterior, junto com o provedor de LLM.
+- **`insights` roda uma consulta de fuso por cartão.** `timeZoneOf` faz um
+  `findUnique` no `Tenant` a cada chamada. É uma linha por pergunta, não por
+  render, mas quando o provedor real puder encadear várias ferramentas numa
+  resposta vale carregar o fuso uma vez por requisição.
+- **O front não formata o cartão em BRL a partir de centavos por conta
+  própria** — usa `formatBRL` de `@barbervp/types`, e o texto do balão já vem
+  formatado do servidor. Os dois formatam o MESMO número em dois lugares; se
+  divergirem, o balão e o cartão vão discordar na tela. Vale um caso de teste
+  quando o provedor real assumir a redação do texto.
+
+### Dívidas novas do agente 27 (tela Meu perfil)
+
+- **`/privacidade` não existe.** O link "Política de Privacidade" do bloco
+  "Privacidade e dados" aponta para a mesma rota que o cadastro do
+  estabelecimento e o registro do cliente já apontam desde as fases 03/05 — e
+  ela nunca foi escrita. Agora são TRÊS pontos de entrada para um 404. Escrever
+  a página (e a de termos) é trabalho de conteúdo, não de código.
+- **Não há como o super admin desfazer uma exclusão agendada.**
+  `/admin/tenants` filtra por `deletedAt`, que no agendamento é nulo — a
+  barbearia continua na lista, mas sem botão para limpar o `purgeAt`. Se o dono
+  perder o acesso ao login dentro dos 30 dias, ninguém desfaz.
+  `POST /admin/tenants/:id/deletion/cancel` fecha isso em poucas linhas.
+- **A foto do usuário é gravada na pasta do tenant ATIVO.** Funciona (a URL é
+  pública, como a do logo), mas quem serve duas barbearias deixa a foto na
+  pasta daquela de onde subiu o arquivo. Se o storage ganhar ciclo de vida por
+  tenant, a foto pessoal precisa de espaço próprio.
+
+### Dívidas novas do agente 24 (aba Equipe)
+
+- **Foto do barbeiro é URL, não upload.** O `image-slot` do protótipo (l.2166)
+  virou campo "URL da foto" com prévia no `Avatar`, o mesmo caminho que o
+  onboarding já usa para o logo. **O `StorageAdapter` do agente 25 já resolve
+  o lado do servidor** — trocar o campo pelo `ImageSlot` de
+  `components/dashboard/my-page/image-slot.tsx` mais um
+  `POST /team/barbers/:id/avatar` fecha a dívida sem mexer no contrato
+  (`Barber.avatarUrl` continua sendo o destino).
+- **Mudar `maxBarbers` de um PLANO (Super Admin → Planos) não reprocessa os
+  tenants.** `applyPlanLimit` roda na troca de plano DO TENANT
+  (`/settings/plan/change` e `/admin/tenants/:id/plan`), não quando o teto do
+  plano em si é editado em `/admin/planos`. Um plano que encolhe deixa os
+  tenants acima do novo teto sem a marcação até a próxima troca. O conserto é
+  varrer os tenants do plano no `AdminPlansService` — fica para quem mexer no
+  Super Admin.
+- **`GET|PUT /barbers/:id/work-schedule` ficou sem consumidor no front.** O
+  modal grava a semana junto com o resto por `PATCH`, numa transação só. As
+  duas rotas continuam no contrato e cobertas pelo isolamento; se ninguém as
+  reivindicar até o fechamento, são candidatas a remoção.
+- **A matriz da escala mostra sempre a semana corrente.** Não há navegação
+  entre semanas — o protótipo também não tem. Férias marcadas para o mês que
+  vem existem no dado e aparecem na agenda, mas não nesta matriz até a semana
+  chegar.
+
+### Pendências responsivas herdadas (vistas na varredura da fase 24)
+
+A varredura da aba Equipe passou nos 5 tamanhos, mas o mesmo relatório
+reprova, em 360 e 390, telas de outros agentes — **não foram tocadas**:
+
+- ~~`/app/configuracoes` (agente 26): 5 alvos de toque abaixo de 44px.~~ —
+  **não reproduz mais** na varredura do agente 27; a rota passa nos 5 tamanhos.
+- ~~`/app/minha-pagina` (agente 25): rolagem horizontal (+59px em 360, +30px
+  em 390) e 2 alvos de toque abaixo de 44px.~~ — **corrigido pelo agente 25**;
+  a rota passa nos 5 tamanhos.
+- `/app/agenda` (agente 15, cujo registro nesta memória segue aberto): em 360 e
+  390, cinco alvos abaixo de 44px na barra de navegação de data — `‹` e `›`
+  (36×36), "Hoje" (49×20), o campo de data (187×42) e o seletor de barbeiro
+  (169×17). É a única pendência que a varredura do agente 27 ainda acusa.
+
+### Dívidas novas do agente 22 (aba WhatsApp)
+
+- **O pareamento por QR do protótipo não existe — e não pode existir nesta
+  fase.** O card "Conexão com WhatsApp" mostra o estado do adapter
+  (`driver:'MOCK'`) em vez do QR e do número do desenho. Quando o provedor real
+  entrar, entram junto: `POST /whatsapp-config/connection/pair` (devolvendo um
+  QR de verdade), `DELETE .../connection` (o "Desconectar" da l.1639, hoje NÃO
+  renderizado por não ter o que fazer) e `phone`/`connected` vindos do
+  provedor. O contrato `WhatsappConnection` já prevê os dois campos.
+- **`enabled` das automações não dispara nada sozinho para BIRTHDAY,
+  REACTIVATION e REVIEW.** O `BookingNotificationsService` cobre confirmação,
+  lembrete e cancelamento (são reações a um agendamento). Os outros três são
+  disparos por CALENDÁRIO e precisam de um job na fila da fase 09 que varra
+  aniversariantes do dia, inativos na janela e atendimentos concluídos há N
+  minutos. Hoje a reativação só sai pelo botão manual da faixa dourada; ligar o
+  interruptor guarda a intenção e o `enabledAt`, mas ninguém a executa ainda.
+  **Isto é o próximo passo natural desta aba.**
+- **O disparo em massa tem teto de 500 e é síncrono.** Acima disso a barbearia
+  não alcança todo mundo numa tacada, e o `POST` segura a requisição enquanto
+  escreve. Com provedor real, isto tem de virar job de fila com progresso.
+- **O histórico não pagina na tela.** O endpoint já devolve `nextCursor`, mas a
+  tabela mostra só a primeira página (25). O protótipo também só desenha 10
+  linhas sem paginador, então nada foi inventado — mas uma barbearia ativa
+  passa de 25 mensagens em dois dias.
+- **O `Switch` compartilhado tem 44×22 e depende de um `<label>` para passar na
+  varredura responsiva.** Esta aba resolveu localmente (embrulhou o interruptor
+  num `<label>` de 44×44). O conserto de verdade é no
+  `packages/ui/src/components/toggle.tsx`, e vale para todas as abas — ficou
+  fora daqui de propósito, é componente de todo mundo.
+
+### Dívidas novas do agente 21 (aba Fidelidade)
+
+- **O programa de pontos ficou SEM TELA — bloqueia o recurso.**
+  `GET|PATCH /loyalty/program` é o único interruptor de algo que o produto usa
+  em três lugares (resgate na comanda, saldo no drawer do cliente, coluna
+  "Pontos" da lista de clientes), e a sub-aba que o editava saiu do protótipo.
+  Hoje **não há como ligar o programa pela interface**. O lugar natural é uma
+  seção em Configurações — **agente 26**.
+- **`LoyaltyRaffle`/`LoyaltyRaffleEntry` viraram tabelas órfãs.** Rotas,
+  serviço, tipos, frontend e seed dos sorteios foram removidos; o schema não,
+  porque derrubar tabela é migration destrutiva. Limpar junto com o
+  `RaffleStatus` de `packages/types/src/enums.ts`.
+- **`/loyalty/subscribers` não pagina.** Devolve todos os mensalistas de uma
+  vez, como o extrato de comissões e o de caixa.
+- **As rotas de assinante resolvem pelo `clientId`.** `pauseSubscriber` e
+  companhia recebem o `subscriptionId`, mas delegam ao serviço da fase 05, que
+  acha a assinatura pelo cliente. Vale enquanto o invariante "uma assinatura
+  não cancelada por cliente" for verdade — ele é garantido só na venda.
+- **Cobrança recorrente segue no driver mock** (fase 12/gateway).
+
+### Dívidas RESOLVIDAS pelo agente 20
+
+- **Dívida 3 da fase 13 — "seletor de unidade não filtra nada" — PARCIALMENTE
+  resolvida.** `Order.unitId` e `Appointment.unitId` agora entram no `WHERE`
+  das consultas de Relatórios, e a aba tem o próprio seletor. As outras 13
+  telas continuam somando as unidades; o seletor da topbar segue decorativo.
+
 ### Dívidas novas da fase 13
 
 1. **Sino sem tabela `Notification`.** `GET /notifications` DERIVA o feed de
@@ -2185,10 +5017,10 @@ as viu. A primeira é a mais séria.
   `NotificationAdapter`), provavelmente na fase 09. É a única funcionalidade
   desenhada no protótipo desta fase que não ficou funcional.
 - **Upload de logo e capa é campo de URL, não upload.** O passo 3 grava
-  `TenantSettings.logoUrl`/`coverUrl` a partir de uma URL digitada, porque não
-  existe storage de arquivo no projeto ainda. A fase 09 (integrações) decide o
-  destino (S3/R2) e troca o campo por um seletor de arquivo — o schema já está
-  pronto e não muda.
+  `TenantSettings.logoUrl`/`coverUrl` a partir de uma URL digitada. **O storage
+  deixou de faltar**: o agente 25 criou `StorageAdapter` e
+  `POST /my-page/images/:slot`, e a MESMA `TenantSettings` já recebe upload por
+  ali. Falta só o wizard trocar o input pelo seletor — o schema não muda.
 - **`ClientProfile.phone` continua desnormalizado e agora TEM serviço de
   escrita.** A dívida da fase 01 previa isto: `ClientAuthService` altera
   `Client.phone` e `Client.name`, mas nenhum `ClientProfile` existe ainda nesta
@@ -2503,8 +5335,9 @@ todos verdes.
   (primeira visita) não são avisados. Ajustar quando houver critério de
   produto mais específico (ex.: todos os clientes com `notifyWhatsapp:
   true`, sem exigir histórico).
-- **`AiChatMessage`/Assistente IA sem paginação de histórico** — `GET /
-  assistant/messages` sempre devolve as últimas 100 mensagens inteiras, sem
+- **`AiChatMessage`/Assistente IA sem paginação de histórico** — segue de pé
+  depois do agente 28: `GET /assistant/messages` sempre devolve as últimas 100
+  mensagens inteiras, sem
   cursor. Suficiente para o volume de um chat de suporte interno; revisar se
   o uso real acumular milhares de mensagens por usuário.
 - **Teste unitário pré-existente flaky, não é regressão desta fase**:
@@ -2647,17 +5480,26 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 | **Asaas** | `MockPaymentDriver` simula o ciclo inteiro (criar, confirmar, receber, estornar) com aprovação/recusa manual pelo super admin | `docs/INTEGRACOES.md` — mesmos 3 passos, **mais** um controller de webhook (`POST /webhooks/asaas`) que chame os MESMOS serviços que a tela de billing chama. `simulateTransition` deve responder 501 no driver real. Acréscimo, não refatoração. |
 | **Google OAuth do cliente** | Botão existe em `ClienteAuth` e responde "Em breve" — não finge autenticar | Mesmo padrão de adapter. É a única funcionalidade desenhada no protótipo que não ficou funcional. |
 | **Provedor real do Assistente IA** | `MockAiAssistantDriver` responde por regras; histórico persiste em `AiChatMessage` | `AI_ASSISTANT_ADAPTER`, mesma factory de `adapters.module.ts`. |
-| **Upload de logo e capa** | Campo de URL digitada (`TenantSettings.logoUrl`/`coverUrl`) | Precisa de storage (S3/R2) ANTES do seletor de arquivo. O schema não muda; quando o domínio das imagens passar a ser conhecido, o `next/image` entra junto (hoje é `<img>` cru por causa da allowlist de domínio). |
+| **Upload de imagem** | ✅ **Feito no agente 25** para Minha Página e no **agente 27** para a foto de perfil (`POST /me/avatar`): `StorageAdapter` + `LocalStorageDriver`, multipart, JPG/PNG/WebP até 5 MB. Onboarding (passo 3) e foto do BARBEIRO (aba Equipe) ainda usam campo de URL. | Trocar o driver local por S3/R2 é um `case` em `adapters.module.ts` + `STORAGE_DRIVER`; o `local` não serve para mais de uma réplica de API. Com o domínio das imagens conhecido, o `next/image` entra e o `<img>` cru sai. Falta ainda redimensionar/otimizar o que o dono envia. |
 | **Multi-unidade de fato** | O modelo `Unit` existe, tem CRUD e isolamento testado; o motor de grade ainda ignora `unitId` | Filtro por unidade em `AvailabilityService` — o campo já existe em `Appointment` e `Barber`. |
 
 ### Números finais
 
 | Suíte | Casos |
 |---|---|
-| Unitários | 81 |
-| E2E | 141 |
-| Isolamento de tenant (gate) | 111 |
-| **Total** | **333** |
+| Unitários | 95 |
+| E2E | 333 |
+| Isolamento de tenant (gate) | 177 |
+| **Total** | **605** |
+
+> Contagem do agente 28 (2026-08-26), medida rodando as três suítes. O agente
+> 28 somou 12 e2e (`assistant.e2e-spec.ts`) e 4 de isolamento (o cartão da
+> resposta carrega nome de cliente e id de agendamento — é superfície de
+> vazamento nova, não coberta pelo caso único que existia).
+
+> Contagem do agente 27 (2026-08-25), medida rodando as três suítes. A tabela
+> tinha ficado parada na fase 13 por várias sessões e foi retomada pelo agente
+> 21; as auditorias 22–26 somaram sem atualizar aqui.
 
 > A fase 13 somou 8 e2e (`dashboard-overview.e2e-spec.ts`) e 5 de isolamento
 > (`dashboard-overview.isolation-spec.ts`). O isolamento do dashboard testa os
@@ -2691,6 +5533,34 @@ Para subir o ambiente: `make env && make install && make up && make seed`
 restrição de RAM da máquina (7.5 GB), `docker compose up -d db redis api` +
 `docker compose up -d web` já é a stack inteira — não existe mais a escolha de
 "qual das 4 apps subir".
+
+### Como conferir o agente 18 (Financeiro) rodando
+
+Login `dono@barbeariacentral.com.br` / `BarberVP@2026` →
+`http://localhost:3000/app/financeiro`.
+
+1. **Caixa** — o `make seed` deixa um caixa ABERTO: 4 KPIs (saldo inicial ·
+   entradas em verde · saídas em vermelho · saldo atual em dourado), os três
+   botões e o extrato do dia com Hora/Descrição/Categoria/Forma/Valor, valores
+   com sinal e cor. "+ Saída/Sangria" lança de verdade; tente uma sangria maior
+   que o dinheiro em caixa e veja o 400 com o valor disponível na mensagem.
+2. **Fechar caixa** — o modal traz o resumo POR FORMA (só entradas) e
+   "Esperado na gaveta"; digitar um valor acende a faixa verde ("Caixa
+   confere") / âmbar ("Sobra") / vermelha ("Quebra") na hora.
+3. **Contas a pagar** — 3 KPIs somados no servidor (confira paginando: os
+   números não mudam). "Serviços contábeis" sai como **Vencido** sem que a
+   coluna `status` no banco diga isso. No modal, ligue "Parcelado?" com 3
+   parcelas e veja 3 linhas nascerem com a data andando de mês.
+4. **Vales** — faixa dourada e o status dizendo em qual competência o desconto
+   entra; cruze com a aba Comissões.
+5. **Contas bancárias / Fluxo de caixa** — troque o plano do tenant para
+   `essencial` (`PATCH /admin/tenants/:id/plan`) e confirme que estas DUAS
+   continuam abrindo, enquanto as três travadas mostram o paywall com bullets
+   e os dois botões. É o desvio central corrigido nesta fase.
+6. **Papel BARBER** (`carlos@barbeariacentral.com.br`) — "Financeiro" não
+   aparece no nav, e todas as rotas `/finance/*` respondem 403.
+7. **Tenant vazio** — cadastre uma barbearia nova: as 6 sub-abas renderizam
+   com vazio próprio por bloco, sem quebrar.
 
 ### Como conferir a fase 13 rodando
 

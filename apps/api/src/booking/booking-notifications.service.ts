@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { WhatsappEvent } from '@prisma/client';
+import { WHATSAPP_DEFAULT_TEMPLATES } from '@barbervp/types';
 import { PinoLogger } from 'nestjs-pino';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,6 +9,11 @@ import {
   type NotificationAdapter,
 } from '../adapters/notification/notification.adapter';
 import { toDateKey, toMinutesOfDay, zonedParts } from '../common/utils/timezone';
+
+// Padrão usado quando a barbearia não configurou o template do evento. É o
+// MESMO que a aba WhatsApp mostra num tenant que nunca abriu a tela
+// (`WhatsappConfigService.list`) — duas cópias divergiriam no primeiro ajuste
+// de texto, e a mensagem enviada deixaria de ser a que o dono leu.
 
 export interface AppointmentMessageContext {
   tenantId: string;
@@ -23,15 +29,6 @@ export interface AppointmentMessageContext {
   startsAt: Date;
 }
 
-/** Padrão usado quando a barbearia não configurou o template do evento. */
-const FALLBACK_TEMPLATES: Partial<Record<WhatsappEvent, string>> = {
-  CONFIRMATION:
-    'Olá {nome}! Seu horário está confirmado para {data} às {horario} com {barbeiro} ({servico}). Até lá!',
-  REMINDER:
-    'Oi {nome}, lembrando do seu horário em {data} às {horario} — {servico} com {barbeiro}. Precisa remarcar? {link_agendamento}',
-  CANCELLATION:
-    '{nome}, seu horário de {data} às {horario} foi cancelado. Quando quiser, é só reagendar: {link_agendamento}',
-};
 
 /**
  * Mensagens de agendamento — confirmação, lembretes e cancelamento.
@@ -138,7 +135,7 @@ export class BookingNotificationsService {
       return;
     }
 
-    const template = config?.template ?? FALLBACK_TEMPLATES[event];
+    const template = config?.template ?? WHATSAPP_DEFAULT_TEMPLATES[event];
     if (!template) {
       return;
     }

@@ -114,7 +114,9 @@ export function Tabs<T extends string = string>({
                   : 'border-transparent font-medium text-fg-muted hover:text-fg',
               ],
               variant === 'segmented' && [
-                'h-9 rounded-lg px-3.5 text-[13px] font-semibold',
+                // 36px é a pílula do protótipo; abaixo de `md` a régua de
+                // toque de 44px vence (regra 6).
+                'h-11 rounded-lg px-3.5 text-[13px] font-semibold md:h-9',
                 selected ? 'bg-gold text-bg' : 'text-fg-muted hover:text-fg',
               ],
             )}
