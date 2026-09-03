@@ -130,6 +130,14 @@ export const envSchema = z.object({
   QUEUE_SAAS_BILLING_HOUR: z.coerce.number().int().min(0).max(23).default(4),
   /** Hora local (0–23) da faxina de OTP/sessões expiradas. */
   QUEUE_MAINTENANCE_HOUR: z.coerce.number().int().min(0).max(23).default(5),
+  /**
+   * Hora do disparo diário das automações de calendário do WhatsApp.
+   *
+   * 9h por padrão, e não de madrugada como a faxina: são mensagens que uma
+   * PESSOA recebe. "Feliz aniversário" às 5h da manhã acorda o cliente da
+   * barbearia — o padrão do `BIRTHDAY` no protótipo é justamente 09:00.
+   */
+  QUEUE_AUTOMATIONS_HOUR: z.coerce.number().int().min(0).max(23).default(9),
   /** Fuso usado pelos cron dos jobs diários. */
   QUEUE_TIMEZONE: z.string().default('America/Sao_Paulo'),
 });

@@ -367,7 +367,13 @@ export interface UpdateBarberDto {
   specialty?: string | null;
   phone?: string | null;
   email?: string | null;
-  avatarUrl?: string | null;
+  /*
+   * `avatarUrl` NÃO entra aqui (agente 29): a foto sobe por
+   * `POST /barbers/:id/avatar`, que valida tipo e tamanho pelo
+   * `StorageAdapter`. Aceitá-la também neste `PATCH` seria um segundo caminho
+   * de escrita para a mesma coluna, esse sem validação nenhuma — e os dois
+   * acabariam divergindo.
+   */
   active?: boolean;
   serviceIds?: string[];
   /** A semana inteira, salva junto com o resto do modal (l.2216). */

@@ -40,16 +40,29 @@ jobs:
 
       - run: pnpm turbo run lint
       - run: pnpm turbo run typecheck
+
+      # `NODE_ENV=production` explícito nos builds: com `development` no
+      # ambiente, o `next build` mistura os runtimes de dev e de prod e quebra
+      # ~35 páginas na pré-renderização com "Cannot read properties of null
+      # (reading 'useContext')" — erro que parece de código e é de ambiente.
+      # O runner hoje não define a variável, mas depender disso é o que faz a
+      # pegadinha voltar.
       - run: pnpm turbo run build
+        env:
+          NODE_ENV: production
 
       # Vercel e Railway buildam UM pacote cada, não o monorepo inteiro: se o
       # build isolado de um exigir o outro, o deploy quebra. Este passo é o que
       # segura essa garantia.
       - name: Build isolado do frontend (contrato da Vercel)
         run: pnpm --filter @barbervp/web... build
+        env:
+          NODE_ENV: production
 
       - name: Build isolado do backend (contrato da Railway)
         run: pnpm --filter @barbervp/api... build
+        env:
+          NODE_ENV: production
 
   tests:
     name: unit + e2e + isolamento

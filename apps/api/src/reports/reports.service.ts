@@ -250,15 +250,30 @@ export class ReportsService {
     }));
   }
 
+  /**
+   * Faturamento por barbeiro.
+   *
+   * **`LEFT JOIN`, e não `JOIN`.** Comanda sem barbeiro — a venda de balcão,
+   * o walk-in atendido por quem estava livre — ficava de fora do
+   * detalhamento, e a soma das linhas NÃO batia com o card de faturamento
+   * logo acima: dois números na mesma tela, discordando, sem nada explicando
+   * a diferença. Agora essas comandas aparecem numa linha "Sem barbeiro" e a
+   * soma fecha.
+   *
+   * O que continua fora, e é decisão de produto e não defeito: o faturamento
+   * é atribuído ao barbeiro PRINCIPAL da comanda (`Order.barberId`), sem
+   * rateio por item. Comanda com serviços de dois profissionais conta inteira
+   * para um só.
+   */
   private async revenueByBarber(context: ReportContext): Promise<RevenueByBarber[]> {
     const rows = await this.prisma.$queryRaw<
-      Array<{ barberId: string; barberName: string; revenueCents: bigint; orders: bigint }>
+      Array<{ barberId: string | null; barberName: string | null; revenueCents: bigint; orders: bigint }>
     >`
       SELECT b.id AS "barberId", b.name AS "barberName",
              COALESCE(SUM(o."totalCents"), 0)::bigint AS "revenueCents",
              COUNT(o.id)::bigint AS "orders"
       FROM "Order" o
-      JOIN "Barber" b ON b.id = o."barberId"
+      LEFT JOIN "Barber" b ON b.id = o."barberId"
       WHERE o."tenantId" = ${context.tenantId}
         AND o.status = 'CLOSED'
         AND o."closedAt" >= ${context.window.start} AND o."closedAt" < ${context.window.end}
@@ -267,8 +282,10 @@ export class ReportsService {
       ORDER BY "revenueCents" DESC, b.name ASC
     `;
     return rows.map((row) => ({
-      barberId: row.barberId,
-      barberName: row.barberName,
+      // `null` é a linha das comandas sem barbeiro; o id vazio a distingue de
+      // um profissional real sem quebrar a chave da lista na tela.
+      barberId: row.barberId ?? '',
+      barberName: row.barberName ?? 'Sem barbeiro',
       revenueCents: Number(row.revenueCents),
       orders: Number(row.orders),
     }));

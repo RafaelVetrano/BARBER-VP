@@ -74,6 +74,48 @@ export function useUpdateBarberMutation() {
   });
 }
 
+// ── Foto do barbeiro ───────────────────────────────────────────────────────
+
+/** Ver a nota em `useUploadBarberAvatarMutation`. */
+const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } } as const;
+
+/**
+ * Upload da foto (`POST /barbers/:id/avatar`, multipart).
+ *
+ * Substitui o campo "URL da foto" que existia até o agente 29 — o
+ * `StorageAdapter` do agente 25 já resolvia o servidor, faltava o consumidor.
+ *
+ * `MULTIPART` é obrigatório: o cliente axios do projeto nasce com
+ * `Content-Type: application/json` fixo, e o `transformRequest` do axios 1.x
+ * converteria o FormData em JSON — o arquivo chegaria como `{}`. Mesmo motivo
+ * (e mesma constante) de Minha Página e Meu perfil.
+ */
+export function useUploadBarberAvatarMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const body = new FormData();
+      body.append('file', file);
+      const { data } = await client.post<BarberListItem>(`/barbers/${id}/avatar`, body, MULTIPART);
+      return data;
+    },
+    onSuccess: () => invalidateTeam(queryClient),
+  });
+}
+
+export function useRemoveBarberAvatarMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await client.delete<BarberListItem>(`/barbers/${id}/avatar`);
+      return data;
+    },
+    onSuccess: () => invalidateTeam(queryClient),
+  });
+}
+
 // ── Exceções (folga/férias/feriado) ────────────────────────────────────────
 
 export function useScheduleExceptionsQuery(barberId?: string) {

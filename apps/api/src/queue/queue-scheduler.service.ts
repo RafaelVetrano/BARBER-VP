@@ -5,9 +5,11 @@ import { PinoLogger } from 'nestjs-pino';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import {
   JOB_CLEANUP_EXPIRED,
+  JOB_RUN_AUTOMATIONS,
   JOB_DISPATCH_OUTBOX,
   JOB_RENEW_SUBSCRIPTIONS,
   JOB_RUN_SAAS_BILLING,
+  QUEUE_AUTOMATIONS,
   QUEUE_BILLING,
   QUEUE_MAINTENANCE,
   QUEUE_OUTBOX,
@@ -36,6 +38,7 @@ export class QueueSchedulerService implements OnModuleInit {
     @InjectQueue(QUEUE_SUBSCRIPTIONS) private readonly subscriptions: Queue,
     @InjectQueue(QUEUE_BILLING) private readonly billing: Queue,
     @InjectQueue(QUEUE_MAINTENANCE) private readonly maintenance: Queue,
+    @InjectQueue(QUEUE_AUTOMATIONS) private readonly automations: Queue,
   ) {
     this.logger.setContext(QueueSchedulerService.name);
   }
@@ -59,6 +62,10 @@ export class QueueSchedulerService implements OnModuleInit {
         }),
         this.schedule(this.maintenance, JOB_CLEANUP_EXPIRED, {
           pattern: `0 0 ${queue.maintenanceHour} * * *`,
+          tz,
+        }),
+        this.schedule(this.automations, JOB_RUN_AUTOMATIONS, {
+          pattern: `0 0 ${queue.automationsHour} * * *`,
           tz,
         }),
       ]);

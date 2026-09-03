@@ -638,6 +638,41 @@ export class OrdersService {
         subtotalCents += item.totalCents;
       }
 
+      /*
+       * RESGATE DE PONTOS — reconfirmado aqui, e sob trava.
+       *
+       * O saldo é a SOMA de um ledger (`LoyaltyPoints`), não uma coluna: não há
+       * linha única contra a qual fazer o débito condicional que a quota de
+       * assinatura usa logo acima. Duas comandas abertas do MESMO cliente,
+       * ambas com `useLoyalty`, fechando ao mesmo tempo liam as duas o mesmo
+       * saldo e resgatavam duas vezes — o saldo terminava NEGATIVO e a
+       * barbearia dava dois descontos onde havia crédito para um.
+       *
+       * A trava consultiva serializa por (tenant, cliente) até o fim da
+       * transação. Não é a `ClientProfile` porque nem todo cliente com pontos
+       * tem perfil nesta barbearia, e uma trava que às vezes não tranca é pior
+       * que nenhuma. Colisão de hash apenas serializa dois clientes sem
+       * relação por um instante — barato, e do lado seguro.
+       */
+      if (order.clientId && order.loyaltyPointsUsed > 0) {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext(${`${tenantId}:${order.clientId}`})::bigint)
+        `;
+
+        const confirmed = await tx.loyaltyPoints.aggregate({
+          where: { tenantId, clientId: order.clientId },
+          _sum: { points: true },
+        });
+
+        if ((confirmed._sum.points ?? 0) < order.loyaltyPointsUsed) {
+          throw ApiException.conflict(
+            'O saldo de pontos deste cliente mudou e não cobre mais o resgate. ' +
+              'Reabra a comanda para recalcular o total.',
+            'LOYALTY_BALANCE_CHANGED',
+          );
+        }
+      }
+
       let discountCents = 0;
       if (order.discountType === DiscountType.PERCENT) {
         discountCents = subtotalCents - applyPercentDiscount(subtotalCents, order.discountValue);

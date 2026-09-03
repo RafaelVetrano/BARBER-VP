@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { MembershipRole, type Prisma } from '@prisma/client';
 import type {
   BarberListItem,
@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/errors/api.exception';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import type { RequestContext } from '../common/types/request-context';
+import { STORAGE_ADAPTER, type StorageAdapter } from '../adapters/storage/storage.adapter';
 import { PlanLimitsService } from './plan-limits.service';
 import type {
   CreateBarberDto,
@@ -18,6 +19,13 @@ import type {
   UpdateBarberDto,
   UpdateWorkScheduleDto,
 } from './dto/team.dto';
+
+/** Mesmo formato que o `FileInterceptor` entrega — igual em Minha Página. */
+export interface UploadedImageFile {
+  mimetype: string;
+  buffer: Buffer;
+  size: number;
+}
 
 const BARBER_INCLUDE = {
   // O card do protótipo mostra as pílulas com o NOME do serviço (l.2065), não
@@ -40,6 +48,7 @@ export class BarbersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly planLimits: PlanLimitsService,
+    @Inject(STORAGE_ADAPTER) private readonly storage: StorageAdapter,
   ) {}
 
   async list(tenantId: string): Promise<BarberListItem[]> {
@@ -158,7 +167,6 @@ export class BarbersService {
           specialty: dto.specialty === undefined ? undefined : dto.specialty,
           phone: dto.phone === undefined ? undefined : normalizePhoneOrThrow(dto.phone),
           email: dto.email === undefined ? undefined : dto.email,
-          avatarUrl: dto.avatarUrl === undefined ? undefined : dto.avatarUrl,
           active: dto.active,
           // Reativado na mão deixa de ser "inativo pelo plano": o próximo
           // downgrade volta a escolher os excedentes do zero.
@@ -216,6 +224,106 @@ export class BarbersService {
     );
 
     return this.getWorkSchedule(tenantId, barberId);
+  }
+
+  // ── Foto do barbeiro ──────────────────────────────────────────────────────
+
+  /**
+   * Envia a foto do profissional (`image-slot` do protótipo, l.2166).
+   *
+   * Até o agente 29 o campo era uma caixa de texto "URL da foto": o dono
+   * precisava hospedar a imagem em algum lugar e colar o endereço, o que na
+   * prática significava que a maioria dos cards ficava sem foto. O
+   * `StorageAdapter` do agente 25 já resolvia o lado do servidor — faltava o
+   * consumidor.
+   *
+   * O contrato não mudou: `Barber.avatarUrl` continua sendo o destino, então
+   * agenda, comanda e página pública seguem lendo o mesmo campo.
+   */
+  async uploadAvatar(
+    tenantId: string,
+    barberId: string,
+    file: UploadedImageFile | undefined,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<BarberListItem> {
+    const barber = await this.loadOwned(tenantId, barberId);
+    if (!file) {
+      throw ApiException.badRequest('Nenhum arquivo enviado.');
+    }
+
+    const stored = await this.storage.put({
+      tenantId,
+      folder: 'equipe',
+      mimeType: file.mimetype,
+      buffer: file.buffer,
+    });
+
+    // Grava a nova ANTES de apagar a antiga: falhando o banco, o registro
+    // segue apontando para um arquivo que existe.
+    await this.prisma.barber.update({
+      where: { id: barberId },
+      data: { avatarUrl: stored.url },
+    });
+    await this.discardStored(barber.avatarUrl);
+
+    await this.audit.record(
+      {
+        action: AuditAction.BARBER_UPDATED,
+        entity: 'Barber',
+        entityId: barberId,
+        tenantId,
+        actorUserId,
+        metadata: { field: 'avatarUrl' },
+      },
+      request,
+    );
+
+    return this.reload(tenantId, barberId);
+  }
+
+  async removeAvatar(
+    tenantId: string,
+    barberId: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<BarberListItem> {
+    const barber = await this.loadOwned(tenantId, barberId);
+
+    await this.prisma.barber.update({ where: { id: barberId }, data: { avatarUrl: null } });
+    await this.discardStored(barber.avatarUrl);
+
+    await this.audit.record(
+      {
+        action: AuditAction.BARBER_UPDATED,
+        entity: 'Barber',
+        entityId: barberId,
+        tenantId,
+        actorUserId,
+        metadata: { field: 'avatarUrl', removed: true },
+      },
+      request,
+    );
+
+    return this.reload(tenantId, barberId);
+  }
+
+  /** O card atualizado, no MESMO formato que `update` devolve. */
+  private async reload(tenantId: string, barberId: string): Promise<BarberListItem> {
+    const row = await this.prisma.barber.findFirstOrThrow({
+      where: { id: barberId, tenantId, deletedAt: null },
+      include: BARBER_INCLUDE,
+    });
+    return toListItem(row, await this.ownerUserIds(tenantId));
+  }
+
+  /** Apaga o arquivo antigo do storage; URL externa (legado) não tem chave. */
+  private async discardStored(url: string | null | undefined): Promise<void> {
+    if (!url) return;
+    const key = this.storage.keyFromUrl(url);
+    if (key) {
+      await this.storage.remove(key);
+    }
   }
 
   async listScheduleExceptions(tenantId: string, barberId?: string): Promise<ScheduleExceptionItem[]> {

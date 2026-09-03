@@ -145,12 +145,6 @@ enum LoyaltyPointsKind {
   ADJUST
 }
 
-enum RaffleStatus {
-  ACTIVE
-  FINISHED
-  CANCELED
-}
-
 enum OutboxStatus {
   PENDING
   SENT
@@ -305,8 +299,6 @@ model Tenant {
   subscriptionUsages   SubscriptionUsage[]
   loyaltyProgram       LoyaltyProgram?
   loyaltyPoints        LoyaltyPoints[]
-  loyaltyRaffles       LoyaltyRaffle[]
-  loyaltyRaffleEntries LoyaltyRaffleEntry[]
   products             Product[]
   orders               Order[]
   orderItems           OrderItem[]
@@ -475,8 +467,6 @@ model Client {
   appointments  Appointment[]
   subscriptions ClientSubscription[]
   loyaltyPoints LoyaltyPoints[]
-  raffleEntries LoyaltyRaffleEntry[]
-  wonRaffles    LoyaltyRaffle[]
   orders        Order[]
   auditLogs     AuditLog[]
   sessions      AuthSession[]
@@ -1026,44 +1016,6 @@ model LoyaltyPoints {
 
   @@index([tenantId, clientId, createdAt])
   @@index([tenantId, expiresAt])
-}
-
-model LoyaltyRaffle {
-  id             String       @id @default(cuid())
-  tenantId       String
-  name           String
-  description    String?
-  prize          String
-  status         RaffleStatus @default(ACTIVE)
-  pointsPerEntry Int          @default(10)
-  startsAt       DateTime     @db.Timestamptz(3)
-  endsAt         DateTime     @db.Timestamptz(3)
-  winnerClientId String?
-  drawnAt        DateTime?    @db.Timestamptz(3)
-  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
-
-  tenant  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  winner  Client?              @relation(fields: [winnerClientId], references: [id], onDelete: SetNull)
-  entries LoyaltyRaffleEntry[]
-
-  @@index([tenantId, status, endsAt])
-}
-
-model LoyaltyRaffleEntry {
-  id        String   @id @default(cuid())
-  tenantId  String
-  raffleId  String
-  clientId  String
-  entries   Int      @default(1)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  raffle LoyaltyRaffle @relation(fields: [raffleId], references: [id], onDelete: Cascade)
-  client Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@unique([raffleId, clientId])
-  @@index([tenantId, raffleId])
 }
 
 // ────────────────────────────────────────────── Produtos, comandas, caixa ───

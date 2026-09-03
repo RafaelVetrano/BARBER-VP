@@ -125,6 +125,7 @@ export const AuditAction = {
   ACCOUNT_PURGED: 'account.purged',
   // Fase 08 — super admin.
   ADMIN_PLAN_UPSERTED: 'admin.plan_upserted',
+  ADMIN_PLAN_LIMIT_REAPPLIED: 'admin.plan_limit_reapplied',
   ADMIN_PLAN_ARCHIVED: 'admin.plan_archived',
   ADMIN_TENANT_SUSPENDED: 'admin.tenant_suspended',
   ADMIN_TENANT_REACTIVATED: 'admin.tenant_reactivated',

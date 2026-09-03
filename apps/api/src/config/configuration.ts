@@ -70,6 +70,7 @@ export interface AppConfig {
     subscriptionRenewalHour: number;
     saasBillingHour: number;
     maintenanceHour: number;
+    automationsHour: number;
     timezone: string;
   };
 }
@@ -156,6 +157,7 @@ export function buildConfig(env: Env): AppConfig {
       subscriptionRenewalHour: env.QUEUE_SUBSCRIPTION_RENEWAL_HOUR,
       saasBillingHour: env.QUEUE_SAAS_BILLING_HOUR,
       maintenanceHour: env.QUEUE_MAINTENANCE_HOUR,
+      automationsHour: env.QUEUE_AUTOMATIONS_HOUR,
       timezone: env.QUEUE_TIMEZONE,
     },
   };

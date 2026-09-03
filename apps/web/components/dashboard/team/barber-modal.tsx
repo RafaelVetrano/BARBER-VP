@@ -21,7 +21,13 @@ import type {
   ServiceListItem,
   WorkScheduleDay,
 } from '@barbervp/types';
-import { useCreateStaffInviteMutation, useUpdateBarberMutation } from '@/lib/dashboard/api/team';
+import {
+  useCreateStaffInviteMutation,
+  useRemoveBarberAvatarMutation,
+  useUpdateBarberMutation,
+  useUploadBarberAvatarMutation,
+} from '@/lib/dashboard/api/team';
+import { ImageSlot } from '@/components/dashboard/my-page/image-slot';
 import { useBarbershopSettingsQuery } from '@/lib/dashboard/api/settings';
 
 /**
@@ -84,9 +90,43 @@ export function BarberModal({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [week, setWeek] = useState<WorkScheduleDay[]>([]);
+
+  const uploadAvatar = useUploadBarberAvatarMutation();
+  const removeAvatar = useRemoveBarberAvatarMutation();
+
+  /*
+   * A foto sobe NA HORA, e não no "Salvar" do modal: é um arquivo, não um
+   * campo de formulário — segurá-lo até o submit obrigaria a carregar o
+   * binário no estado e a desfazer o upload se o dono desistisse do resto.
+   * O mesmo caminho de Minha Página e de Meu perfil.
+   */
+  const saveAvatar = async (file: File) => {
+    if (!barber) return;
+    try {
+      await uploadAvatar.mutateAsync({ id: barber.id, file });
+      toast({ message: 'Foto atualizada.', tone: 'success' });
+    } catch (error) {
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível enviar a foto.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const clearAvatar = async () => {
+    if (!barber) return;
+    try {
+      await removeAvatar.mutateAsync(barber.id);
+      toast({ message: 'Foto removida.', tone: 'success' });
+    } catch (error) {
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível remover a foto.',
+        tone: 'danger',
+      });
+    }
+  };
 
   const businessHours = barbershopQuery.data?.businessHours;
 
@@ -98,7 +138,6 @@ export function BarberModal({
     setEmail(barber?.email ?? '');
     // O banco guarda E.164 (`5511…`); o campo mostra a máscara do protótipo.
     setPhone(barber?.phone ? maskPhoneInput(formatPhone(barber.phone)) : '');
-    setAvatarUrl(barber?.avatarUrl ?? '');
     setServiceIds(barber?.serviceIds ?? []);
     setWeek(barber?.workSchedule ?? weekFromBusinessHours(businessHours ?? []));
   }, [open, barber, businessHours]);
@@ -145,7 +184,6 @@ export function BarberModal({
             name: name.trim(),
             email: email.trim() || null,
             phone: phone.trim() || null,
-            avatarUrl: avatarUrl.trim() || null,
             serviceIds,
             schedule: week,
           },
@@ -187,18 +225,42 @@ export function BarberModal({
       }
     >
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col items-center gap-2">
-          <Avatar name={name || 'Novo barbeiro'} src={avatarUrl || null} size="lg" className="size-[84px] text-2xl" />
-          <Input
-            label="URL da foto"
-            type="url"
-            className="w-full"
-            value={avatarUrl}
-            onChange={(event) => setAvatarUrl(event.target.value)}
-            placeholder="https://…/foto.jpg"
-            hint="O upload direto chega na fase de integrações."
-          />
-        </div>
+        {/*
+          FOTO — o `image-slot` do protótipo (l.2166), com upload de verdade.
+
+          Até o agente 29 isto era um campo "URL da foto" com a dica "o upload
+          direto chega na fase de integrações": o dono precisava hospedar a
+          imagem em outro lugar e colar o endereço. E no modo CONVITE o campo
+          nem chegava ao servidor — `useCreateStaffInviteMutation` não manda
+          `avatarUrl` —, ou seja, era um controle que não fazia nada.
+
+          Dois ramos de render (regra 4), porque a diferença é real: o upload
+          precisa de um `Barber` existente para pendurar o arquivo. Quem ainda
+          é convite vê o `Avatar` com as iniciais e a explicação de quando a
+          foto entra.
+        */}
+        {isEdit ? (
+          <div className="flex flex-col items-center gap-2">
+            <ImageSlot
+              url={barber.avatarUrl}
+              placeholder="Foto"
+              label={`Foto de ${barber.name}`}
+              shape="circle"
+              className="size-[84px]"
+              busy={uploadAvatar.isPending || removeAvatar.isPending}
+              onSelect={(file) => void saveAvatar(file)}
+              onRemove={barber.avatarUrl ? () => void clearAvatar() : undefined}
+            />
+            <span className="text-xs text-fg-muted">JPG, PNG ou WebP, até 5 MB.</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <Avatar name={name || 'Novo barbeiro'} size="lg" className="size-[84px] text-2xl" />
+            <span className="text-center text-xs text-fg-muted">
+              A foto pode ser enviada depois que o profissional aceitar o convite.
+            </span>
+          </div>
+        )}
 
         <Input
           label="Nome"

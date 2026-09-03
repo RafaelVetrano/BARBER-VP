@@ -4,6 +4,7 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { MembershipRole, PrismaClient } from '@prisma/client';
 import {
   PlanTier,
+  WHATSAPP_DEFAULT_TEMPLATES,
   WHATSAPP_EVENT_ORDER,
   WHATSAPP_REMINDER_OPTIONS_MINUTES,
   featuresForTier,
@@ -11,6 +12,7 @@ import {
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { WhatsappAutomationsService } from '../src/queue/jobs/whatsapp-automations.service';
 import { CONFIG, type AppConfig } from '../src/config/configuration';
 
 /**
@@ -362,6 +364,226 @@ describe('aba WhatsApp — automações, reativação e histórico (e2e)', () =>
     // Telefone nunca sai inteiro para a tela.
     expect(row.recipient).not.toBe(`5511900${run}`);
     expect(row.recipient).toContain('*');
+  });
+
+  /*
+   * AUTOMAÇÕES DE CALENDÁRIO — o buraco que o agente 29 fechou.
+   *
+   * Até aqui o dono ligava BIRTHDAY, REACTIVATION e REVIEW, o `enabled` era
+   * gravado, a tela dizia "ativa" — e NADA disparava. O
+   * `BookingNotificationsService` só cobre confirmação, lembrete e
+   * cancelamento, que são reações a um agendamento; estes três são disparos
+   * por calendário e não tinham executor.
+   *
+   * Os casos abaixo chamam o serviço do job direto: não há rota HTTP para ele
+   * (é cron), e testar pelo processor exigiria subir o BullMQ.
+   */
+  describe('automações de calendário (job diário)', () => {
+    let automations: WhatsappAutomationsService;
+    let aniversarianteId: string;
+    let barberIdLocal: string;
+    let serviceIdLocal: string;
+
+    const outboxFor = (event: string, recipient: string) =>
+      prisma.notificationOutbox.count({
+        where: { tenantId, templateKey: `whatsapp.${event.toLowerCase()}`, recipient },
+      });
+
+    beforeAll(async () => {
+      automations = app.get(WhatsappAutomationsService);
+
+      const barber = await prisma.barber.findFirstOrThrow({
+        where: { tenantId },
+        select: { id: true },
+      });
+      barberIdLocal = barber.id;
+
+      const service = await prisma.service.create({
+        data: { tenantId, name: `Corte Auto ${run}`, durationMin: 30, priceCents: 5_000 },
+        select: { id: true },
+      });
+      serviceIdLocal = service.id;
+
+      // Aniversariante DE HOJE — mês e dia de hoje, ano qualquer.
+      const hoje = new Date();
+      const aniversariante = await prisma.client.create({
+        data: {
+          phone: `5511903${run}`,
+          name: 'Niver Hoje',
+          notifyWhatsapp: true,
+          birthDate: new Date(Date.UTC(1990, hoje.getMonth(), hoje.getDate())),
+          profiles: { create: { tenantId, phone: `5511903${run}`, lastVisitAt: daysAgo(2) } },
+        },
+        select: { id: true },
+      });
+      aniversarianteId = aniversariante.id;
+    });
+
+    afterAll(async () => {
+      await prisma.client.deleteMany({ where: { id: aniversarianteId } });
+    });
+
+    /** Desliga as três, para cada caso ligar só a que testa. */
+    const desligarTodas = async () => {
+      await prisma.whatsappAutomationConfig.updateMany({
+        where: { tenantId, event: { in: ['BIRTHDAY', 'REACTIVATION', 'REVIEW'] } },
+        data: { enabled: false },
+      });
+    };
+
+    const ligar = async (event: 'BIRTHDAY' | 'REACTIVATION' | 'REVIEW', offsetMinutes?: number) => {
+      await prisma.whatsappAutomationConfig.upsert({
+        where: { tenantId_event: { tenantId, event } },
+        create: {
+          tenantId,
+          event,
+          enabled: true,
+          template: WHATSAPP_DEFAULT_TEMPLATES[event],
+          offsetMinutes: offsetMinutes ?? null,
+        },
+        update: { enabled: true, ...(offsetMinutes === undefined ? {} : { offsetMinutes }) },
+      });
+    };
+
+    beforeEach(async () => {
+      await desligarTodas();
+      await prisma.notificationOutbox.deleteMany({ where: { tenantId } });
+    });
+
+    it('com TUDO desligado, o job não manda nada — o interruptor é a decisão do dono', async () => {
+      const summary = await automations.runOnce();
+
+      expect(summary.birthday).toBe(0);
+      expect(summary.reactivation).toBe(0);
+      expect(summary.review).toBe(0);
+      expect(await prisma.notificationOutbox.count({ where: { tenantId } })).toBe(0);
+    });
+
+    it('aniversário: manda para quem faz aniversário HOJE, e só uma vez', async () => {
+      await ligar('BIRTHDAY');
+
+      const first = await automations.runOnce();
+      expect(first.birthday).toBe(1);
+      expect(await outboxFor('BIRTHDAY', `5511903${run}`)).toBe(1);
+
+      // Quem NÃO faz aniversário hoje fica de fora.
+      expect(await outboxFor('BIRTHDAY', `5511900${run}`)).toBe(0);
+
+      // Rodar de novo no mesmo dia não duplica — é o ponto mais delicado de um
+      // job diário: ninguém quer dois "feliz aniversário".
+      const second = await automations.runOnce();
+      expect(second.birthday).toBe(0);
+      expect(await outboxFor('BIRTHDAY', `5511903${run}`)).toBe(1);
+    });
+
+    it('reativação: usa a janela CONFIGURADA, não 30 dias fixos', async () => {
+      // 60 dias: o inativo de 90 dias entra.
+      await ligar('REACTIVATION', 60 * 1_440);
+      const larga = await automations.runOnce();
+      expect(larga.reactivation).toBeGreaterThanOrEqual(1);
+      expect(await outboxFor('REACTIVATION', `5511900${run}`)).toBe(1);
+
+      // Quem veio ontem não é alvo, e quem recusou WhatsApp também não.
+      expect(await outboxFor('REACTIVATION', `5511902${run}`)).toBe(0);
+      expect(await outboxFor('REACTIVATION', `5511901${run}`)).toBe(0);
+
+      // E não insiste dentro da mesma janela.
+      const denovo = await automations.runOnce();
+      expect(denovo.reactivation).toBe(0);
+
+      // Janela de 180 dias: nem o de 90 dias entra mais.
+      await prisma.notificationOutbox.deleteMany({ where: { tenantId } });
+      await ligar('REACTIVATION', 180 * 1_440);
+      const estreita = await automations.runOnce();
+      expect(estreita.reactivation).toBe(0);
+    });
+
+    it('avaliação: pede depois do atendimento, uma vez por AGENDAMENTO', async () => {
+      const endsAt = new Date(Date.now() - 3 * 60 * 60 * 1_000); // concluído há 3h
+      const appointment = await prisma.appointment.create({
+        data: {
+          tenantId,
+          bookingCode: `AG-AV${run.slice(-3)}`,
+          barberId: barberIdLocal,
+          serviceId: serviceIdLocal,
+          clientId: inativoId,
+          startsAt: new Date(endsAt.getTime() - 30 * 60 * 1_000),
+          endsAt,
+          status: 'DONE',
+          priceCents: 5_000,
+        },
+        select: { id: true },
+      });
+
+      await ligar('REVIEW', 120); // 2h depois
+      const first = await automations.runOnce();
+      expect(first.review).toBe(1);
+      expect(await outboxFor('REVIEW', `5511900${run}`)).toBe(1);
+
+      // Segunda rodada não repete: a chave é o agendamento, não o cliente.
+      const second = await automations.runOnce();
+      expect(second.review).toBe(0);
+      expect(await outboxFor('REVIEW', `5511900${run}`)).toBe(1);
+
+      await prisma.appointment.delete({ where: { id: appointment.id } });
+    });
+
+    it('avaliação NÃO varre o histórico inteiro ao ser ligada', async () => {
+      // Atendimento de uma semana atrás: ligar a automação hoje não pode
+      // disparar pedido para tudo que já foi concluído na vida da barbearia.
+      const endsAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
+      const antigo = await prisma.appointment.create({
+        data: {
+          tenantId,
+          bookingCode: `AG-AN${run.slice(-3)}`,
+          barberId: barberIdLocal,
+          serviceId: serviceIdLocal,
+          clientId: inativoId,
+          startsAt: new Date(endsAt.getTime() - 30 * 60 * 1_000),
+          endsAt,
+          status: 'DONE',
+          priceCents: 5_000,
+        },
+        select: { id: true },
+      });
+
+      await ligar('REVIEW', 120);
+      const summary = await automations.runOnce();
+
+      expect(summary.review).toBe(0);
+
+      await prisma.appointment.delete({ where: { id: antigo.id } });
+    });
+
+    it('o gate de plano é reconferido no JOB — o downgrade cala a automação', async () => {
+      await ligar('BIRTHDAY');
+
+      // O tenant básico tem a MESMA automação ligada, mas está no Essencial.
+      const basico = await prisma.tenant.findFirstOrThrow({
+        where: { slug: slugBasico },
+        select: { id: true },
+      });
+      await prisma.whatsappAutomationConfig.upsert({
+        where: { tenantId_event: { tenantId: basico.id, event: 'BIRTHDAY' } },
+        create: {
+          tenantId: basico.id,
+          event: 'BIRTHDAY',
+          enabled: true,
+          template: WHATSAPP_DEFAULT_TEMPLATES.BIRTHDAY,
+        },
+        update: { enabled: true },
+      });
+
+      await automations.runOnce();
+
+      // O avançado recebeu; o essencial, não. `enabled` sobrevive a um
+      // downgrade, e sem esta checagem o job entregaria um recurso que a
+      // barbearia deixou de pagar.
+      expect(await outboxFor('BIRTHDAY', `5511903${run}`)).toBe(1);
+      expect(
+        await prisma.notificationOutbox.count({ where: { tenantId: basico.id } }),
+      ).toBe(0);
+    });
   });
 
   it('o histórico pagina por cursor e não mistura barbearias', async () => {

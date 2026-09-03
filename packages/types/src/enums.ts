@@ -135,13 +135,6 @@ export const AccountStatus = {
 } as const;
 export type AccountStatus = (typeof AccountStatus)[keyof typeof AccountStatus];
 
-export const RaffleStatus = {
-  ACTIVE: 'ACTIVE',
-  FINISHED: 'FINISHED',
-  CANCELED: 'CANCELED',
-} as const;
-export type RaffleStatus = (typeof RaffleStatus)[keyof typeof RaffleStatus];
-
 export const OutboxStatus = {
   PENDING: 'PENDING',
   SENT: 'SENT',

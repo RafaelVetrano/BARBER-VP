@@ -11,11 +11,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   Length,
   Max,
   Min,
-  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ScheduleExceptionType } from '@barbervp/types';
@@ -42,12 +40,6 @@ export class UpdateBarberDto {
   @IsOptional()
   @IsEmail()
   email?: string | null;
-
-  @ApiPropertyOptional({ description: 'URL da foto — o upload direto chega na fase de integrações' })
-  @IsOptional()
-  @ValidateIf((_, value) => value !== null && value !== '')
-  @IsUrl({ require_tld: false })
-  avatarUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

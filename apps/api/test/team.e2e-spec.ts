@@ -50,6 +50,7 @@ describe('aba Equipe — teto de plano, escala e convites (e2e)', () => {
     post: (path: string) => api().post(url(path)).set('Authorization', `Bearer ${token}`),
     patch: (path: string) => api().patch(url(path)).set('Authorization', `Bearer ${token}`),
     put: (path: string) => api().put(url(path)).set('Authorization', `Bearer ${token}`),
+    delete: (path: string) => api().delete(url(path)).set('Authorization', `Bearer ${token}`),
   });
   const asOwner = () => as(ownerToken);
 
@@ -420,6 +421,65 @@ describe('aba Equipe — teto de plano, escala e convites (e2e)', () => {
   });
 
   // ── Papéis ──────────────────────────────────────────────────────────────
+
+  describe('foto do barbeiro', () => {
+    /*
+     * O `image-slot` do protótipo (l.2166) era um campo "URL da foto" até o
+     * agente 29: o dono hospedava a imagem em outro lugar e colava o endereço.
+     * O `StorageAdapter` do agente 25 já resolvia o servidor — faltava a rota
+     * e o consumidor.
+     */
+
+    // 1×1 PNG — o menor arquivo válido que o `StorageAdapter` aceita.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+
+    it('envia a foto e o card passa a devolvê-la', async () => {
+      const response = await api()
+        .post(url(`/barbers/${ownerBarberId}/avatar`))
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .attach('file', png, { filename: 'foto.png', contentType: 'image/png' })
+        .expect(201);
+
+      expect(response.body.avatarUrl).toContain('/uploads/');
+
+      const list = await asOwner().get('/barbers').expect(200);
+      const row = list.body.find((barber: { id: string }) => barber.id === ownerBarberId);
+      expect(row.avatarUrl).toBe(response.body.avatarUrl);
+    });
+
+    it('recusa PDF disfarçado de imagem', async () => {
+      await api()
+        .post(url(`/barbers/${ownerBarberId}/avatar`))
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .attach('file', Buffer.from('%PDF-1.7'), { filename: 'x.pdf', contentType: 'application/pdf' })
+        .expect(415);
+    });
+
+    it('o PATCH não é mais um segundo caminho para gravar a foto', async () => {
+      // `avatarUrl` saiu do `UpdateBarberDto`: aceitá-lo ali seria escrever a
+      // mesma coluna sem passar pela validação de tipo e tamanho do storage.
+      await asOwner()
+        .patch(`/barbers/${ownerBarberId}`)
+        .send({ avatarUrl: 'https://exemplo.test/qualquer.png' })
+        .expect(400);
+    });
+
+    it('remove a foto', async () => {
+      const response = await asOwner().delete(`/barbers/${ownerBarberId}/avatar`).expect(200);
+      expect(response.body.avatarUrl).toBeNull();
+    });
+
+    it('o BARBER não mexe na foto de ninguém', async () => {
+      await api()
+        .post(url(`/barbers/${ownerBarberId}/avatar`))
+        .set('Authorization', `Bearer ${barberToken}`)
+        .attach('file', png, { filename: 'foto.png', contentType: 'image/png' })
+        .expect(403);
+    });
+  });
 
   describe('papéis', () => {
     it('o BARBER não abre a aba Equipe por nenhuma das rotas', async () => {
