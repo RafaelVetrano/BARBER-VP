@@ -1,7 +1,52 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-08-25 — **agente 27 (auditoria 1:1 da tela Meu
-perfil)** concluído: a `/app/meu-perfil` foi reconstruída contra
+Atualizado por último: 2026-09-03 — **agente 29 (reparos transversais)**
+concluído, e com ele a **linha 15 (aba Agenda) finalmente fechada**. Esta fase
+não auditou aba nova: varreu o que quatorze agentes empurraram para frente.
+
+O achado que mais dói é o que estava na PORTA do produto. **Um visitante
+anônimo que abrisse `/app` ou `/admin` ficava preso para sempre no skeleton
+"Carregando sua sessão…"** — não ia para o login, não dava erro, não fazia
+nada. O mecanismo é um deadlock de uma linha em `packages/ui/src/lib/api-client.ts`:
+o bootstrap do provider chamava `POST /auth/refresh` pelo MESMO axios que tem o
+interceptor; sem cookie válido dava 401; o interceptor preenchia
+`refreshInFlight` com `options.refreshTokens()` — que É a própria função de
+refresh —, ela disparava outro `/auth/refresh`, tomava outro 401, reentrava no
+interceptor e ali dava `await` na promise que só resolveria quando ela mesma
+terminasse. Ninguém rejeitava, `clearSession()` nunca era chamado, `status`
+ficava em `'loading'` — o estado exato em que os guardas mostram skeleton e não
+redirecionam. A correção é a guarda de que **o 401 da própria rota de refresh é
+definitivo**. O teste que a cobre foi conferido REPROVANDO antes do conserto:
+sem a guarda, três casos morrem no timeout.
+
+Depois dele, a fase é a aplicação sistemática da regra 2 ("todo botão tem
+função real") ao que sobrou — dos dois lados. Do lado do botão morto: o
+programa de pontos era usado em três telas e **ninguém no produto podia
+ligá-lo** (`GET|PATCH /loyalty/program` ficou órfão de tela quando o agente 21
+removeu a sub-aba), a meta mensal era desenhada pelo gráfico do Dashboard sem
+campo em lugar nenhum, e os três interruptores de automação de calendário do
+WhatsApp gravavam `enabled` **sem nada que os executasse**. Do lado do caminho
+sem saída: `/privacidade` e `/termos` eram TRÊS pontos de entrada para um 404,
+e uma barbearia com slug `cadastro` ou `recuperar-senha` nunca abriria.
+
+Duas armadilhas silenciosas que ninguém veria acontecer: **`Appointment.unitId`
+nascia sempre nulo**, o que fazia o filtro por unidade dos Relatórios — que o
+agente 20 entregou funcionando — devolver zero para sempre; e **o resgate de
+pontos não era atômico**, então duas comandas do mesmo cliente fechando juntas
+resgatavam o mesmo saldo duas vezes.
+
+Do registro que faltava: o trabalho não commitado do agente 15 estava **muito
+mais completo** do que as dívidas de outros agentes faziam supor — cinco das
+nove correções previstas já estavam feitas, e ninguém sabia porque o registro
+nunca foi escrito. É o argumento mais concreto deste arquivo para escrevê-lo
+antes de fechar a sessão.
+
+Suíte: **97 unit · 349 e2e · 180 isolamento**, mais **14 unit de frontend** —
+suíte nova, criada por duas defesas que nada reprovava no CI: o deadlock acima
+e a guarda de host do super admin. `make responsive` sem pendência em nenhuma
+das 35 rotas, nos 5 tamanhos.
+
+Antes disso, o **agente 27 (auditoria 1:1 da tela Meu perfil)**: a `/app/meu-perfil` foi reconstruída contra
 `Dashboard.dc.html` l.2737–2817 (dono/gerente), `DashboardFuncionario.dc.html`
 l.776–845 (barbeiro) e os dois modais que pendem dela (l.3511 exclusão de
 conta, l.1212 do funcionário pedido de exclusão de dados). O achado que mais
@@ -181,7 +226,7 @@ achados"). Antes disso, o agente 16 reconstruiu a `/app/clientes`, o 14 separou
 | 12 | Deploy | ⬜ |
 | 13 | Auditoria 1:1 — tela Dashboard | ✅ |
 | 14 | Auditoria — seeds de demonstração | ✅ |
-| 15 | Auditoria 1:1 — aba Agenda | ⬜ (ver nota) |
+| 15 | Auditoria 1:1 — aba Agenda | ✅ |
 | 16 | Auditoria 1:1 — aba Clientes | ✅ |
 | 17 | Auditoria 1:1 — aba Comandas (POS) | ✅ |
 | 18 | Auditoria 1:1 — aba Financeiro | ✅ |
@@ -195,16 +240,22 @@ achados"). Antes disso, o agente 16 reconstruiu a `/app/clientes`, o 14 separou
 | 26 | Auditoria 1:1 — aba Configurações | ✅ |
 | 27 | Auditoria 1:1 — tela Meu perfil | ✅ |
 | 28 | Auditoria 1:1 — aba Assistente IA (`auditoria/`) | ✅ |
+| 29 | Reparos transversais — fecha o 15 e as dívidas em aberto | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
 
-> **Nota sobre o agente 15.** Quando o 16 começou, o working tree já trazia a
-> aba Agenda reconstruída (`components/dashboard/agenda/`, `agenda.e2e-spec.ts`,
-> migration `agenda_time_block`) sem commit e sem registro nesta memória. O 16
-> não mexeu nesse trabalho — só acrescentou `preselectedClientId` ao modal de
-> agendamento, que é o contrato do "Agendar" da aba Clientes. Quem retomar
-> precisa fechar o registro do 15 antes de marcar a linha.
+> **Nota sobre o agente 15 — RESOLVIDA pelo agente 29 (2026-09-03).** Quando o
+> 16 começou, o working tree já trazia a aba Agenda reconstruída
+> (`components/dashboard/agenda/`, `agenda.e2e-spec.ts`, migration
+> `agenda_time_block`) sem commit e sem registro nesta memória. O 16 não mexeu
+> nesse trabalho — só acrescentou `preselectedClientId` ao modal. O agente 29
+> auditou esse código contra o protótipo, corrigiu o que faltava e escreveu o
+> bloco "O que o agente 15 entregou". **A lição, registrada porque custou
+> caro:** cinco das nove correções que o enunciado do 29 listava como
+> pendentes JÁ estavam feitas naquele código — as dívidas de outros agentes
+> descreviam um estado anterior ao trabalho que ninguém registrou. Código sem
+> registro é retrabalho garantido.
 
 ## Endpoints existentes
 
@@ -1143,8 +1194,7 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
 
 ## O que o agente 29 (reparos transversais) entregou
 
-> **Em andamento.** Camadas fechadas abaixo; a próxima sessão continua da
-> primeira camada NÃO marcada.
+Fase concluída — as seis camadas fechadas, na ordem do enunciado.
 
 ### Camada 0 — fechamento do agente 15 (aba Agenda) ✅
 
@@ -1210,6 +1260,373 @@ estavam feitas** e ninguém sabia, porque o registro nunca foi escrito:
    morta). Nada a remover do seletor.
 
 **Testes:** `agenda.e2e-spec.ts` 10/10, com o caso novo do `unitId`.
+
+### Camada 1 — defeitos que atingem o produto inteiro ✅
+
+1. **O deadlock do refresh** — o defeito mais grave que a fase 11 deixou em
+   aberto, descrito no cabeçalho deste arquivo. A correção é uma guarda em
+   `packages/ui/src/lib/api-client.ts`: o interceptor **não tenta renovar um
+   401 vindo da PRÓPRIA rota de refresh** (`/auth/refresh` e
+   `/client-auth/refresh`), porque esse 401 significa "não há sessão para
+   renovar" e precisa propagar até o `catch` do provider, que então chama
+   `clearSession()` e libera o guarda a redirecionar.
+
+   **O teste foi conferido REPROVANDO antes do conserto** — é o que separa um
+   teste de regressão de um teste decorativo. Sem a guarda, três dos quatro
+   casos morrem no timeout de 5s, inclusive o do anônimo em rota protegida. O
+   quarto (sessão renovável) passa nos dois estados, e existe para provar que
+   a guarda não quebrou o caminho de quem TEM sessão.
+
+   Conferido também no navegador, que é o critério de aceite: `/app` e
+   `/admin` anônimos caem em `/entrar`.
+
+2. **Suíte unitária de frontend, nova** (`apps/web/test`, 14 casos). Nasceu
+   porque as duas defesas mais caras do produto não tinham nada que
+   reprovasse no CI: o deadlock acima e **a guarda de host do super admin**,
+   verificada até então só à mão com `curl -H "Host: ..."` — é ela que
+   compensa a perda dos quatro deploys separados na fase 11. Ambiente `node`,
+   sem jsdom: nenhum dos dois toca no DOM, e testar componente React continua
+   dívida aberta.
+
+3. **Alvos de toque abaixo de 44px.** O `Tabs` e o `Switch` compartilhados JÁ
+   estavam corrigidos (`h-11 md:h-9` e o `<label>` de 44px dentro do próprio
+   componente) — outra dívida que descrevia um estado anterior. O que sobrou:
+   o **remendo local** da aba WhatsApp, um `<label>` de 44×44 em volta do
+   `Switch`, removido — além de redundante, `<label>` dentro de `<label>` é
+   HTML inválido; e a paginação de `/admin/mensagens`, em 79×34.
+
+4. **A barra de data da Agenda** (a única rota que a varredura do agente 27
+   ainda reprovava): `‹`/`›` de 36px e "Hoje" sem altura viraram 44px no
+   mobile, mantendo os 28px do protótipo no desktop.
+
+5. **`DashboardGuard` — reavaliado e MANTIDO** com navegação dura. A dívida da
+   fase 11 dizia para reavaliar depois de corrigido o deadlock; feito isso,
+   apareceu um motivo próprio para mantê-la: `(dashboard)`, `(admin)` e
+   `(marketing)/(auth)` montam cada um o SEU `EstablishmentAuthProvider`, e
+   cada provider dispara um refresh ao montar. Numa navegação suave entre
+   grupos as duas árvores coexistem por um instante, e duas POSTs simultâneas
+   em `/auth/refresh` rotacionam o cookie e fazem a segunda cair na detecção
+   de reuso, que revoga a família inteira — o incidente que a auditoria da aba
+   Comandas já pagou uma vez. A navegação dura não tem essa janela.
+
+6. **"Clientes" no nav do barbeiro: desvio consciente, escrito no código.** O
+   `DashboardFuncionario.dc.html` tem o item; aqui ele não aparece. A base de
+   clientes é `@Roles('OWNER','MANAGER')` no servidor desde a fase 06,
+   seguindo o `SPEC.md` → RBAC. Mostrar o item levaria a uma tela que responde
+   403; abrir `/clients` para `BARBER` afrouxaria o RBAC, o que a regra 3
+   desta fase proíbe. O que o barbeiro precisa do cliente ele já tem no
+   recorte certo — o drawer do agendamento traz nome, telefone, faltas e
+   últimas visitas. Reabrir a decisão exige antes decidir o RECORTE no
+   servidor, que é fase de produto.
+
+**`make responsive` fechou sem pendência em nenhuma das 35 rotas**, nos 5
+tamanhos — o que exigiu, na Agenda, duas decisões de desenho e não só de
+classe (ver Camada 5, "o que ficou decidido").
+
+### Camada 2 — recursos que existiam e a interface não alcançava ✅
+
+1. **O programa de pontos ganhou tela**, em `/app/configuracoes` →
+   **Preferências**. Foi para lá, e não para Barbearia, porque é uma REGRA DE
+   OPERAÇÃO da casa — vizinha do bloqueio por faltas, da antecedência mínima e
+   do prazo de cancelamento; a aba Barbearia guarda dado cadastral. Traz o
+   mesmo gate da rota (`fidelidadePontos`, Profissional+) e mostra o upsell
+   com benefícios visíveis para quem está no Essencial, nunca um campo morto.
+   Programa desligado **esconde** a calibragem em vez de desabilitá-la (regra
+   4: dois ramos de render).
+
+2. **Meta mensal** (`TenantSettings.monthlyGoalCents`): o agente 26 NÃO a
+   incluíra. O campo entrou em Preferências. A linha tracejada do gráfico do
+   Dashboard só aparecia para quem editasse o banco à mão.
+
+3. **`POST /admin/tenants/:id/deletion/cancel`.** `/admin/tenants` filtra por
+   `deletedAt`, que na exclusão AGENDADA é nulo: a barbearia seguia na lista
+   com aparência de normal, e o super admin não tinha como sequer VER que ela
+   estava na fila da faxina. A lista e o detalhe passaram a devolver `purgeAt`
+   (pílula vermelha com a data), e o drawer ganhou o bloco de desfazer. Volta
+   para `TRIAL`, não `ACTIVE`, pelo mesmo motivo do caminho do dono: a
+   assinatura foi cancelada no gateway e não se ressuscita cobrança
+   recorrente por conta própria.
+
+4. **Kill-switch da impersonação** (`POST /admin/tenants/:id/impersonate/revoke`).
+   Exigiu uma coluna nova, `AuthSession.impersonatedBy`: sem ela a sessão de
+   impersonação é **indistinguível de um login normal do OWNER**, e revogar
+   "a impersonação" derrubaria o dono junto. A revogação vale NA HORA,
+   inclusive para o access token já emitido — o `JwtAuthGuard` confere
+   `sessions.isActive(claims.sid)` a cada requisição —, e há caso e2e provando
+   exatamente isso: o mesmo token que respondia 200 passa a 401. Outro caso
+   prova que o login normal do dono NÃO é derrubado junto.
+
+5. **`GET|PUT /barbers/:id/work-schedule` REMOVIDAS.** Decisão: nenhuma tela
+   as reivindicou, e o modal da aba Equipe grava a escala junto com o resto
+   num `PATCH :id`, em transação única, enquanto `GET :id` já devolve a semana
+   em `workSchedule`. Dois caminhos de escrita para o mesmo dado é convite a
+   divergirem, e rota que ninguém chama não tem quem perceba quando quebra. Os
+   dois casos de isolamento que as cobriam foram REESCRITOS para o caminho que
+   sobrou, não apagados — a escala continua isolada.
+
+### Camada 3 — links que levavam a lugar nenhum ✅
+
+1. **`/privacidade` e `/termos` escritas.** Eram três pontos de entrada para
+   um 404 (cadastro do estabelecimento, registro do cliente e "Privacidade e
+   dados" de Meu perfil). Grupo `(marketing)/(legal)`, layout próprio — sem a
+   nav de vendas, que aqui não serve para nada. **O texto afirma só o que o
+   produto faz:** exportação e exclusão dos dois lados com os caminhos de tela
+   reais, a janela de 30 dias do `purgeAt`, e os prazos exatos de
+   `RETENTION_DAYS` (OTP 7 dias, sessão 30, mensagens 30, auditoria 365).
+   Nenhuma cláusula sobre integração que o v1 não tem.
+
+2. **O *soft 404* de `/{slug}` resolvido, e a causa era outra.** Não é
+   comportamento do `notFound()` no Next 14.2.16: era o **`loading.tsx`
+   daquela pasta**. Ele cria um limite de Suspense, o Next despeja a casca com
+   status 200 e só então resolve o `fetch` — quando o `notFound()` dispara, o
+   cabeçalho já foi enviado. Medido: com o arquivo, 200; sem ele, 404. Removê-lo
+   custou nada, e isso também foi medido: `generateMetadata` JÁ aguarda o mesmo
+   `fetchBarbershop` antes de qualquer byte sair, o `fetch` tem
+   `revalidate: 60` (a segunda chamada é leitura de cache na mesma
+   requisição), e nenhuma navegação interna aponta para `/{slug}` — é sempre
+   ponto de entrada de link externo, então o esqueleto nunca chegava a
+   aparecer.
+
+3. **Título da landing** não duplica mais a marca (`title: { absolute }`).
+
+4. **Slugs reservados atualizados contra as rotas REAIS.** O bloqueio já
+   existia e funcionava; a LISTA é que estava velha — faltavam `cadastro`,
+   `recuperar-senha` e `privacidade`, e uma barbearia com esses slugs nunca
+   abriria (no Next a rota estática ganha da dinâmica). O que faltava mesmo era
+   alguém reprovar quando nascesse rota nova: o teste novo **lê o diretório de
+   rotas de verdade** e falha se alguma escapar da lista. Conferido reprovando.
+
+5. **Link do fim do onboarding** (`{base}/agendar/{slug}` → 404): **NÃO
+   tocado, é escopo do agente 30**, que refaz o passo 3 do wizard. Segue de pé
+   em `onboarding.service.ts:443` e no `onboarding-wizard.tsx:195` (que faz o
+   caminho inverso). Os dois lados precisam mudar juntos.
+
+### Camada 4 — dado, schema e testes ✅
+
+1. **`make seed` — já estava certo.** O tenant demo (`barbearia-central`)
+   nasce com `onboardingDoneAt` preenchido desde o agente 14, com comentário
+   explicando o porquê. Só `barbearia-isolamento` fica pendente, e ele existe
+   para os testes, não para navegar. Os roteiros deste arquivo estão corretos
+   como estão.
+
+2. **`LoyaltyRaffle`/`LoyaltyRaffleEntry` derrubadas** (migration
+   `20260903200000_drop_loyalty_raffles`), junto com o enum `RaffleStatus` no
+   schema e em `packages/types`. Conferido antes: nada no código as
+   referenciava e as duas estavam vazias. Se sorteios voltarem, voltam como
+   fase própria com desenho novo.
+
+3. **Resgate de pontos protegido contra concorrência.** O saldo é a SOMA de um
+   ledger, não uma coluna — não há linha única contra a qual fazer o débito
+   condicional que a quota de assinatura usa. A trava é consultiva
+   (`pg_advisory_xact_lock` por tenant+cliente), com reconferência do saldo
+   dentro da transação e 409 (`LOYALTY_BALANCE_CHANGED`) se ele mudou. **Não é
+   a linha do `ClientProfile`**: nem todo cliente com pontos tem perfil naquela
+   barbearia, e uma trava que às vezes não tranca é pior que nenhuma.
+
+4. **Editar o teto de um PLANO reprocessa os tenants dele.** `applyPlanLimit`
+   só rodava na troca de plano DO TENANT. Agora a varredura acontece também
+   ao editar `maxBarbers` em `/admin/planos`, com uma transação POR TENANT (e
+   não uma gigante: o erro num tenant não pode desfazer o conserto dos
+   outros), só quando o teto de fato mudou, e com `AuditLog` próprio. Caso e2e
+   cobre encolher E crescer.
+
+5. **`revenueByBarber` vira `LEFT JOIN`.** Comanda sem barbeiro — a venda de
+   balcão — ficava fora do detalhamento, e a soma das linhas não batia com o
+   card de faturamento logo acima: dois números discordando na mesma tela, sem
+   nada explicando. Agora há linha "Sem barbeiro" e a soma fecha. O rateio por
+   item continua fora: é decisão de produto, não defeito.
+
+6. **O teste flaky de `generateBookingCode` já estava consertado** — foi
+   reescrito para medir ENTROPIA (colisões ≤ 2 em 2 mil sorteios, com a
+   matemática do paradoxo do aniversário no comentário) mais um caso de
+   cobertura de alfabeto. Nada a fazer.
+
+7. **`NODE_ENV=production` forçado** nos três alvos de build do `Makefile` e
+   nos três passos de build do CI. Não é dívida de código: é a pegadinha de
+   rodar `next build` de dentro dos containers de dev, que definem
+   `development` e fazem o Next misturar os runtimes — 35 páginas quebram na
+   pré-renderização com um erro que parece de código (`Cannot read properties
+   of null (reading 'useContext')`) e é de ambiente.
+
+### Camada 5 — infraestrutura pronta, faltando plugar ✅
+
+1. **Foto do barbeiro deixou de ser campo de URL.** O `image-slot` do
+   protótipo (l.2166) virou `ImageSlot` de verdade sobre
+   `POST /barbers/:id/avatar`, com o `StorageAdapter` do agente 25 — que já
+   resolvia o servidor desde então; faltava o consumidor. O contrato não mudou
+   (`Barber.avatarUrl` continua sendo o destino), então agenda, comanda e
+   página pública seguem lendo o mesmo campo.
+
+   Dois detalhes que a troca revelou: no modo CONVITE o campo antigo **nem
+   chegava ao servidor** (`useCreateStaffInviteMutation` não manda `avatarUrl`)
+   — era um controle que não fazia nada; e `avatarUrl` **saiu do
+   `UpdateBarberDto`**, porque aceitá-lo no `PATCH` seria um segundo caminho
+   de escrita para a mesma coluna, esse sem validação de tipo nem de tamanho.
+   Dois ramos de render: quem já é `Barber` envia foto, quem ainda é convite vê
+   as iniciais e a explicação.
+
+2. **Onboarding passo 3 (logo e capa):** escopo do agente 30, não tocado.
+
+3. **As automações de calendário do WhatsApp passaram a disparar** — o maior
+   item da fase. `BIRTHDAY`, `REACTIVATION` e `REVIEW` guardavam `enabled` e
+   `enabledAt`, a tela dizia "ativa", e **nada acontecia, nunca**: o
+   `BookingNotificationsService` só cobre confirmação, lembrete e cancelamento,
+   que são REAÇÕES a um agendamento; estes três são disparos por calendário e
+   não tinham executor. Três interruptores prometendo um recurso inexistente.
+
+   Fila própria (`automations`, a quinta), job diário às 9h por padrão
+   (`QUEUE_AUTOMATIONS_HOUR` — e não de madrugada como a faxina: são mensagens
+   que uma PESSOA recebe), pelo mesmo `NotificationAdapter` de todo o resto.
+   As quatro decisões que fazem o job ser seguro rodar todo dia:
+
+   - **Idempotência**, que é o ponto delicado — job diário que reenvia é pior
+     que job que não roda. Cada evento consulta o próprio `NotificationOutbox`
+     antes de enfileirar, com a janela apropriada: aniversário uma vez por ano,
+     reativação uma vez por janela de inatividade, avaliação uma vez por
+     AGENDAMENTO (a chave é o `appointmentId` do payload, porque um cliente
+     pode ser atendido duas vezes no mesmo dia).
+   - **A janela de reativação é a CONFIGURADA** (`offsetMinutes`), não 30 dias
+     fixos — o agente 22 tornou o `<select>` configurável e a faixa dourada da
+     aba já o respeitava; o job usa a mesma pergunta.
+   - **A avaliação tem limite inferior de 24h.** Sem ele, ligar a automação
+     hoje dispararia pedido para todo atendimento concluído na história da
+     barbearia: a primeira rodada mandaria milhares de mensagens.
+   - **O gate de plano é reconferido NO JOB.** `enabled` sobrevive a um
+     downgrade: o dono liga no Avançado, cai para o Essencial, e a linha
+     continua `true`. Sem a checagem, o job entregaria um recurso que a
+     barbearia deixou de pagar — e o gate deixaria de ser server-side.
+
+   O dia do aniversário é o do FUSO DO TENANT, não o do servidor: um tenant em
+   Rio Branco recebendo o job às 21h de Brasília ainda está na véspera, e
+   "feliz aniversário" um dia antes é pior que nada.
+
+### O que esta fase decidiu NÃO corrigir, e por quê
+
+- **Navegação dura do `DashboardGuard`** — reavaliada e mantida, com motivo
+  próprio novo (ver Camada 1, item 5).
+- **"Clientes" no nav do barbeiro** — desvio consciente; corrigir exigiria
+  afrouxar o RBAC (Camada 1, item 6).
+- **Rateio de faturamento por item** entre barbeiros de uma mesma comanda —
+  decisão de produto, não defeito. A linha "Sem barbeiro" já fecha a soma.
+- **Alvos de clique em slot vago da Agenda, no celular** — a faixa de um slot
+  tem a altura do próprio slot (15 min ≈ 17px), e esticá-la para 44px
+  desalinharia o horário que ela representa, que é a única coisa que ela
+  significa. No celular ela não é renderizada; o caminho é o "+ Novo
+  agendamento", que abre o mesmo modal com chips de tamanho de dedo.
+- **Tabela `Notification` de verdade, provedores reais, multi-unidade de fato,
+  paginação de volume e performance** — escopo declarado fora do v1, como o
+  enunciado desta fase determinou.
+
+### O que continua em aberto depois desta fase
+
+Em uma tela, porque é isto que quem abrir a próxima sessão precisa ver:
+
+| O que | Estado |
+|---|---|
+| **Fase 12 — Deploy** | ⬜ A ÚNICA fase pendente. Vercel (`apps/web`) + Railway (`apps/api` + Postgres + Redis); `make build-web`/`make build-api` já rodam o contrato de cada uma, e o CI os verifica em passos dedicados. |
+| **Agente 30 — passo 3 do onboarding** | ⬜ Refaz o wizard: o link público quebrado (`{base}/agendar/{slug}`) e o upload de logo/capa, com o mesmo `ImageSlot` e o mesmo `StorageAdapter` que a aba Equipe passou a usar nesta fase. |
+| **Provedores reais** (WhatsApp oficial, Asaas, Google OAuth, LLM do Assistente) | Fora do v1 por decisão de escopo. Os mocks fazem o que prometem, e `docs/INTEGRACOES.md` tem os 3 passos de troca — validados seguindo os próprios passos na fase 09. |
+| **Multi-unidade de fato** | Fora do v1. O `unitId` agora É GRAVADO na escrita (agente 29), então o filtro dos Relatórios funciona; falta o `AvailabilityService` respeitar unidade e escopar `Client`/`Product`. |
+| **Tabela `Notification`, paginação de volume, performance** | Fora do v1. Nada quebrado; é otimização para volume que ainda não existe. |
+| **Teste de componente React** | Dívida aberta desde a fase 02. A suíte de frontend nasceu nesta fase, mas em ambiente `node` — falta jsdom + testing-library para cobrir interação. |
+
+**O produto está inteiro. O que falta é publicar.**
+
+## O que o agente 15 (auditoria 1:1 da aba Agenda) entregou
+
+> Registro escrito pelo **agente 29** (2026-09-03). O trabalho é do 15, que o
+> deixou no working tree sem commit e sem registro; o 29 o auditou contra o
+> protótipo, corrigiu o que faltava e fechou a linha. Ver a nota na tabela de
+> fases.
+
+Rota: `/app/agenda`. **Faixa do protótipo, confirmada por grep** (nenhum agente
+anterior a anotara): `Dashboard.dc.html` **l.395–563** — a aba Clientes começa
+em l.565. Dentro dela: toolbar l.396–440, visão **Dia** l.441–479, **Semana**
+l.481–498, **Mês** l.500–531, **Timeline** l.533–563. O recorte do barbeiro é
+`DashboardFuncionario.dc.html` a partir de l.240: mesma toolbar **sem o filtro
+de barbeiro** (ele só vê a própria agenda), mesmas 4 visões, mesmos 3 botões à
+direita.
+
+### Tabela de desvios
+
+Fechada com **um desvio consciente**, e não zerada — ver a última linha.
+
+| Bloco do protótipo | Estado | Regra de negócio | Papéis |
+|---|---|---|---|
+| Navegador `‹ Hoje ›` + campo de data | presente | passo de 1 dia (7 na semana, 1 mês no mês) | todos |
+| Seletor de 4 visões | presente | Semana e Timeline só ≥ `lg`; abaixo, aviso e volta ao Dia | todos |
+| Filtro multi-seleção de barbeiro | presente | some para `BARBER`; vazio = todos | OWNER/MANAGER |
+| "Bloquear horário" | presente | `BARBER` bloqueia só a própria agenda | todos |
+| "Copiar link de agendamento" | presente | usa o slug real do tenant | todos |
+| "+ Novo agendamento" | presente | walk-in ou cliente cadastrado | todos |
+| Grade do Dia (colunas por barbeiro) | presente | régua vem de `gridStartMinutes`/`End` da API, não de 08:00–20:00 cravado | todos |
+| Faixa de almoço hachurada | presente | sai da `WorkSchedule` do barbeiro | todos |
+| Linha "agora" | presente | só no dia de hoje, no fuso do tenant | todos |
+| ⚠ "cliente com 2+ faltas" | presente | limiar 2 é o do desenho; o BLOQUEIO usa `bloquearFaltasQtd` | todos |
+| Visões Semana / Mês / Timeline | presente | Mês tem endpoint próprio (contagem + ocupação) | todos |
+| Drawer do agendamento | presente | confirmar, remarcar, falta, cancelar, últimas visitas | todos |
+| Modal de agendamento/remarcação | presente | horários vêm de `/slots`; o mesmo modal remarca | todos |
+| Seletor de recorrência do modal (l.5113) e `↻` no bloco | **ausente** | ver decisão 5 | — |
+
+### Backend
+
+`staff-agenda`: `GET /` (dia/semana/timeline), `GET /month`, `GET /slots`,
+`GET /:id` (drawer + histórico), `POST /`, `POST /blocks`, `DELETE /blocks/:id`,
+`PATCH /:id/move`, `/confirm`, `/no-show`, `/cancel`. O recorte por papel é do
+`StaffScopeService`, dentro do serviço — `BARBER` entra pelas MESMAS rotas, e
+não por rota duplicada. Migration `agenda_time_block` para os bloqueios.
+
+### Frontend
+
+`components/dashboard/agenda/`: toolbar, as quatro grades, drawer, modal de
+agendamento/remarcação e modal de bloqueio, sobre `lib/dashboard/api/agenda.ts`.
+Quatro pontos de entrada externos, todos por query string: `?novo=1` (CTA da
+topbar), `?date=` (busca global), `?cliente=` (o "Agendar" da aba Clientes, que
+o agente 16 acrescentou) e `?barbeiro=` (o "Ver agenda" do card da Equipe).
+
+### Decisões conscientes
+
+1. **Cor do bloco: STATUS, com o serviço como acento.** O protótipo colore por
+   status nas três visões (`STATUS_COLORS`, l.5055/5071/5091) — a suposição de
+   que colorisse por serviço estava errada. Mas o catálogo tem um campo
+   literalmente chamado "Cor na agenda" (l.1993) que não fazia nada. Os dois
+   foram honrados: o TOM do bloco é o do status, e `Service.color` entra como
+   faixa lateral de 4px. Serviço sem cor não desenha faixa.
+2. **Timeline tem desenho próprio** (l.533–563): faixa horizontal por
+   barbeiro, régua de horas, almoço e bloqueios como zona morta. Nada a
+   remover do seletor.
+3. **Semana e Timeline só ≥ `lg`.** Abaixo disso não cabem; a tela mostra o
+   aviso com o botão de voltar ao Dia, em vez de uma grade ilegível.
+4. **Escala vertical maior no celular** (1.6 px/min contra 1.1): o bloco é um
+   alvo de toque, e a 1.1 um atendimento de 30 min rendia 31px. A grade fica
+   mais alta e rola mais — é o preço de um alvo que o dedo acerta.
+5. **Recorrência ficou de fora, e é o único desvio da tabela.** O protótipo tem
+   o seletor "Não repete / Toda semana / A cada 15 dias / Todo mês" (l.5113) e
+   o `↻` no bloco da grade. Portá-lo NÃO é um campo: exige série de
+   agendamentos no modelo (o que é "cancelar só esta ocorrência"? e mover uma
+   do meio? e quando a escala do barbeiro muda no meio da série?), e cada uma
+   dessas perguntas é regra de produto. Deixar o seletor na tela gravando um
+   campo que ninguém lê seria exatamente o botão decorativo que a regra 2
+   proíbe — melhor ausente e escrito aqui do que presente e mentindo.
+
+### Testes
+
+`agenda.e2e-spec.ts`, 10 casos: a grade sai da ESCALA (não do horário da casa
+nem de valor fixo), as 4 visões respondem, o almoço não é oferecido e o horário
+oferecido é aceito, bloqueio fecha a agenda interna E a grade pública, falta
+conta na ficha e **bloqueia o cliente no booking ao atingir o limite**, o
+`unitId` nasce preenchido, e remarcar passa pelo motor de disponibilidade.
+Isolamento: `dashboard-operation.isolation-spec.ts` cobre tenant e papel.
+
+### Dívidas que a aba deixa
+
+- **Sem teste de frontend da grade em si.** A varredura responsiva mede
+  layout; a interação (arrastar, clicar em slot) segue conferida a olho.
+- **A visão Mês não filtra por barbeiro na contagem** — mostra a ocupação da
+  casa inteira. O protótipo também.
+- **Recorrência de agendamento não existe** (decisão 5 acima). É a única
+  ausência da tabela de desvios, e entra como fase própria — com modelo de
+  série —, nunca como campo solto no modal.
 
 ## O que o agente 28 (auditoria da aba Assistente IA) entregou
 
@@ -1488,7 +1905,8 @@ de "Alterar foto" nasceu com 16px de altura e foi para 44px no dedo).
 
 ### Dívidas que a tela deixa
 
-- **`/privacidade` não existe.** O link "Política de Privacidade" (l.2804)
+- ~~**`/privacidade` não existe.**~~ — **RESOLVIDA pelo agente 29**:
+  `/privacidade` e `/termos` escritas no grupo `(marketing)/(legal)`. Era: O link "Política de Privacidade" (l.2804)
   aponta para a mesma rota que o cadastro do estabelecimento e o registro do
   cliente já apontam desde as fases 03/05 — e ela nunca foi escrita. Não é
   dívida desta tela, mas agora são TRÊS pontos de entrada para um 404. Escrever
@@ -3924,6 +4342,50 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 
 ## Decisões tomadas
 
+- 2026-09-03 (agente 29) — **Cor do bloco da Agenda: STATUS, com o serviço
+  como acento.** O protótipo colore por status nas três visões
+  (`STATUS_COLORS`, l.5055/5071/5091) — a suposição registrada de que
+  colorisse por SERVIÇO estava errada, e foi conferida no arquivo. Mas o
+  catálogo tem um campo chamado "Cor na agenda" (l.1993) que não fazia nada.
+  Honrar os dois: tom do bloco pelo status, `Service.color` como faixa lateral
+  de 4px.
+- 2026-09-03 (agente 29) — **Timeline FICA, com desenho próprio.** A decisão
+  que o enunciado pedia já estava tomada pelo código não registrado do agente
+  15: `agenda-timeline.tsx` porta a l.533–563. Nada a remover do seletor.
+- 2026-09-03 (agente 29) — **"Clientes" NÃO volta ao nav do barbeiro.** O
+  `DashboardFuncionario.dc.html` (l.1615) tem o item; o `SPEC.md` → RBAC não
+  dá ao `BARBER` acesso à base de clientes, e `/clients` é
+  `@Roles('OWNER','MANAGER')` desde a fase 06. Mostrar levaria a um 403;
+  abrir a rota afrouxaria o RBAC. Desvio consciente, escrito em `nav.ts`.
+  Reabrir exige antes decidir o RECORTE no servidor — é fase de produto.
+- 2026-09-03 (agente 29) — **Programa de pontos mora em Configurações →
+  Preferências.** É regra de OPERAÇÃO da casa (vizinha do bloqueio por faltas
+  e da antecedência mínima), não dado cadastral — que é a aba Barbearia.
+- 2026-09-03 (agente 29) — **`GET|PUT /barbers/:id/work-schedule` REMOVIDAS.**
+  Sem consumidor desde a fase 06, e o `PATCH :id` já grava a escala em
+  transação única enquanto o `GET :id` já a devolve. Dois caminhos de escrita
+  para o mesmo dado divergem; rota que ninguém chama não tem quem perceba
+  quando quebra. Os casos de isolamento foram reescritos, não apagados.
+- 2026-09-03 (agente 29) — **`DashboardGuard` mantém a navegação DURA**, agora
+  por motivo próprio e não por herança: os três route groups montam cada um o
+  seu `EstablishmentAuthProvider`, e a navegação suave abriria janela para
+  dois `POST /auth/refresh` simultâneos — que rotacionam o cookie e disparam a
+  detecção de reuso, revogando a família inteira.
+- 2026-09-03 (agente 29) — **`loading.tsx` de `/{slug}` removido para o 404
+  voltar a ser 404.** Ele criava o limite de Suspense que fazia a casca sair
+  com status 200 antes do `fetch` resolver. Medido nos dois estados; custo
+  zero, porque `generateMetadata` já aguarda o mesmo fetch (deduplicado,
+  `revalidate: 60`) e nenhuma navegação interna aponta para a rota.
+- 2026-09-03 (agente 29) — **`avatarUrl` sai do `UpdateBarberDto`.** Com o
+  upload real em `POST /barbers/:id/avatar`, aceitá-lo também no `PATCH` seria
+  um segundo caminho de escrita para a mesma coluna, esse sem validação de
+  tipo nem de tamanho.
+- 2026-09-03 (agente 29) — **Recorrência de agendamento fica ausente.** É o
+  único desvio da tabela do agente 15. Portá-la exige modelo de série (o que é
+  "cancelar só esta ocorrência"? mover uma do meio? escala que muda no meio da
+  série?) — cada pergunta é regra de produto. Um seletor gravando campo que
+  ninguém lê seria o botão decorativo que a regra 2 proíbe.
+
 - 2026-08-24 (agente 25) — **`StorageAdapter` em vez de upload direto no
   serviço.** `MyPageService` grava um `Buffer` e recebe uma URL; quem sabe se
   o byte vai para o disco do container ou para um bucket é a factory de
@@ -4743,6 +5205,43 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   limites em env (`BOOKING_GUEST_IP_HOURLY_LIMIT`, `BOOKING_GUEST_OPEN_LIMIT`,
   `BOOKING_CREATE_HOURLY_LIMIT`). Ver decisão da fase 04.
 
+### Dívidas novas do agente 29 (reparos transversais)
+
+- **A suíte de frontend cobre dois arquivos, não componentes.**
+  `apps/web/test` nasceu para o interceptor de refresh e para o middleware —
+  os dois em ambiente `node`. **Testar componente React continua sem
+  ferramenta** (jsdom + testing-library), que é a mesma dívida das fases
+  02/04/05/06. A varredura responsiva mede layout renderizado; a INTERAÇÃO
+  (clicar num slot, arrastar, preencher o modal) segue sem rede de proteção.
+- **`AuthSession.impersonatedBy` não tem FK.** É ponteiro de auditoria, e o
+  `AuditLog` já guarda o registro completo com `SetNull` — mas se o super
+  admin for apagado, a coluna fica com um id órfão. Não afeta o kill-switch
+  (o filtro é `!= null`), e só incomodaria um relatório futuro de "quem
+  impersonou quem".
+- **O job de automações varre até 500 por tenant e por evento.** É o mesmo
+  teto do disparo manual de reativação, e sobra para o volume de uma
+  barbearia. Uma rede com centenas de tenants grandes precisaria paginar — e
+  aí a dedupe por `NotificationOutbox`, que hoje é uma consulta por lote,
+  vira o gargalo antes do envio.
+- **A deduplicação de aniversário usa janela de 300 dias**, não "este ano
+  civil". Escolha deliberada (cobre o aniversário anterior sem esbarrar no
+  próximo), mas significa que um cliente cadastrado com data errada e
+  corrigida no mesmo ano não recebe até a janela passar.
+- **A automação de avaliação não sabe se o cliente já avaliou.** Manda o
+  pedido para todo atendimento concluído na janela, tenha ele virado `Review`
+  ou não. Cruzar com a tabela `Review` é uma linha — ficou de fora porque o
+  pedido do protótipo é "como foi seu atendimento", não "avalie", e o
+  histórico de envio já mostra o que saiu.
+- **A recorrência de agendamento continua ausente** — é o único desvio da
+  tabela do agente 15, e a razão está lá: exige modelo de série, não campo.
+- **A foto do barbeiro vai para a pasta do tenant**, como a do usuário
+  (dívida gêmea do agente 27). Correto hoje; se o storage ganhar ciclo de
+  vida por tenant, revisar.
+- **O link público do fim do onboarding segue quebrado**
+  (`{base}/agendar/{slug}` → 404, `onboarding.service.ts:443` +
+  `onboarding-wizard.tsx:195`). **Deliberadamente não tocado: é do agente 30**,
+  que refaz o passo 3 do wizard. Os dois lados precisam mudar juntos.
+
 ### Dívidas novas do agente 28 (aba Assistente IA)
 
 - **O driver mock responde 4 intenções, por palavra-chave.** Faturamento,
@@ -4780,7 +5279,9 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   estabelecimento e o registro do cliente já apontam desde as fases 03/05 — e
   ela nunca foi escrita. Agora são TRÊS pontos de entrada para um 404. Escrever
   a página (e a de termos) é trabalho de conteúdo, não de código.
-- **Não há como o super admin desfazer uma exclusão agendada.**
+- ~~**Não há como o super admin desfazer uma exclusão agendada.**~~ —
+  **RESOLVIDA pelo agente 29**: `POST /admin/tenants/:id/deletion/cancel`,
+  mais `purgeAt` na lista e no detalhe (a pílula vermelha com a data). Era:
   `/admin/tenants` filtra por `deletedAt`, que no agendamento é nulo — a
   barbearia continua na lista, mas sem botão para limpar o `purgeAt`. Se o dono
   perder o acesso ao login dentro dos 30 dias, ninguém desfaz.
@@ -4792,21 +5293,26 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 
 ### Dívidas novas do agente 24 (aba Equipe)
 
-- **Foto do barbeiro é URL, não upload.** O `image-slot` do protótipo (l.2166)
+- ~~**Foto do barbeiro é URL, não upload.**~~ — **RESOLVIDA pelo agente 29**:
+  `ImageSlot` + `POST /barbers/:id/avatar`, e `avatarUrl` saiu do
+  `UpdateBarberDto` para não haver segundo caminho de escrita. Era: O `image-slot` do protótipo (l.2166)
   virou campo "URL da foto" com prévia no `Avatar`, o mesmo caminho que o
   onboarding já usa para o logo. **O `StorageAdapter` do agente 25 já resolve
   o lado do servidor** — trocar o campo pelo `ImageSlot` de
   `components/dashboard/my-page/image-slot.tsx` mais um
   `POST /team/barbers/:id/avatar` fecha a dívida sem mexer no contrato
   (`Barber.avatarUrl` continua sendo o destino).
-- **Mudar `maxBarbers` de um PLANO (Super Admin → Planos) não reprocessa os
-  tenants.** `applyPlanLimit` roda na troca de plano DO TENANT
+- ~~**Mudar `maxBarbers` de um PLANO (Super Admin → Planos) não reprocessa os
+  tenants.**~~ — **RESOLVIDA pelo agente 29**: o `AdminPlansService` varre os
+  tenants do plano quando o teto muda, uma transação por tenant. Era: `applyPlanLimit` roda na troca de plano DO TENANT
   (`/settings/plan/change` e `/admin/tenants/:id/plan`), não quando o teto do
   plano em si é editado em `/admin/planos`. Um plano que encolhe deixa os
   tenants acima do novo teto sem a marcação até a próxima troca. O conserto é
   varrer os tenants do plano no `AdminPlansService` — fica para quem mexer no
   Super Admin.
-- **`GET|PUT /barbers/:id/work-schedule` ficou sem consumidor no front.** O
+- ~~**`GET|PUT /barbers/:id/work-schedule` ficou sem consumidor no front.**~~ —
+  **RESOLVIDA pelo agente 29 REMOVENDO as rotas**: ninguém as reivindicou, e o
+  `PATCH :id` já grava a escala em transação única. Era: O
   modal grava a semana junto com o resto por `PATCH`, numa transação só. As
   duas rotas continuam no contrato e cobertas pelo isolamento; se ninguém as
   reivindicar até o fechamento, são candidatas a remoção.
@@ -4825,7 +5331,9 @@ reprova, em 360 e 390, telas de outros agentes — **não foram tocadas**:
 - ~~`/app/minha-pagina` (agente 25): rolagem horizontal (+59px em 360, +30px
   em 390) e 2 alvos de toque abaixo de 44px.~~ — **corrigido pelo agente 25**;
   a rota passa nos 5 tamanhos.
-- `/app/agenda` (agente 15, cujo registro nesta memória segue aberto): em 360 e
+- ~~`/app/agenda`: cinco alvos abaixo de 44px na barra de navegação de
+  data.~~ — **corrigido pelo agente 29**; a rota passa nos 5 tamanhos, e a
+  varredura fechou sem pendência em nenhuma das 35. Era: em 360 e
   390, cinco alvos abaixo de 44px na barra de navegação de data — `‹` e `›`
   (36×36), "Hoje" (49×20), o campo de data (187×42) e o seletor de barbeiro
   (169×17). É a única pendência que a varredura do agente 27 ainda acusa.
@@ -4937,9 +5445,11 @@ app consolidada e existem em `main` do mesmo jeito — `packages/ui` e
 e nas telas só mudou o caminho do import. Estão aqui porque foi esta sessão que
 as viu. A primeira é a mais séria.
 
-- **Deadlock no interceptor de refresh: visitante ANÔNIMO em `/app` ou
+- ~~**Deadlock no interceptor de refresh: visitante ANÔNIMO em `/app` ou
   `/admin` fica preso no skeleton "Carregando sua sessão…" para sempre, em vez
-  de ser mandado para `/entrar`.** Encontrado ao verificar os guardas desta
+  de ser mandado para `/entrar`.**~~ — **RESOLVIDA pelo agente 29**: o
+  interceptor não tenta mais renovar um 401 vindo da própria rota de refresh.
+  Teste conferido reprovando antes do conserto; verificado no navegador. Encontrado ao verificar os guardas desta
   fase; o código é de `packages/ui`, byte-a-byte idêntico ao de `main`.
 
   Mecanismo, em `packages/ui/src/lib/api-client.ts:120-131`: o bootstrap do
@@ -4965,12 +5475,19 @@ as viu. A primeira é a mais séria.
   interceptor, ou pular o interceptor quando `config.url` já é a própria rota
   de refresh. Precisa de teste cobrindo "anônimo em rota protegida vai para o
   login" — hoje nada reprova isso.
-- **`DashboardGuard` foi mantido com navegação DURA para o login**
+- ~~**`DashboardGuard` foi mantido com navegação DURA para o login**~~ —
+  **reavaliada e MANTIDA pelo agente 29**, agora por motivo próprio: os três
+  route groups montam cada um o seu `EstablishmentAuthProvider`, e a
+  navegação suave abriria janela para dois refresh simultâneos (detecção de
+  reuso). Ver o bloco do agente 29. Segue como está:
   (`window.location.assign`), e não `router.replace`, mesmo agora que login e
   painel são a mesma origem. Era o comportamento anterior (o login morava em
   `apps/site`, outra origem) e trocá-lo mudaria o ciclo de vida do provider de
   sessão. Se a dívida acima for corrigida, é aí que dá para reavaliar.
-- **`Tabs` de `packages/ui` reprova o alvo de toque de 44px.**
+- ~~**`Tabs` de `packages/ui` reprova o alvo de toque de 44px.**~~ —
+  **RESOLVIDA**: o `Tabs` e o `Switch` compartilhados já haviam sido
+  corrigidos; o agente 29 removeu o remendo local da aba WhatsApp e fechou o
+  que sobrava. `make responsive` passa nas 35 rotas.
   `packages/ui/src/components/tabs.tsx:117` usa `h-9` (36px), abaixo do mínimo
   WCAG que a própria `scripts/responsive-sweep.mjs` cobra. Aparece em
   `/app/servicos-produtos`, `/app/equipe`, `/app/comandas`, `/app/fidelidade` e
@@ -4980,13 +5497,19 @@ as viu. A primeira é a mais séria.
   linha, e reconferir o espaçamento das telas afetadas. Também há `input`s de
   24px de altura em `/app/fidelidade` e `/app/whatsapp` (toggles) e um de 40px
   em `/app/comissoes`.
-- **`notFound()` de `/{slug}` responde 200, não 404.** Slug inexistente
+- ~~**`notFound()` de `/{slug}` responde 200, não 404.**~~ — **RESOLVIDA pelo
+  agente 29, e a causa NÃO era o `notFound()`**: era o `loading.tsx` da pasta,
+  que criava limite de Suspense e fazia a casca sair com 200 antes do `fetch`
+  resolver. Removido, com a medição no bloco do 29. Slug inexistente
   renderiza a tela "Barbearia não encontrada" certa, mas com status 200 — um
   *soft 404* que o robô de busca pode indexar. O caminho de código é o mesmo de
   `main` (página, `not-found.tsx` e formato do middleware idênticos), e o 404 do
   Next funciona normalmente em rota sem match (`/app/rota-inexistente` → 404),
   então é específico do `notFound()` desta rota dinâmica no Next 14.2.16.
-- **`make seed` deixa o onboarding PENDENTE** (`TenantSettings.onboardingDoneAt`
+- ~~**`make seed` deixa o onboarding PENDENTE**~~ — **não reproduz**: o tenant
+  demo nasce com `onboardingDoneAt` desde o agente 14. Só o
+  `barbearia-isolamento` fica pendente, e ele existe para os testes.
+  Registro do que ERA: (`TenantSettings.onboardingDoneAt`
   fica `null` nos dois tenants). Consequência: logo após um seed limpo, entrar
   no painel cai em `/app/configurar`, e não no dashboard — o que contradiz os
   roteiros de verificação das fases 06 e 07 deste arquivo. Para conferir o
@@ -5001,7 +5524,8 @@ as viu. A primeira é a mais séria.
   interpolação (uma linha) e ajustar
   `components/dashboard/onboarding/onboarding-wizard.tsx:195`, que faz o
   caminho inverso (`replace(/\/agendar\/.*$/, '')`).
-- **Título da landing duplica a marca**: sai
+- ~~**Título da landing duplica a marca**~~ — **RESOLVIDA pelo agente 29**
+  (`title: { absolute }`). Era: sai
   "BarberVP — Sistema de gestão para barbearias · BarberVP", porque o `title`
   absoluto da rota ainda recebe o `template: '%s · BarberVP'` do layout.
   Herdado da fase 10 (o `apps/site` fazia igual). Correção: usar
@@ -5012,12 +5536,17 @@ as viu. A primeira é a mais séria.
   middleware — mesma forma da guarda do admin, restringindo `/{slug}` ao host
   do booking. Não foi feito porque exigiria uma allowlist das rotas de
   marketing, frágil para rota nova.
-- **`/agendar` e as rotas de marketing são slugs reservados na prática.** Uma
+- ~~**`/agendar` e as rotas de marketing são slugs reservados na prática.**~~ —
+  **RESOLVIDA pelo agente 29**: a lista existia mas estava velha (faltavam
+  `cadastro`, `recuperar-senha`, `privacidade`), e agora um teste lê o
+  diretório de rotas e reprova quando nasce rota fora dela. Era: Uma
   barbearia com slug `entrar`, `cadastro`, `agendar` ou `recuperar-senha` nunca
   abriria: no Next a rota estática ganha da dinâmica. Antes eram domínios
   separados e isso não existia. Vale uma validação de slug no cadastro do
   tenant (`apps/api`), com a lista de reservados vindo daqui.
-- **Nenhum teste automatizado do middleware.** A guarda de host e as reescritas
+- ~~**Nenhum teste automatizado do middleware.**~~ — **RESOLVIDA pelo agente
+  29**: `apps/web/test/middleware.spec.ts` cobre a guarda de host do admin nos
+  quatro hosts, as reescritas e os cabeçalhos por superfície. Era: A guarda de host e as reescritas
   foram verificadas ao vivo com `curl -H "Host: ..."` (resultado na seção da
   fase 11), mas não há teste que reprove no CI se alguém quebrar a guarda do
   admin. É o candidato mais óbvio a teste de frontend, agora que existe uma app
@@ -5254,24 +5783,31 @@ as viu. A primeira é a mais séria.
   `endTime <= startTime`, combo aplicado num agendamento criado pelo staff
   etc.). Os unitários das fases 01–05 continuam 100% verdes porque nada foi
   alterado nelas; o que falta é cobertura NOVA para os módulos desta fase.
-- **Modal de novo agendamento assume fuso do navegador = fuso do tenant**
+- ~~**Modal de novo agendamento assume fuso do navegador = fuso do tenant**~~ —
+  **não reproduz**: o `startsAt` enviado vem de `GET /staff-agenda/slots`, que
+  é instante UTC calculado no servidor. Registro do que ERA:
   (decisão documentada acima). Correto para o caso real (staff operando da
   própria barbearia); errado se algum dia existir operação remota/multi-fuso.
   Resolver: repetir no frontend a mesma conversão `zonedTimeToUtc` que
   `apps/api/src/common/utils/timezone.ts` já tem no backend, usando o
   `timezone` que `GET /staff-agenda` já devolve.
-- **Mover agendamento só troca o horário do MESMO dia** — o `MoveModal` do
+- ~~**Mover agendamento só troca o horário do MESMO dia**~~ — **não reproduz**:
+  a remarcação reusa o modal completo, com data E barbeiro. Era: — o `MoveModal` do
   `/agenda` não deixa escolher outra data (nem outro barbeiro, embora o
   endpoint `PATCH /staff-agenda/:id/move` aceite `barberId`). Simplificação
   de UI para caber no tempo desta sessão; o backend já suporta o caso
   completo, falta o formulário.
-- **Sem marcar `DONE`/`NO_SHOW` pela agenda.** Esta fase só cobre criar/mover/
+- ~~**Sem marcar `DONE`/`NO_SHOW` pela agenda.**~~ — **não reproduz**:
+  `PATCH /staff-agenda/:id/no-show` existe, com controle no drawer e caso e2e
+  provando que a falta bloqueia o cliente no booking. Era: Esta fase só cobre criar/mover/
   cancelar (`AppointmentStatus` fica em `SCHEDULED`/`CONFIRMED`/`CANCELED`) —
   fechar o atendimento como concluído ou falta é ação de Comandas, fase 07
   explícita no enunciado. Consequência: `ClientProfile.noShowCount` (usado
   pelo bloqueio de agendamento online, regra já ativa desde a fase 04) segue
   sem nenhum caminho de escrita até a fase 07 nascer.
-- **Visão "Timeline" do protótipo (`isTimelineView`) não tem desenho
+- ~~**Visão "Timeline" do protótipo não tem desenho próprio**~~ — **não
+  reproduz**: `agenda-timeline.tsx` porta o desenho da l.533–563. Era:
+  **Visão "Timeline" do protótipo (`isTimelineView`) não tem desenho
   próprio no frontend** — o contrato (`AgendaView.TIMELINE`) existe e o
   backend responde igual a `DAY`, mas a tela ainda renderiza as duas do
   mesmo jeito (colunas por barbeiro). O protótipo mostra uma barra de tempo
@@ -5352,13 +5888,17 @@ todos verdes.
   perceptível — e o "não N+1" do enunciado era requisito explícito só dos
   Relatórios (que usam `$queryRaw` com `GROUP BY`, e estão corretos). Vale
   reescrever como `groupBy` único se o número de barbeiros crescer.
-- **`revenueByBarber` do relatório avançado usa `INNER JOIN Barber`**, então
+- ~~**`revenueByBarber` do relatório avançado usa `INNER JOIN Barber`**~~ —
+  **RESOLVIDA pelo agente 29** (`LEFT JOIN` + linha "Sem barbeiro", para a
+  soma fechar). O rateio por item continua fora, por decisão de produto. Era:, então
   comanda sem barbeiro definido (walk-in no balcão) fica de fora do
   detalhamento — a soma por barbeiro pode não bater com o faturamento total
   do resumo. Igualmente, o faturamento é atribuído pelo `Order.barberId`
   (barbeiro "principal" da comanda), não rateado por item: comanda com
   serviços de dois barbeiros conta inteira para um só.
-- **Resgate de pontos não é protegido contra concorrência.** Duas comandas
+- ~~**Resgate de pontos não é protegido contra concorrência.**~~ — **RESOLVIDA
+  pelo agente 29**: trava consultiva por (tenant, cliente) e reconferência do
+  saldo dentro da transação, com 409 `LOYALTY_BALANCE_CHANGED`. Era: Duas comandas
   abertas do MESMO cliente, ambas com `useLoyalty`, fechando ao mesmo
   tempo, podem resgatar o mesmo saldo duas vezes (o saldo é a soma do
   ledger, sem `SELECT ... FOR UPDATE` nem constraint de não-negativo).
@@ -5381,7 +5921,8 @@ todos verdes.
   mostra o `Skeleton` de carregamento por uma fração de segundo antes do
   cadeado, mesmo sabendo de antemão (pelo menos para quem já viu a tela)
   que vai ser bloqueada. Cosmético, não bloqueia nada.
-- **Sem marcar `NO_SHOW` pela Comandas.** O fechamento de comanda marca o
+- ~~**Sem marcar `NO_SHOW` pela Comandas.**~~ — **RESOLVIDA**: o caminho é
+  `PATCH /staff-agenda/:id/no-show`, pela Agenda. Era: O fechamento de comanda marca o
   `Appointment` vinculado como `DONE` (regra do enunciado), mas não existe
   NENHUM caminho — nem na Agenda (fase 06), nem em Comandas (fase 07) — para
   marcar um agendamento como `NO_SHOW`. Consequência: `ClientProfile.
@@ -5410,7 +5951,9 @@ todos verdes.
   mensagens inteiras, sem
   cursor. Suficiente para o volume de um chat de suporte interno; revisar se
   o uso real acumular milhares de mensagens por usuário.
-- **Teste unitário pré-existente flaky, não é regressão desta fase**:
+- ~~**Teste unitário pré-existente flaky**~~ — **RESOLVIDA**: reescrito para
+  medir entropia (colisões ≤ 2), com a matemática no comentário, mais um caso
+  de cobertura de alfabeto. Era:
   `booking.spec.ts` → "não repete em 2 mil sorteios" ocasionalmente falha por
   colisão genuína de `generateBookingCode()` (paradoxo do aniversário com
   alfabeto pequeno) — reproduzido isolado e também passou limpo na
@@ -5546,21 +6089,37 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 
 | Fora do v1 | Estado hoje | Caminho documentado |
 |---|---|---|
-| **WhatsApp oficial** | `MockNotificationDriver` completo: grava em `NotificationOutbox`, entrega os agendados pela fila, aparece na tela "Mensagens" | `docs/INTEGRACOES.md` — 3 passos (driver ao lado do mock, enum do env, `case` na factory). **Validado seguindo os próprios passos nesta fase**: um driver de sondagem foi escrito, plugado e conferido no log de boot, sem tocar em módulo de negócio nenhum. |
+| **WhatsApp oficial** | `MockNotificationDriver` completo: grava em `NotificationOutbox`, entrega os agendados pela fila, aparece na tela "Mensagens". **Desde o agente 29 as automações de CALENDÁRIO (aniversário, reativação, avaliação) disparam de verdade**, por job diário — antes os três interruptores não executavam nada | `docs/INTEGRACOES.md` — 3 passos (driver ao lado do mock, enum do env, `case` na factory). **Validado seguindo os próprios passos nesta fase**: um driver de sondagem foi escrito, plugado e conferido no log de boot, sem tocar em módulo de negócio nenhum. |
 | **Asaas** | `MockPaymentDriver` simula o ciclo inteiro (criar, confirmar, receber, estornar) com aprovação/recusa manual pelo super admin | `docs/INTEGRACOES.md` — mesmos 3 passos, **mais** um controller de webhook (`POST /webhooks/asaas`) que chame os MESMOS serviços que a tela de billing chama. `simulateTransition` deve responder 501 no driver real. Acréscimo, não refatoração. |
 | **Google OAuth do cliente** | Botão existe em `ClienteAuth` e responde "Em breve" — não finge autenticar | Mesmo padrão de adapter. É a única funcionalidade desenhada no protótipo que não ficou funcional. |
 | **Provedor real do Assistente IA** | `MockAiAssistantDriver` responde por regras; histórico persiste em `AiChatMessage` | `AI_ASSISTANT_ADAPTER`, mesma factory de `adapters.module.ts`. |
-| **Upload de imagem** | ✅ **Feito no agente 25** para Minha Página e no **agente 27** para a foto de perfil (`POST /me/avatar`): `StorageAdapter` + `LocalStorageDriver`, multipart, JPG/PNG/WebP até 5 MB. Onboarding (passo 3) e foto do BARBEIRO (aba Equipe) ainda usam campo de URL. | Trocar o driver local por S3/R2 é um `case` em `adapters.module.ts` + `STORAGE_DRIVER`; o `local` não serve para mais de uma réplica de API. Com o domínio das imagens conhecido, o `next/image` entra e o `<img>` cru sai. Falta ainda redimensionar/otimizar o que o dono envia. |
+| **Upload de imagem** | ✅ **Feito no agente 25** para Minha Página e no **agente 27** para a foto de perfil (`POST /me/avatar`): `StorageAdapter` + `LocalStorageDriver`, multipart, JPG/PNG/WebP até 5 MB. **Foto do BARBEIRO fechada no agente 29** (`POST /barbers/:id/avatar`). Só o
+onboarding (passo 3) ainda usa campo de URL — é do agente 30. | Trocar o driver local por S3/R2 é um `case` em `adapters.module.ts` + `STORAGE_DRIVER`; o `local` não serve para mais de uma réplica de API. Com o domínio das imagens conhecido, o `next/image` entra e o `<img>` cru sai. Falta ainda redimensionar/otimizar o que o dono envia. |
 | **Multi-unidade de fato** | O modelo `Unit` existe, tem CRUD e isolamento testado; o motor de grade ainda ignora `unitId` | Filtro por unidade em `AvailabilityService` — o campo já existe em `Appointment` e `Barber`. |
 
 ### Números finais
 
 | Suíte | Casos |
 |---|---|
-| Unitários | 95 |
-| E2E | 333 |
-| Isolamento de tenant (gate) | 177 |
-| **Total** | **605** |
+| Unitários (`apps/api`) | 97 |
+| **Unitários (`apps/web`) — NOVA** | **14** |
+| E2E | 349 |
+| Isolamento de tenant (gate) | 180 |
+| **Total** | **640** |
+
+> Contagem do agente 29 (2026-09-03), medida rodando as QUATRO suítes, uma de
+> cada vez. Rodar as três da API no mesmo comando estoura a RAM da máquina de
+> desenvolvimento (7,5 GB) e o kernel mata o processo — o sintoma é um exit
+> 137 sem saída de teste nenhuma. Com o container `web` parado, cada uma passa
+> folgada.
+>
+> O agente 29 somou **+2 unit** (slugs reservados × rotas reais), **+16 e2e**
+> (unidade no agendamento, foto do barbeiro, kill-switch de impersonação,
+> cancelamento de exclusão, teto de plano reprocessado e as seis das
+> automações de calendário) e **+3 isolamento** (as duas rotas novas do super
+> admin, e os dois casos do `work-schedule` reescritos para o caminho que
+> sobrou — foram 2 removidos e 3 acrescentados). A suíte de frontend é nova:
+> 14 casos, ver a Camada 1.
 
 > Contagem do agente 28 (2026-08-26), medida rodando as três suítes. O agente
 > 28 somou 12 e2e (`assistant.e2e-spec.ts`) e 4 de isolamento (o cartão da
@@ -5577,17 +6136,22 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 > chamada só, e um `tenantId` faltando numa das doze consultas entraria na soma
 > sem deixar nenhum id na tela para denunciar.
 
-`pnpm turbo run lint typecheck` 11/11 · `pnpm turbo run build` 3/3
-(o build do `apps/web` exige `NODE_ENV=production` — ver dívida 4 da fase 13).
+`pnpm turbo run lint typecheck` 11/11 · `pnpm turbo run build` 3/3.
+
+> O build exige `NODE_ENV=production`, e desde o agente 29 **o `Makefile` e o
+> CI o forçam** nos alvos de build — antes dependia de quem rodasse lembrar,
+> e rodar de dentro do container de dev quebrava 35 páginas com um erro que
+> parece de código e é de ambiente.
 
 > O total de e2e estava anotado como 129 desde a fase 09: os 4 casos de
 > `public-plans.e2e-spec.ts` (fase 10) nunca entraram na conta. São os mesmos
 > 133 antes e depois da fase 11 — `apps/api` está byte-a-byte idêntico ao que
 > era, conferido por `git diff main -- apps/api`.
 >
-> A varredura responsiva NÃO está mais "sem pendências": a fase 11 encontrou 12
-> alvos de toque abaixo de 44px que a varredura da fase 09 não viu porque mediu
-> telas em skeleton. Detalhe nas dívidas da fase 11.
+> ~~A varredura responsiva NÃO está mais "sem pendências"~~ — **voltou a estar,
+> no agente 29**: `make responsive --delay=6000` fecha sem reprovação em
+> nenhuma das 35 rotas, nos 5 tamanhos, com dado carregado (que é a condição
+> em que a fase 09 não mediu e por isso passou em falso).
 
 ## Como retomar
 
