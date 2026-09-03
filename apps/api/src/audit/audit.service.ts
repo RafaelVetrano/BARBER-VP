@@ -133,6 +133,8 @@ export const AuditAction = {
   /// impersonou, qual tenant, qual OWNER alvo, sempre com IP/user-agent
   /// (o `AuditService.record` já grava os dois em toda entrada).
   ADMIN_TENANT_IMPERSONATED: 'admin.tenant_impersonated',
+  ADMIN_IMPERSONATION_REVOKED: 'admin.impersonation_revoked',
+  ADMIN_TENANT_DELETION_CANCELED: 'admin.tenant_deletion_canceled',
   ADMIN_BILLING_CYCLE_RUN: 'admin.billing_cycle_run',
   ADMIN_INVOICE_APPROVED: 'admin.invoice_approved',
   ADMIN_INVOICE_REJECTED: 'admin.invoice_rejected',

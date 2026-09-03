@@ -43,6 +43,8 @@ import { UpgradeModal } from '@/components/dashboard/upgrade-modal';
 import { BusinessHoursEditor } from '@/components/dashboard/settings/business-hours-editor';
 import { PlanChangeModal } from '@/components/dashboard/settings/plan-change-modal';
 import { UnitModal } from '@/components/dashboard/settings/unit-modal';
+import { LoyaltyProgramCard } from '@/components/dashboard/settings/loyalty-program-card';
+import { inputToCents } from '@/components/dashboard/finance/finance-shared';
 import { useDashboardShellQuery } from '@/lib/dashboard/api/dashboard';
 import {
   useBarbershopSettingsQuery,
@@ -543,6 +545,14 @@ function PreferenciasTab() {
   const prefsQuery = usePreferencesQuery();
   const update = useUpdatePreferencesMutation();
 
+  // A meta é digitada, então vive como rascunho e só sobe no `blur` — salvar a
+  // cada tecla mandaria "1", "12", "120" enquanto o dono ainda escreve "1200".
+  const [goalInput, setGoalInput] = useState('');
+  const goalCents = prefsQuery.data?.monthlyGoalCents ?? null;
+  useEffect(() => {
+    setGoalInput(goalCents === null ? '' : (goalCents / 100).toFixed(2).replace('.', ','));
+  }, [goalCents]);
+
   if (prefsQuery.isLoading) return <Skeleton className="h-[420px] max-w-[640px] rounded-xl" />;
   if (prefsQuery.isError) {
     return <BlockError label="as preferências" onRetry={() => void prefsQuery.refetch()} />;
@@ -561,7 +571,15 @@ function PreferenciasTab() {
     });
   };
 
+  /** Campo vazio = sem meta (`null`), que é o que apaga a linha do gráfico. */
+  const saveGoal = () => {
+    const next = goalInput.trim() === '' ? null : inputToCents(goalInput);
+    if (next === goalCents) return;
+    save({ monthlyGoalCents: next });
+  };
+
   return (
+    <div className="flex flex-col gap-4">
     <Card className="max-w-[640px] gap-0 p-5">
       <div className="flex flex-col gap-2.5 border-b border-border pb-3.5">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -630,6 +648,33 @@ function PreferenciasTab() {
       </div>
 
       {/*
+        META MENSAL — acrescentada pelo agente 29.
+
+        `TenantSettings.monthlyGoalCents` já era gravável por
+        `PATCH /settings/preferences` e o gráfico do Dashboard já a desenhava
+        como linha tracejada, mas NENHUMA tela tinha o campo: a linha da meta
+        só aparecia para quem editasse o banco à mão. Fica aqui, com as outras
+        regras de operação da casa.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border py-3.5">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-fg">Meta de faturamento mensal</p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            Vira a linha tracejada do gráfico do Dashboard. Deixe vazio para não ter meta.
+          </p>
+        </div>
+        <Input
+          aria-label="Meta de faturamento mensal"
+          className="w-36"
+          inputMode="decimal"
+          addonLeft="R$"
+          value={goalInput}
+          onChange={(event) => setGoalInput(event.target.value)}
+          onBlur={saveGoal}
+        />
+      </div>
+
+      {/*
         O protótipo desenha aqui um quarto bloco, "Tema escuro" (l.2730). Ele
         NÃO foi portado: o `SPEC.md` fixa tema escuro em todas as superfícies,
         "sem alternância claro/escuro no produto real", e o design system não
@@ -637,6 +682,16 @@ function PreferenciasTab() {
         exatamente o botão decorativo que a regra 2 proíbe. Ver CONTEXT.md.
       */}
     </Card>
+
+    {/*
+      O PROGRAMA DE PONTOS mora aqui desde o agente 29: é regra de operação da
+      casa, vizinha do bloqueio por faltas e da antecedência mínima, e não dado
+      cadastral (que é a aba Barbearia). Até então `GET|PATCH /loyalty/program`
+      não tinha tela NENHUMA — um recurso usado em três telas que ninguém podia
+      ligar. O card traz o próprio gate `fidelidadePontos`.
+    */}
+    <LoyaltyProgramCard />
+    </div>
   );
 }
 

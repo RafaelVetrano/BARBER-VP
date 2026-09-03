@@ -86,7 +86,13 @@ export function AgendaToolbar({
         </div>
 
         {/* ── Data: rótulo por extenso com o input por cima (l.403–406) ── */}
-        <div className="relative flex h-11 items-center rounded-[9px] border border-border bg-surface px-3 md:h-[38px]">
+        {/*
+            `h-12`, e não `h-11`: o `input` deitado por cima é `inset-0`, então
+            mede a caixa de conteúdo — 44px de wrapper menos as duas bordas dão
+            42px de alvo, abaixo do mínimo. 48px é a altura de input do design
+            system de qualquer forma.
+        */}
+        <div className="relative flex h-12 items-center rounded-[9px] border border-border bg-surface px-3 md:h-[38px]">
           <span className="whitespace-nowrap text-[13px] font-medium capitalize text-fg">
             {formatAgendaDate(date)}
           </span>

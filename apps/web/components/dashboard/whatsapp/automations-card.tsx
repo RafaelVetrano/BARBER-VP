@@ -201,18 +201,16 @@ function AutomationRow({
             </span>
           </button>
         ) : (
-          // O `<label>` em volta é o alvo de toque: o trilho do protótipo tem
-          // 44×22 e ficaria abaixo do mínimo de 44×44 no celular. O rótulo
-          // visível da linha já está à esquerda, então este fica só para o dedo
-          // e para o leitor de tela.
-          <label className="flex min-h-11 w-11 cursor-pointer items-center justify-center md:min-h-0">
-            <span className="sr-only">{`Ligar ${AUTOMATION_LABELS[automation.event]}`}</span>
-            <Switch
-              checked={automation.enabled}
-              disabled={update.isPending}
-              onChange={(event) => void save({ enabled: event.target.checked })}
-            />
-          </label>
+          // O alvo de toque de 44px é do PRÓPRIO `Switch` desde o agente 29 —
+          // o remendo local que existia aqui (um `<label>` de 44×44 em volta)
+          // saiu junto, porque `<label>` dentro de `<label>` é HTML inválido e
+          // o conserto certo era no componente compartilhado.
+          <Switch
+            checked={automation.enabled}
+            disabled={update.isPending}
+            aria-label={`Ligar ${AUTOMATION_LABELS[automation.event]}`}
+            onChange={(event) => void save({ enabled: event.target.checked })}
+          />
         )}
       </div>
     </div>

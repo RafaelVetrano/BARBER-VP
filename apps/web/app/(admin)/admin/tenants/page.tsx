@@ -33,7 +33,23 @@ export default function TenantsPage() {
       key: 'status',
       header: 'Status',
       mobile: 'meta',
-      render: (row) => <Badge tone={STATUS_TONE[row.status] ?? 'neutral'}>{row.status}</Badge>,
+      render: (row) => (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <Badge tone={STATUS_TONE[row.status] ?? 'neutral'}>{row.status}</Badge>
+          {/*
+            Uma exclusão AGENDADA não mexe em `deletedAt`, então a barbearia
+            continua nesta lista com aparência de normal. Sem esta pílula, o
+            super admin não teria como saber que ela está na fila da faxina —
+            e o prazo é de 30 dias.
+          */}
+          {row.purgeAt && (
+            <Badge tone="danger">
+              Exclusão em {new Date(row.purgeAt).toLocaleDateString('pt-BR')}
+            </Badge>
+          )}
+          {row.impersonationActive && <Badge tone="warning">Impersonação em curso</Badge>}
+        </span>
+      ),
     },
   ];
 

@@ -16,6 +16,12 @@ export interface IssueSessionInput {
   userAgent?: string | null;
   /** Continua a mesma família numa rotação; ausente = login novo. */
   familyId?: string;
+  /**
+   * `User.id` do super admin, quando a sessão é uma IMPERSONAÇÃO. É o que
+   * permite encerrá-la à força depois; sem isto ela é indistinguível de um
+   * login normal do OWNER.
+   */
+  impersonatedBy?: string | null;
 }
 
 export interface IssuedSession {
@@ -72,6 +78,7 @@ export class SessionService {
         expiresAt,
         ip: input.ip ?? null,
         userAgent: input.userAgent?.slice(0, 512) ?? null,
+        impersonatedBy: input.impersonatedBy ?? null,
       },
     });
 

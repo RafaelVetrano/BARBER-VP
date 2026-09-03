@@ -23,6 +23,22 @@ export interface NavDef {
 export const NAV_DEFS: NavDef[] = [
   { key: 'dashboard', label: 'Dashboard', href: '/app', ready: true },
   { key: 'agenda', label: 'Agenda', href: '/app/agenda', ready: true },
+  /**
+   * DESVIO CONSCIENTE do protótipo, decidido pelo agente 29 (2026-09-03).
+   *
+   * `DashboardFuncionario.dc.html` (l.1615 do bloco `NAV_DEFS`) TEM "Clientes"
+   * no nav do barbeiro. Aqui ele não aparece, e fica assim: a base de clientes
+   * é `@Roles('OWNER','MANAGER')` no servidor desde a fase 06, seguindo o
+   * `SPEC.md` → RBAC ("`BARBER`: própria agenda, próprias comissões, comandas
+   * que atende"). Mostrar o item levaria o barbeiro a uma tela que responde
+   * 403, e a alternativa — abrir `/clients` para `BARBER` — afrouxaria o RBAC,
+   * o que a regra 3 desta fase proíbe explicitamente.
+   *
+   * O que o barbeiro precisa do cliente ele já tem, no recorte certo: o drawer
+   * do agendamento traz nome, telefone, faltas e últimas visitas daquele
+   * atendimento. Reabrir a decisão exige antes decidir o RECORTE no servidor
+   * (só clientes que ele atendeu?), que é fase de produto, não reparo.
+   */
   { key: 'clientes', label: 'Clientes', href: '/app/clientes', ready: true, roles: ['OWNER', 'MANAGER'] },
   { key: 'comandas', label: 'Comandas', href: '/app/comandas', ready: true },
   {

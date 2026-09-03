@@ -1654,6 +1654,12 @@ model AuthSession {
   refreshHash   String
   /// Agrupa a cadeia de rotações originada de um mesmo login.
   familyId      String
+  /// Preenchido só em sessão de IMPERSONAÇÃO: o `User.id` do super admin que a
+  /// abriu. Sem isto não há como o super admin encerrar à força uma
+  /// impersonação em curso — a sessão é indistinguível de um login normal do
+  /// OWNER. Sem FK de propósito: é ponteiro de auditoria, e o `AuditLog` já
+  /// guarda o registro completo (com `SetNull`) de quem impersonou quem.
+  impersonatedBy String?
   expiresAt     DateTime      @db.Timestamptz(3)
   revokedAt     DateTime?     @db.Timestamptz(3)
   /// Motivo da revogação: `rotated` | `logout` | `reuse` | `password-change`.
@@ -1673,6 +1679,8 @@ model AuthSession {
   @@index([clientId, revokedAt])
   @@index([familyId])
   @@index([expiresAt])
+  /// Serve o kill-switch: "impersonações em curso NESTE tenant".
+  @@index([tenantId, impersonatedBy, revokedAt])
 }
 
 /// Código OTP de 6 dígitos (registro e recuperação do cliente).

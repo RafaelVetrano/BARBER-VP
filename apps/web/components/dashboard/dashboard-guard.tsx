@@ -15,10 +15,19 @@ export interface DashboardGuardProps {
  * Guarda das rotas do painel.
  *
  * `navigate` distingue os dois destinos: ir para o LOGIN é sempre navegação
- * dura (`window.location`), porque é o que sempre foi — antes da fase 11 o
- * login morava noutra app, noutra origem, e trocar por `router.replace` agora
- * que é a mesma origem mudaria o ciclo de vida do provider de sessão. As rotas
- * internas do painel continuam no router do Next.
+ * dura (`window.location`); as rotas internas do painel continuam no router do
+ * Next.
+ *
+ * **Reavaliado pelo agente 29**, depois de corrigido o deadlock do interceptor
+ * de refresh que era o motivo original de a dívida ficar em pé — e MANTIDO,
+ * agora por um motivo próprio: `(dashboard)`, `(admin)` e `(marketing)/(auth)`
+ * montam, cada um, o SEU `EstablishmentAuthProvider`, e cada provider dispara
+ * um refresh ao montar. Numa navegação SUAVE entre grupos as duas árvores
+ * coexistem por um instante, e duas POSTs simultâneas em `/auth/refresh`
+ * rotacionam o cookie e fazem a segunda cair na detecção de reuso, que revoga
+ * a FAMÍLIA inteira de tokens — o mesmo incidente que a auditoria da aba
+ * Comandas já pagou uma vez. A navegação dura derruba a árvore antiga antes de
+ * montar a nova e não tem essa janela.
  *
  * Também trata o caso do dono com várias barbearias: sem tenant ativo no token,
  * a sessão existe mas não aponta para lugar nenhum, e a app manda para o

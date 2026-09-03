@@ -1,10 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type {
   BarberListItem,
   ScheduleExceptionItem,
   TeamPlanUsage,
-  WorkScheduleDay,
 } from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
@@ -14,7 +13,6 @@ import {
   CreateBarberDto,
   CreateScheduleExceptionDto,
   UpdateBarberDto,
-  UpdateWorkScheduleDto,
 } from './dto/team.dto';
 
 /**
@@ -84,26 +82,20 @@ export class BarbersController {
     return this.barbers.deleteScheduleException(tenantId, id, actorUserId, request);
   }
 
-  @Get(':id/work-schedule')
-  @ApiOperation({ summary: 'Escala semanal do barbeiro' })
-  getWorkSchedule(
-    @Param('id') id: string,
-    @CurrentTenant('id') tenantId: string,
-  ): Promise<WorkScheduleDay[]> {
-    return this.barbers.getWorkSchedule(tenantId, id);
-  }
-
-  @Put(':id/work-schedule')
-  @ApiOperation({ summary: 'Atualiza a escala semanal (com intervalo de almoço)' })
-  updateWorkSchedule(
-    @Param('id') id: string,
-    @Body() dto: UpdateWorkScheduleDto,
-    @CurrentTenant('id') tenantId: string,
-    @CurrentUser('id') actorUserId: string,
-    @Req() request: RequestContext,
-  ): Promise<WorkScheduleDay[]> {
-    return this.barbers.updateWorkSchedule(tenantId, id, dto, actorUserId, request);
-  }
+  /*
+   * `GET|PUT /barbers/:id/work-schedule` SAÍRAM aqui (agente 29).
+   *
+   * As duas rotas nasceram na fase 06 e nunca ganharam consumidor: o modal da
+   * aba Equipe grava a escala junto com o resto do barbeiro num `PATCH :id`,
+   * em transação única, e `GET :id` já devolve a semana em `workSchedule`.
+   * Manter um segundo caminho de escrita para o MESMO dado é convidar as duas
+   * versões a divergirem — e rota que ninguém chama não tem quem perceba
+   * quando quebra.
+   *
+   * A capacidade não se perdeu: `BarbersService.getWorkSchedule` continua
+   * servindo o detalhe do barbeiro, e a escrita continua em `writeWeek`, dentro
+   * da transação do `PATCH`.
+   */
 
   @Patch(':id')
   @ApiOperation({ summary: 'Atualiza dados, serviços atendidos e ativo/inativo' })

@@ -58,6 +58,31 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
   _retried?: boolean;
 }
 
+/**
+ * As rotas que RENOVAM a sessão. Um 401 vindo delas NUNCA pode disparar o
+ * fluxo de refresh do interceptor — seria pedir renovação para renovar.
+ *
+ * Sem esta guarda o produto travava um visitante ANÔNIMO para sempre no
+ * skeleton "Carregando sua sessão…": o bootstrap do provider chamava
+ * `POST /auth/refresh` pelo mesmo axios do interceptor, tomava 401, o
+ * interceptor preenchia `refreshInFlight` com a MESMA função de refresh, que
+ * disparava outro `POST /auth/refresh`, tomava outro 401 e reentrava — e aí,
+ * com `refreshInFlight` já preenchido, dava `await` na promise que só
+ * resolveria quando ele próprio terminasse. Ninguém rejeitava, o `catch` do
+ * provider nunca rodava, `clearSession()` nunca era chamado e `status` ficava
+ * em `'loading'` — o estado em que os guardas mostram skeleton e não
+ * redirecionam para `/entrar`.
+ */
+const REFRESH_ROUTES = ['/auth/refresh', '/client-auth/refresh'];
+
+function isRefreshRequest(config: AxiosRequestConfig | undefined): boolean {
+  const url = config?.url;
+  if (!url) return false;
+  // `url` é relativo à `baseURL` na prática, mas comparar pelo fim cobre
+  // também quem passar a URL absoluta.
+  return REFRESH_ROUTES.some((route) => url === route || url.endsWith(route));
+}
+
 function toApiError(error: AxiosError): ApiError {
   const status = error.response?.status ?? 0;
   const requestId = error.response?.headers?.[REQUEST_ID_HEADER] as string | undefined;
@@ -118,7 +143,10 @@ export function createApiClient(options: ApiClientOptions): AxiosInstance {
       const config = error.config as RetriableConfig | undefined;
       const status = error.response?.status;
 
-      if (status === 401 && config && !config._retried && options.refreshTokens) {
+      // O 401 da PRÓPRIA rota de refresh é definitivo: significa "não há
+      // sessão para renovar". Ele tem de propagar para o `catch` do provider,
+      // que então chama `clearSession()` e libera o guarda a redirecionar.
+      if (status === 401 && config && !config._retried && options.refreshTokens && !isRefreshRequest(config)) {
         config._retried = true;
         try {
           refreshInFlight ??= options.refreshTokens().finally(() => {

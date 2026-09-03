@@ -2,16 +2,29 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEstablishmentAuth } from '@barbervp/ui';
-import type { ClientPlanAdminItem, SubscriberItem, UpsertClientPlanDto } from '@barbervp/types';
+import type {
+  ClientPlanAdminItem,
+  LoyaltyProgramConfig,
+  SubscriberItem,
+  UpdateLoyaltyProgramDto,
+  UpsertClientPlanDto,
+} from '@barbervp/types';
 
 /**
  * Aba Fidelidade — só Assinaturas desde a revisão do protótipo (agente 21).
  *
- * As chamadas de pontos e sorteios saíram junto com as sub-abas: `/loyalty/
- * program` continua no servidor, mas sem tela nenhuma no painel, e `/loyalty/
- * raffles` deixou de existir.
+ * As chamadas de sorteios saíram junto com as sub-abas; `/loyalty/raffles`
+ * deixou de existir.
+ *
+ * `/loyalty/program` ficou órfão de tela por várias sessões — o programa de
+ * pontos é usado em TRÊS lugares (resgate na comanda, saldo no drawer do
+ * cliente, coluna "Pontos" da lista de clientes) e não havia interruptor para
+ * ligá-lo em lugar nenhum do produto. **O agente 29 o levou para
+ * `/app/configuracoes` → Preferências**, que é onde moram as outras regras de
+ * operação da casa.
  */
 
+const PROGRAM_KEY = ['loyalty-program'] as const;
 const PLANS_KEY = ['loyalty-plans'] as const;
 const SUBSCRIBERS_KEY = ['loyalty-subscribers'] as const;
 
@@ -120,5 +133,43 @@ export function useSubscriberActionMutation() {
       await client.patch(`/loyalty/subscribers/${id}/${action}`);
     },
     onSuccess: invalidate,
+  });
+}
+
+// ── Programa de pontos ─────────────────────────────────────────────────────
+
+/**
+ * `retry: false` porque o 403 do gate `fidelidadePontos` é resposta legítima,
+ * não falha de rede: quem está no Essencial vê o upsell, e insistir só atrasa
+ * a tela.
+ */
+export function useLoyaltyProgramQuery({ enabled = true }: LoyaltyQueryOptions = {}) {
+  const { client } = useEstablishmentAuth();
+  return useQuery({
+    queryKey: PROGRAM_KEY,
+    queryFn: async () => {
+      const { data } = await client.get<LoyaltyProgramConfig>('/loyalty/program');
+      return data;
+    },
+    enabled,
+    retry: false,
+  });
+}
+
+export function useUpdateLoyaltyProgramMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (dto: UpdateLoyaltyProgramDto) => {
+      const { data } = await client.patch<LoyaltyProgramConfig>('/loyalty/program', dto);
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PROGRAM_KEY });
+      // Ligar/desligar o programa muda o resgate na comanda e o saldo que a
+      // aba Clientes mostra — as duas telas leem a mesma configuração.
+      void queryClient.invalidateQueries({ queryKey: ['pos'] });
+      void queryClient.invalidateQueries({ queryKey: ['clients'] });
+    },
   });
 }

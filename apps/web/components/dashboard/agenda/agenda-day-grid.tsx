@@ -12,10 +12,27 @@ import {
 } from './agenda-shared';
 
 /** Altura de um minuto na grade, em px. 60min = 66px — a proporção do protótipo. */
-const PX_PER_MINUTE = 1.1;
+/**
+ * Escala vertical da grade, em px por minuto.
+ *
+ * No CELULAR ela é maior de propósito: o bloco do agendamento é um alvo de
+ * toque (abre o drawer), e a 1.1 px/min um atendimento de 30 minutos rendia
+ * 31px de altura — abaixo dos 44px de dedo. A 1.6, o mesmo atendimento dá
+ * 46px. A grade fica mais alta e rola mais; é o preço honesto de um alvo que
+ * o dedo acerta.
+ */
+const PX_PER_MINUTE_COMPACT = 1.6;
+const PX_PER_MINUTE_WIDE = 1.1;
 
 /** Altura mínima de um bloco para o texto ainda caber. */
-const MIN_BLOCK_HEIGHT = 22;
+/**
+ * Piso de altura do bloco. No celular ele é o próprio mínimo de toque: um
+ * atendimento curto (15 min) desenha 44px e avança sobre o horário seguinte —
+ * é o que qualquer agenda faz com evento curto, e é preferível a um alvo que
+ * não dá para acertar.
+ */
+const MIN_BLOCK_HEIGHT_COMPACT = 44;
+const MIN_BLOCK_HEIGHT_WIDE = 22;
 
 export interface AgendaDayGridProps {
   day: StaffAgendaDay;
@@ -41,6 +58,10 @@ export function AgendaDayGrid({
   const { gridStartMinutes: start, gridEndMinutes: end, timezone, slotIntervalMinutes } = agenda;
   const span = end - start;
 
+  const compact = useCompactGrid();
+  const pxPerMinute = compact ? PX_PER_MINUTE_COMPACT : PX_PER_MINUTE_WIDE;
+  const minBlockHeight = compact ? MIN_BLOCK_HEIGHT_COMPACT : MIN_BLOCK_HEIGHT_WIDE;
+
   const nowMinutes = useNowMinutes(timezone);
   const isToday = day.date === todayKey();
   const showNowLine = isToday && nowMinutes >= start && nowMinutes <= end;
@@ -58,7 +79,7 @@ export function AgendaDayGrid({
     );
   }
 
-  const height = span * PX_PER_MINUTE;
+  const height = span * pxPerMinute;
 
   // Uma marca a cada 30min; só as horas cheias recebem rótulo, como no protótipo.
   const marks: Array<{ minute: number; label: string }> = [];
@@ -76,7 +97,7 @@ export function AgendaDayGrid({
             <span
               key={mark.minute}
               className="absolute right-2 -translate-y-1/2 text-[11px] font-medium tabular-nums text-fg-subtle"
-              style={{ top: (mark.minute - start) * PX_PER_MINUTE }}
+              style={{ top: (mark.minute - start) * pxPerMinute }}
             >
               {mark.label}
             </span>
@@ -105,10 +126,16 @@ export function AgendaDayGrid({
                   from={start}
                   to={open ? column.workStartMinutes! : end}
                   gridStart={start}
+                  pxPerMinute={pxPerMinute}
                   label={open ? undefined : 'Sem expediente'}
                 />
                 {open && (
-                  <OutOfHours from={column.workEndMinutes!} to={end} gridStart={start} />
+                  <OutOfHours
+                    from={column.workEndMinutes!}
+                    to={end}
+                    gridStart={start}
+                    pxPerMinute={pxPerMinute}
+                  />
                 )}
 
                 {/* Grade de meia hora — dá o mesmo ritmo visual do trilho. */}
@@ -119,7 +146,7 @@ export function AgendaDayGrid({
                       'pointer-events-none absolute inset-x-0 border-t',
                       mark.minute % 60 === 0 ? 'border-border' : 'border-border/40',
                     )}
-                    style={{ top: (mark.minute - start) * PX_PER_MINUTE }}
+                    style={{ top: (mark.minute - start) * pxPerMinute }}
                   />
                 ))}
 
@@ -130,6 +157,7 @@ export function AgendaDayGrid({
                     to={column.workEndMinutes!}
                     gridStart={start}
                     interval={slotIntervalMinutes}
+                    pxPerMinute={pxPerMinute}
                     barberName={column.barberName}
                     onPick={(time) => onPickSlot(column.barberId, time)}
                   />
@@ -141,6 +169,7 @@ export function AgendaDayGrid({
                     from={column.lunchStartMinutes}
                     to={column.lunchEndMinutes}
                     gridStart={start}
+                    pxPerMinute={pxPerMinute}
                     label="Almoço"
                   />
                 )}
@@ -151,6 +180,7 @@ export function AgendaDayGrid({
                     from={block.startMinutes}
                     to={block.endMinutes}
                     gridStart={start}
+                    pxPerMinute={pxPerMinute}
                     label={block.reason ?? 'Bloqueado'}
                   />
                 ))}
@@ -169,8 +199,8 @@ export function AgendaDayGrid({
                         tone.block,
                       )}
                       style={{
-                        top: (from - start) * PX_PER_MINUTE,
-                        height: Math.max(appointment.durationMin * PX_PER_MINUTE - 2, MIN_BLOCK_HEIGHT),
+                        top: (from - start) * pxPerMinute,
+                        height: Math.max(appointment.durationMin * pxPerMinute - 2, minBlockHeight),
                       }}
                     >
                       <ServiceAccent services={appointment.services} />
@@ -206,7 +236,7 @@ export function AgendaDayGrid({
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-danger"
-            style={{ top: 56 + (nowMinutes - start) * PX_PER_MINUTE }}
+            style={{ top: 56 + (nowMinutes - start) * pxPerMinute }}
           >
             <span className="absolute left-1 -top-2 rounded px-1.5 text-[10px] font-semibold text-fg bg-danger">
               agora
@@ -245,17 +275,19 @@ function Band({
   from,
   to,
   gridStart,
+  pxPerMinute,
   label,
 }: {
   from: number;
   to: number;
   gridStart: number;
+  pxPerMinute: number;
   label: string;
 }) {
   return (
     <div
       className="absolute inset-x-0 flex items-center justify-center border-y border-border bg-[repeating-linear-gradient(45deg,theme(colors.border.DEFAULT),theme(colors.border.DEFAULT)_6px,theme(colors.surface.3)_6px,theme(colors.surface.3)_12px)] text-[11px] font-semibold text-fg-muted"
-      style={{ top: (from - gridStart) * PX_PER_MINUTE, height: (to - from) * PX_PER_MINUTE }}
+      style={{ top: (from - gridStart) * pxPerMinute, height: (to - from) * pxPerMinute }}
     >
       <span className="truncate px-2">{label}</span>
     </div>
@@ -267,11 +299,13 @@ function OutOfHours({
   from,
   to,
   gridStart,
+  pxPerMinute,
   label,
 }: {
   from: number;
   to: number;
   gridStart: number;
+  pxPerMinute: number;
   label?: string;
 }) {
   if (to <= from) return null;
@@ -279,7 +313,7 @@ function OutOfHours({
     <div
       aria-hidden
       className="absolute inset-x-0 flex items-center justify-center bg-bg/60"
-      style={{ top: (from - gridStart) * PX_PER_MINUTE, height: (to - from) * PX_PER_MINUTE }}
+      style={{ top: (from - gridStart) * pxPerMinute, height: (to - from) * pxPerMinute }}
     >
       {label && <span className="text-[11px] text-fg-subtle">{label}</span>}
     </div>
@@ -290,12 +324,20 @@ function OutOfHours({
  * Alvos de clique em horário vago (regra da fase: "clique em slot vago abre
  * criação rápida"). Ficam ATRÁS dos blocos de agendamento, então um horário
  * ocupado abre o drawer e não o modal de criação.
+ *
+ * **Só a partir de `md`.** A faixa de um slot tem a altura do próprio slot na
+ * grade — 15 min viram ~17px —, e não há como esticá-la para os 44px de dedo
+ * sem desalinhar o horário que ela representa, que é a única coisa que ela
+ * significa. No celular o caminho é o "+ Novo agendamento" da barra, que abre
+ * o mesmo modal com a grade de horários em chips de tamanho de dedo. Dois
+ * ramos de render, e não um alvo que promete um toque que não funciona.
  */
 function SlotTargets({
   from,
   to,
   gridStart,
   interval,
+  pxPerMinute,
   barberName,
   onPick,
 }: {
@@ -303,6 +345,7 @@ function SlotTargets({
   to: number;
   gridStart: number;
   interval: number;
+  pxPerMinute: number;
   barberName: string;
   onPick: (time: string) => void;
 }) {
@@ -319,12 +362,34 @@ function SlotTargets({
           type="button"
           aria-label={`Agendar ${minutesToLabel(minute)} com ${barberName}`}
           onClick={() => onPick(minutesToLabel(minute))}
-          className="absolute inset-x-0 transition-colors hover:bg-gold/10"
-          style={{ top: (minute - gridStart) * PX_PER_MINUTE, height: interval * PX_PER_MINUTE }}
+          className="absolute inset-x-0 hidden transition-colors hover:bg-gold/10 md:block"
+          style={{ top: (minute - gridStart) * pxPerMinute, height: interval * pxPerMinute }}
         />
       ))}
     </>
   );
+}
+
+/**
+ * `true` abaixo de `md` (768px), onde a régua de toque de 44px vale.
+ *
+ * Começa em `false` para casar com a renderização do servidor e só então
+ * consulta o `matchMedia` — o mesmo caminho que `Popover` e a busca global já
+ * usam nesta base. A diferença aparece num quadro, antes de qualquer dado da
+ * agenda chegar.
+ */
+function useCompactGrid(): boolean {
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const sync = () => setCompact(query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  }, []);
+
+  return compact;
 }
 
 /** Minuto local corrente, atualizado a cada minuto — a linha "agora" anda. */

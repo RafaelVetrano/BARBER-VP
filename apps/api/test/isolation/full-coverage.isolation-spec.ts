@@ -744,16 +744,21 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       );
     });
 
-    it('não lê nem reescreve a escala do barbeiro de B', async () => {
+    /*
+     * `GET|PUT /barbers/:id/work-schedule` saíram no agente 29 (rotas órfãs,
+     * sem consumidor). A ESCALA continua isolada — só que pelo caminho que
+     * sobrou, que é o mesmo que a tela usa.
+     */
+    it('não lê a escala do barbeiro de B pelo detalhe', async () => {
+      await expectDenied(asA.get(`/barbers/${fixture.b.barberId}`), 'GET /barbers/:id');
+    });
+
+    it('não reescreve a escala do barbeiro de B pelo PATCH', async () => {
       await expectDenied(
-        asA.get(`/barbers/${fixture.b.barberId}/work-schedule`),
-        'GET /barbers/:id/work-schedule',
-      );
-      await expectDenied(
-        asA.put(`/barbers/${fixture.b.barberId}/work-schedule`).send({
-          days: [{ weekday: 1, startTime: 60, endTime: 120, isDayOff: false }],
+        asA.patch(`/barbers/${fixture.b.barberId}`).send({
+          workSchedule: [{ weekday: 1, startTime: 60, endTime: 120, isDayOff: false }],
         }),
-        'PUT /barbers/:id/work-schedule',
+        'PATCH /barbers/:id (workSchedule)',
       );
     });
 
@@ -1035,6 +1040,36 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
 
     it('OWNER de barbearia não lê o outbox da plataforma', async () => {
       await expectDenied(asA.get('/admin/outbox'), 'GET /admin/outbox');
+    });
+
+    /*
+     * Rotas novas do agente 29. As duas mexem em recurso de tenant a partir do
+     * painel da plataforma, então precisam do mesmo cinto que as demais: quem
+     * não é `SUPER_ADMIN` não passa — nem mirando o PRÓPRIO tenant, que é o
+     * caso mais tentador (o OWNER "só quer cancelar a exclusão da própria
+     * barbearia" — e para isso existe o caminho de Meu perfil, com a checagem
+     * de dono).
+     */
+    it('OWNER não cancela exclusão agendada pelo painel da plataforma', async () => {
+      await expectDenied(
+        asA.post(`/admin/tenants/${fixture.a.id}/deletion/cancel`).send({}),
+        'POST /admin/tenants/:id/deletion/cancel (próprio tenant)',
+      );
+      await expectDenied(
+        asA.post(`/admin/tenants/${fixture.b.id}/deletion/cancel`).send({}),
+        'POST /admin/tenants/:id/deletion/cancel (tenant alheio)',
+      );
+    });
+
+    it('OWNER não encerra impersonação pelo painel da plataforma', async () => {
+      await expectDenied(
+        asA.post(`/admin/tenants/${fixture.a.id}/impersonate/revoke`).send({}),
+        'POST /admin/tenants/:id/impersonate/revoke (próprio tenant)',
+      );
+      await expectDenied(
+        asA.post(`/admin/tenants/${fixture.b.id}/impersonate/revoke`).send({}),
+        'POST /admin/tenants/:id/impersonate/revoke (tenant alheio)',
+      );
     });
   });
 });

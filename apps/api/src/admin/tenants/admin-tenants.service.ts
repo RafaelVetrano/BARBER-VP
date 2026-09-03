@@ -57,7 +57,15 @@ export class AdminTenantsService {
     const [rows, total] = await Promise.all([
       this.prisma.tenant.findMany({
         where,
-        select: { id: true, name: true, slug: true, status: true, createdAt: true, plan: { select: { name: true } } },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          createdAt: true,
+          purgeAt: true,
+          plan: { select: { name: true } },
+        },
         orderBy: { createdAt: 'desc' },
         skip: window.skip,
         take: window.take,
@@ -69,7 +77,7 @@ export class AdminTenantsService {
     const from = monthStart();
     const to = nextMonth(from);
 
-    const [barberCounts, appointmentCounts] = await Promise.all([
+    const [barberCounts, appointmentCounts, impersonations] = await Promise.all([
       this.prisma.barber.groupBy({
         by: ['tenantId'],
         where: { tenantId: { in: tenantIds }, active: true },
@@ -80,9 +88,23 @@ export class AdminTenantsService {
         where: { tenantId: { in: tenantIds }, startsAt: { gte: from, lt: to } },
         _count: true,
       }),
+      // Uma consulta para a página inteira, não uma por linha.
+      this.prisma.authSession.findMany({
+        where: {
+          tenantId: { in: tenantIds },
+          impersonatedBy: { not: null },
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: { tenantId: true },
+        distinct: ['tenantId'],
+      }),
     ]);
     const barberMap = new Map(barberCounts.map((row) => [row.tenantId, row._count]));
     const apptMap = new Map(appointmentCounts.map((row) => [row.tenantId, row._count]));
+    const impersonated = new Set(
+      impersonations.map((row) => row.tenantId).filter((id): id is string => id !== null),
+    );
 
     const items: AdminTenantListItem[] = rows.map((row) => ({
       id: row.id,
@@ -93,6 +115,8 @@ export class AdminTenantsService {
       barberCount: barberMap.get(row.id) ?? 0,
       appointmentsThisMonth: apptMap.get(row.id) ?? 0,
       createdAt: row.createdAt.toISOString(),
+      purgeAt: row.purgeAt?.toISOString() ?? null,
+      impersonationActive: impersonated.has(row.id),
     }));
 
     return toPaginated(items, total, window);
@@ -113,6 +137,7 @@ export class AdminTenantsService {
         email: true,
         phone: true,
         createdAt: true,
+        purgeAt: true,
         plan: { select: { id: true, name: true, priceCents: true } },
         subscriptions: {
           orderBy: { createdAt: 'desc' },
@@ -129,15 +154,24 @@ export class AdminTenantsService {
       throw ApiException.notFound('Tenant não encontrado.');
     }
 
-    const [barberCount, clientCount, appointmentsThisMonth, revenue] = await Promise.all([
-      this.prisma.barber.count({ where: { tenantId: id, active: true } }),
-      this.prisma.clientProfile.count({ where: { tenantId: id, deletedAt: null } }),
-      this.prisma.appointment.count({ where: { tenantId: id, startsAt: { gte: from, lt: to } } }),
-      this.prisma.order.aggregate({
-        where: { tenantId: id, status: 'CLOSED', closedAt: { gte: from, lt: to } },
-        _sum: { totalCents: true },
-      }),
-    ]);
+    const [barberCount, clientCount, appointmentsThisMonth, revenue, impersonations] =
+      await Promise.all([
+        this.prisma.barber.count({ where: { tenantId: id, active: true } }),
+        this.prisma.clientProfile.count({ where: { tenantId: id, deletedAt: null } }),
+        this.prisma.appointment.count({ where: { tenantId: id, startsAt: { gte: from, lt: to } } }),
+        this.prisma.order.aggregate({
+          where: { tenantId: id, status: 'CLOSED', closedAt: { gte: from, lt: to } },
+          _sum: { totalCents: true },
+        }),
+        this.prisma.authSession.count({
+          where: {
+            tenantId: id,
+            impersonatedBy: { not: null },
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+        }),
+      ]);
 
     const subscription = tenant.subscriptions[0];
 
@@ -171,6 +205,8 @@ export class AdminTenantsService {
         role: membership.role,
         active: membership.user.active,
       })),
+      purgeAt: tenant.purgeAt?.toISOString() ?? null,
+      impersonationActive: impersonations > 0,
     };
   }
 
@@ -275,7 +311,14 @@ export class AdminTenantsService {
       throw ApiException.notFound('Este tenant não tem um OWNER ativo para impersonar.');
     }
 
-    const issued = await this.establishmentAuth.issueSessionForUser(owner.user.id, id, request);
+    // `actorUserId` vai junto: é ele que MARCA a sessão como impersonação e
+    // torna possível encerrá-la à força depois (`revokeImpersonations`).
+    const issued = await this.establishmentAuth.issueSessionForUser(
+      owner.user.id,
+      id,
+      request,
+      actorUserId,
+    );
 
     // Auditoria pesada de propósito: quem (super admin), o quê (impersonação),
     // sobre quem (o OWNER alvo) e onde (tenant) — tudo numa entrada só, e o
@@ -299,5 +342,118 @@ export class AdminTenantsService {
       tenantSlug: tenant.slug,
       ownerName: owner.user.name,
     };
+  }
+
+  /**
+   * KILL-SWITCH DA IMPERSONAÇÃO.
+   *
+   * Até o agente 29 não havia como encerrar uma impersonação em curso: ou o
+   * próprio super admin clicava "sair" no banner, ou se esperava o token de
+   * 900s expirar. Se a aba fosse fechada com a sessão viva — ou se a máquina
+   * do super admin ficasse aberta na mesa — a sessão do OWNER seguia de pé sem
+   * ninguém para encerrá-la.
+   *
+   * Revoga a `AuthSession` de impersonação, e não o login normal do OWNER: o
+   * filtro é `impersonatedBy != null`. A revogação vale NA HORA, inclusive
+   * para o access token já emitido — o `JwtAuthGuard` confere
+   * `sessions.isActive(claims.sid)` a cada requisição.
+   */
+  async revokeImpersonations(
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<{ revoked: number }> {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!tenant) {
+      throw ApiException.notFound('Tenant não encontrado.');
+    }
+
+    const sessions = await this.prisma.authSession.findMany({
+      where: { tenantId: id, impersonatedBy: { not: null }, revokedAt: null },
+      select: { id: true, userId: true, impersonatedBy: true },
+    });
+    if (sessions.length === 0) {
+      throw ApiException.conflict(
+        'Não há impersonação em curso neste tenant.',
+        'IMPERSONATION_NOT_ACTIVE',
+      );
+    }
+
+    await this.prisma.authSession.updateMany({
+      where: { id: { in: sessions.map((session) => session.id) } },
+      data: { revokedAt: new Date(), revokedReason: 'impersonation-revoked' },
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.ADMIN_IMPERSONATION_REVOKED,
+        entity: 'Tenant',
+        entityId: id,
+        tenantId: id,
+        actorUserId,
+        metadata: {
+          sessionIds: sessions.map((session) => session.id),
+          impersonatedBy: sessions.map((session) => session.impersonatedBy),
+        },
+      },
+      request,
+    );
+
+    return { revoked: sessions.length };
+  }
+
+  /**
+   * Desfaz uma exclusão de conta AGENDADA (`Tenant.purgeAt`).
+   *
+   * O dono pode desistir sozinho entrando pelo próprio login (agente 27), mas
+   * `/admin/tenants` filtra por `deletedAt` — que no agendamento é NULO —, então
+   * a barbearia continuava na lista sem nenhum controle para limpar o `purgeAt`.
+   * **Se o dono perdesse o acesso ao login dentro dos 30 dias, ninguém
+   * desfazia e a `MaintenanceService` apagava.**
+   *
+   * Volta para `TRIAL`, e não para `ACTIVE`, pela mesma razão do caminho do
+   * dono: a assinatura foi cancelada no gateway na hora do pedido e não se
+   * ressuscita uma cobrança recorrente por conta própria.
+   */
+  async cancelScheduledDeletion(
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<{ canceled: true }> {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, purgeAt: true },
+    });
+    if (!tenant) {
+      throw ApiException.notFound('Tenant não encontrado.');
+    }
+    if (!tenant.purgeAt) {
+      throw ApiException.conflict(
+        'Não há exclusão agendada para esta conta.',
+        'DELETION_NOT_SCHEDULED',
+      );
+    }
+
+    await this.prisma.tenant.update({
+      where: { id },
+      data: { status: TenantStatus.TRIAL, purgeAt: null },
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.ADMIN_TENANT_DELETION_CANCELED,
+        entity: 'Tenant',
+        entityId: id,
+        tenantId: id,
+        actorUserId,
+        metadata: { purgeAt: tenant.purgeAt.toISOString() },
+      },
+      request,
+    );
+
+    return { canceled: true };
   }
 }
