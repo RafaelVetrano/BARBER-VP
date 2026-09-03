@@ -38,6 +38,7 @@ describe('aba Agenda (agente 15, e2e)', () => {
   let barberId: string;
   let serviceId: string;
   let clientId: string;
+  let unitId: string;
 
   /** Escala do barbeiro: 09:00–18:00 com almoço 12:00–13:00, todo dia. */
   const WORK_START = 540;
@@ -114,10 +115,17 @@ describe('aba Agenda (agente 15, e2e)', () => {
       },
     });
 
+    const unit = await prisma.unit.create({
+      data: { tenantId, name: 'Unidade AG15', isDefault: true },
+      select: { id: true },
+    });
+    unitId = unit.id;
+
     const barber = await prisma.barber.create({
       data: {
         tenantId,
         name: 'Barbeiro AG15',
+        unitId,
         workSchedules: {
           create: Array.from({ length: 7 }, (_, weekday) => ({
             tenantId,
@@ -458,6 +466,28 @@ describe('aba Agenda (agente 15, e2e)', () => {
   });
 
   // ── Remarcar ─────────────────────────────────────────────────────────────
+
+  it('o agendamento nasce com a UNIDADE do barbeiro — sem isso o filtro por unidade dos Relatórios devolve zero', async () => {
+    const date = targetDate();
+    const slots = await asOwner()
+      .get(`/staff-agenda/slots?date=${date}&barberId=${barberId}&serviceIds=${serviceId}`)
+      .expect(200);
+    const free = slots.body.slots.find((slot: { available: boolean }) => slot.available);
+    expect(free).toBeDefined();
+
+    const created = await asOwner()
+      .post('/staff-agenda')
+      .send({ barberId, serviceIds: [serviceId], startsAt: free.startsAt, clientId })
+      .expect(201);
+
+    const row = await prisma.appointment.findUnique({
+      where: { id: created.body.id },
+      select: { unitId: true },
+    });
+    expect(row?.unitId).toBe(unitId);
+
+    await asOwner().patch(`/staff-agenda/${created.body.id}/cancel`).send({}).expect(200);
+  });
 
   it('remarcar passa pelo motor de disponibilidade — horário ocupado responde 409', async () => {
     const date = targetDate();

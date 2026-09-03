@@ -64,14 +64,14 @@ export function AgendaToolbar({
             type="button"
             aria-label="Dia anterior"
             onClick={onPrev}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-[15px] font-semibold text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg md:h-7 md:w-7"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-[15px] font-semibold text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg md:h-7 md:w-7"
           >
             ‹
           </button>
           <button
             type="button"
             onClick={onToday}
-            className="whitespace-nowrap px-2.5 text-[13px] font-semibold text-gold"
+            className="flex h-11 items-center whitespace-nowrap px-2.5 text-[13px] font-semibold text-gold md:h-7"
           >
             Hoje
           </button>
@@ -79,7 +79,7 @@ export function AgendaToolbar({
             type="button"
             aria-label="Próximo dia"
             onClick={onNext}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-[15px] font-semibold text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg md:h-7 md:w-7"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-[15px] font-semibold text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg md:h-7 md:w-7"
           >
             ›
           </button>

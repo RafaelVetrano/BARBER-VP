@@ -1141,6 +1141,76 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
 
+## O que o agente 29 (reparos transversais) entregou
+
+> **Em andamento.** Camadas fechadas abaixo; a próxima sessão continua da
+> primeira camada NÃO marcada.
+
+### Camada 0 — fechamento do agente 15 (aba Agenda) ✅
+
+**Faixa real do protótipo, confirmada por grep** (nenhum agente anterior a
+anotara): `Dashboard.dc.html` **l.395–563** — toolbar l.396–440, visão Dia
+l.441–479, Semana l.481–498, Mês l.500–531, **Timeline l.533–563**. A aba
+Clientes começa em l.565. O recorte do barbeiro é `DashboardFuncionario.dc.html`
+**l.240–?**: mesma toolbar SEM o filtro de barbeiro (ele só vê a própria
+agenda), mesmas 4 visões, mesmos 3 botões à direita.
+
+**O achado que muda a leitura desta camada:** o trabalho não commitado do
+agente 15 estava MUITO mais completo do que as dívidas registradas por outros
+agentes faziam supor. Das 9 correções previstas no enunciado, **cinco já
+estavam feitas** e ninguém sabia, porque o registro nunca foi escrito:
+
+| # | Defeito previsto | Estado real |
+|---|---|---|
+| 1 | `gap-4.5` não existe no Tailwind | **Real** — corrigido (`gap-4`) |
+| 2 | 5 alvos de toque < 44px | **Parcial** — data e filtro já estavam em `h-11`; `‹`/`›` e "Hoje" corrigidos |
+| 3 | `Service.color` não é lido | **Real** — corrigido (ver decisão) |
+| 4 | Sem caminho para `NO_SHOW` | **Já feito** — `PATCH /staff-agenda/:id/no-show` + drawer + caso e2e |
+| 5 | `TIMELINE` renderiza igual a `DAY` | **Já feito** — `agenda-timeline.tsx` tem o desenho próprio da l.533–563 |
+| 6 | Mover só troca a hora do mesmo dia | **Já feito** — a remarcação reusa o modal, com data E barbeiro |
+| 7 | Modal de remarcação não extraído | **Parcial** — o modal existe; faltava o consumidor do Dashboard |
+| 8 | Modal assume fuso do navegador | **Já feito** — o `startsAt` vem de `/slots`, instante UTC do servidor |
+| 9 | `Appointment.unitId` nasce nulo | **Real** — corrigido nos 3 caminhos de escrita |
+
+**Corrigido de fato:**
+
+- **`gap-4.5` → `gap-4`** em `agenda/page.tsx` (l.122 e l.272). A classe não
+  gerava regra nenhuma (a escala do Tailwind 3.4 vai de `4` a `5`, sem `4.5`),
+  então o gap era **zero** — as duas únicas ocorrências do repositório.
+- **Alvos de toque da barra de data.** `‹` e `›` eram `h-9 w-9` (36px) e "Hoje"
+  não tinha altura nenhuma (~20px de conteúdo). Viraram `h-11`/`h-11 w-11` no
+  mobile, mantendo `md:h-7` — o protótipo desenha 28px, que só vale no desktop.
+- **`Service.color` chega à agenda.** `StaffAppointmentItem.services[]` ganhou
+  `color`; o bloco da grade desenha uma **faixa de acento** de 4px com ela.
+- **`Appointment.unitId` deixa de nascer nulo.** A unidade do agendamento é a
+  do barbeiro que o atende, gravada nos três caminhos: `POST /staff-agenda`,
+  o booking público (`AppointmentsService.persist`) e `PATCH /:id/move` (trocar
+  de profissional pode trocar de unidade). **Era a causa de o filtro por
+  unidade dos Relatórios — entregue funcionando pelo agente 20 — devolver zero
+  para sempre.** Caso e2e novo cobre a gravação.
+- **"Remarcar" do Dashboard remarca de verdade.** O menu ⋯ de "Próximos
+  atendimentos" navegava para `/app/agenda` e largava o operador lá. Agora abre
+  o MESMO `AppointmentFormModal` da aba Agenda, carregado por
+  `GET /staff-agenda/:id`. **Fecha a dívida 2 da fase 13** sem uma segunda
+  implementação da regra de disponibilidade.
+
+**Decisões conscientes desta camada:**
+
+1. **Cor do bloco: status, com o serviço como acento.** O enunciado dizia "o
+   protótipo colore por serviço" — **não colore**. `Dashboard.dc.html` l.5055,
+   l.5071 e l.5091 mapeiam `color: STATUS_COLORS[a.status]` nas TRÊS visões.
+   Mas o catálogo tem um campo chamado literalmente "Cor na agenda" (l.1993)
+   que não fazia nada — botão sem função, regra 2. Resolvido honrando os dois:
+   o TOM do bloco continua sendo o do status (fidelidade + legibilidade do
+   estado), e `Service.color` entra como faixa lateral de 4px. Serviço sem cor
+   não desenha faixa.
+2. **Timeline fica.** A decisão que o enunciado pedia já estava tomada pelo
+   código não registrado: `agenda-timeline.tsx` porta o desenho da l.533–563
+   (faixa horizontal por barbeiro, régua de horas, almoço e bloqueios como zona
+   morta). Nada a remover do seletor.
+
+**Testes:** `agenda.e2e-spec.ts` 10/10, com o caso novo do `unitId`.
+
 ## O que o agente 28 (auditoria da aba Assistente IA) entregou
 
 Rota: `/app/assistente-ia`. O protótipo é `Dashboard.dc.html` l.2818–3000.

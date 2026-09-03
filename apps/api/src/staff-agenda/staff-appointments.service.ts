@@ -55,7 +55,7 @@ const APPOINTMENT_INCLUDE = {
       priceCents: true,
       durationMin: true,
       subscriptionUsageId: true,
-      service: { select: { name: true } },
+      service: { select: { name: true, color: true } },
     },
   },
 } satisfies Prisma.AppointmentInclude;
@@ -477,7 +477,10 @@ export class StaffAppointmentsService {
 
     const barber = await this.prisma.barber.findFirst({
       where: { id: dto.barberId, tenantId, deletedAt: null, active: true },
-      select: { id: true },
+      // `unitId` sai daqui: a unidade do agendamento é a do profissional que o
+      // atende. Sem gravá-la, o filtro por unidade dos Relatórios não encontra
+      // nenhum agendamento — `Appointment.unitId` nascia sempre nulo.
+      select: { id: true, unitId: true },
     });
     if (!barber) {
       throw ApiException.badRequest('Barbeiro inválido.');
@@ -538,6 +541,7 @@ export class StaffAppointmentsService {
           tenantId,
           bookingCode,
           barberId: dto.barberId,
+          unitId: barber.unitId,
           serviceId: lines[0]!.serviceId,
           clientId,
           guestName,
@@ -624,11 +628,29 @@ export class StaffAppointmentsService {
     });
 
     const endsAt = new Date(startsAt.getTime() + durationMin * 60_000);
+    // Trocar de profissional pode trocar de unidade: a do agendamento
+    // acompanha a de quem passa a atendê-lo.
+    const unitId =
+      dto.barberId && dto.barberId !== appointment.barberId
+        ? ((
+            await this.prisma.barber.findFirst({
+              where: { id: barberId, tenantId },
+              select: { unitId: true },
+            })
+          )?.unitId ?? null)
+        : appointment.unitId;
 
     const updated = await this.runGuardingDoubleBooking(() =>
       this.prisma.appointment.update({
         where: { id: appointment.id },
-        data: { startsAt, endsAt, barberId, status: AppointmentStatus.SCHEDULED, confirmedAt: null },
+        data: {
+          startsAt,
+          endsAt,
+          barberId,
+          unitId,
+          status: AppointmentStatus.SCHEDULED,
+          confirmedAt: null,
+        },
         include: APPOINTMENT_INCLUDE,
       }),
     );
@@ -1386,6 +1408,10 @@ function toItem(
     services: lines.map((line) => ({
       id: line.serviceId,
       name: line.service.name,
+      // "Cor na agenda" do catálogo (protótipo l.1993). Vai para a grade como
+      // faixa de acento — o TOM do bloco continua sendo o do status, que é
+      // como o protótipo desenha a agenda (`STATUS_COLORS`, l.5041).
+      color: line.service.color,
       durationMin: line.durationMin,
       priceCents: line.priceCents,
     })),

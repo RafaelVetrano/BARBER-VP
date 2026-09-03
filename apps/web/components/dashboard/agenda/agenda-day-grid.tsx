@@ -165,7 +165,7 @@ export function AgendaDayGrid({
                       type="button"
                       onClick={() => onOpenAppointment(appointment)}
                       className={cn(
-                        'absolute inset-x-1 flex flex-col gap-px overflow-hidden rounded-md border px-1.5 py-1 text-left',
+                        'absolute inset-x-1 flex flex-col gap-px overflow-hidden rounded-md border px-1.5 py-1 pl-2 text-left',
                         tone.block,
                       )}
                       style={{
@@ -173,6 +173,7 @@ export function AgendaDayGrid({
                         height: Math.max(appointment.durationMin * PX_PER_MINUTE - 2, MIN_BLOCK_HEIGHT),
                       }}
                     >
+                      <ServiceAccent services={appointment.services} />
                       <span className="flex items-center gap-1">
                         <span className={cn('text-[11px] font-semibold tabular-nums', tone.text)}>
                           {minutesToLabel(from)}
@@ -218,6 +219,28 @@ export function AgendaDayGrid({
 }
 
 /** Faixa hachurada — almoço e bloqueios. */
+/**
+ * Faixa de acento com a "Cor na agenda" do serviço (`Service.color`, escolhida
+ * no catálogo — protótipo l.1993).
+ *
+ * O TOM do bloco continua sendo o do status, como o protótipo desenha a agenda
+ * (`STATUS_COLORS`, l.5041): a cor do serviço entra como faixa lateral, para
+ * que o campo do catálogo tenha efeito sem apagar a leitura de status. Serviço
+ * sem cor definida não desenha faixa nenhuma.
+ */
+function ServiceAccent({ services }: { services: StaffAppointmentItem['services'] }) {
+  const color = services.find((service) => service.color)?.color;
+  if (!color) return null;
+
+  return (
+    <span
+      aria-hidden
+      className="absolute inset-y-0 left-0 w-1 rounded-l"
+      style={{ background: color }}
+    />
+  );
+}
+
 function Band({
   from,
   to,

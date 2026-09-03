@@ -10,11 +10,16 @@ import {
   cn,
   useToast,
 } from '@barbervp/ui';
+import { AgendaView } from '@barbervp/types';
 import type { DashboardUpcomingAppointment } from '@barbervp/types';
 import {
   useCancelStaffAppointmentMutation,
   useConfirmStaffAppointmentMutation,
+  useStaffAgendaQuery,
+  useStaffAppointmentDetailQuery,
 } from '@/lib/dashboard/api/agenda';
+import { AppointmentFormModal } from '@/components/dashboard/agenda/appointment-form-modal';
+import { todayKey } from '@/components/dashboard/agenda/agenda-shared';
 import { useOpenOrderMutation } from '@/lib/dashboard/api/pos';
 
 /**
@@ -22,16 +27,28 @@ import { useOpenOrderMutation } from '@/lib/dashboard/api/pos';
  * hora tabular de 44px, cliente + "serviço · barbeiro", pílula de status e o
  * menu ⋯ com Confirmar / Remarcar / Abrir comanda / Cancelar.
  *
- * As quatro ações são reais: confirmar e cancelar chamam a API e revalidam o
- * dashboard; "Abrir comanda" abre a comanda ligada ao agendamento e navega
- * para ela; "Remarcar" leva à Agenda, que é onde a grade de horários existe —
- * duplicar aqui o seletor de slot seria uma segunda implementação da mesma
- * regra de disponibilidade.
+ * As quatro ações são reais e acontecem AQUI: confirmar e cancelar chamam a API
+ * e revalidam o dashboard; "Abrir comanda" abre a comanda ligada ao agendamento
+ * e navega para ela; "Remarcar" abre o MESMO `AppointmentFormModal` da aba
+ * Agenda, carregado com o agendamento — reusar o modal evita uma segunda
+ * implementação da regra de disponibilidade, que era o motivo de esta ação
+ * antes apenas navegar para `/app/agenda`.
  */
 export function UpcomingCard({ appointments }: { appointments: DashboardUpcomingAppointment[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+
+  // O modal precisa do agendamento inteiro (serviços, barbeiro, cliente) e da
+  // lista de barbeiros — o card só carrega o resumo. As duas consultas só
+  // disparam quando "Remarcar" é acionado.
+  const detailQuery = useStaffAppointmentDetailQuery(reschedulingId);
+  const agendaQuery = useStaffAgendaQuery(
+    { date: todayKey(), view: AgendaView.DAY, barberIds: [] },
+    reschedulingId !== null,
+  );
+  const rescheduling = detailQuery.data?.appointment ?? null;
 
   const confirmMutation = useConfirmStaffAppointmentMutation();
   const cancelMutation = useCancelStaffAppointmentMutation();
@@ -103,7 +120,7 @@ export function UpcomingCard({ appointments }: { appointments: DashboardUpcoming
                     {
                       label: 'Remarcar',
                       disabled: closed,
-                      onSelect: () => router.push('/app/agenda'),
+                      onSelect: () => setReschedulingId(appointment.id),
                     },
                     {
                       label: 'Abrir comanda',
@@ -141,6 +158,18 @@ export function UpcomingCard({ appointments }: { appointments: DashboardUpcoming
             );
           })}
         </ul>
+      )}
+
+      {/* Só monta com o agendamento em mãos: o modal remarca o que recebe. */}
+      {rescheduling && (
+        <AppointmentFormModal
+          open
+          onClose={() => setReschedulingId(null)}
+          date={rescheduling.startsAt.slice(0, 10)}
+          timezone={agendaQuery.data?.timezone ?? 'America/Sao_Paulo'}
+          barbers={agendaQuery.data?.barberOptions ?? []}
+          rescheduling={rescheduling}
+        />
       )}
     </Card>
   );

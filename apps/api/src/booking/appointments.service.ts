@@ -331,6 +331,11 @@ export class AppointmentsService {
     const barberId = input.barberId ?? (await this.pickBarber(tenant, slot.barberIds, input.startsAt));
     const endsAt = new Date(input.startsAt.getTime() + durationMin * 60_000);
 
+    // A unidade do agendamento é a do profissional que o atende. Sem isto o
+    // filtro por unidade dos Relatórios não encontra NENHUM agendamento —
+    // `Appointment.unitId` nascia sempre nulo.
+    const unitId = await this.unitOfBarber(tenant.id, barberId);
+
     const created = await this.runGuardingDoubleBooking(() =>
       this.prisma.$transaction(async (tx) => {
         // Débito de assinatura ANTES de fixar preço: se a quota acabou entre a
@@ -362,6 +367,7 @@ export class AppointmentsService {
           tenantId: tenant.id,
           bookingCode,
           barberId,
+          unitId,
           // O "serviço principal" é o primeiro da seleção: é ele que aparece na
           // agenda do dashboard e na comanda.
           serviceId: lines[0]!.serviceId,
@@ -523,6 +529,21 @@ export class AppointmentsService {
     return barberIds.reduce((best, candidate) =>
       (countOf.get(candidate) ?? 0) < (countOf.get(best) ?? 0) ? candidate : best,
     );
+  }
+
+  /**
+   * Unidade em que o agendamento acontece: a do barbeiro que o atende.
+   *
+   * `Barber.unitId` é opcional (barbearia de uma unidade só não preenche), e
+   * `null` continua sendo resposta válida — o filtro dos Relatórios trata
+   * ausência de unidade como "todas".
+   */
+  private async unitOfBarber(tenantId: string, barberId: string): Promise<string | null> {
+    const barber = await this.prisma.barber.findFirst({
+      where: { id: barberId, tenantId },
+      select: { unitId: true },
+    });
+    return barber?.unitId ?? null;
   }
 
   private async insertWithUniqueCode(

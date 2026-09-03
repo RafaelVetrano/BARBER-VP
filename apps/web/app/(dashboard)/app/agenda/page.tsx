@@ -119,7 +119,7 @@ function AgendaContent() {
 
   return (
     <DashboardChrome activeKey="agenda">
-      <div className="flex flex-col gap-4.5">
+      <div className="flex flex-col gap-4">
         <AgendaToolbar
           date={date}
           onDateChange={setDate}
@@ -269,7 +269,7 @@ export default function AgendaPage() {
 function AgendaFallback() {
   return (
     <DashboardChrome activeKey="agenda">
-      <div className="flex flex-col gap-4.5">
+      <div className="flex flex-col gap-4">
         <Skeleton className="h-10" />
         <Skeleton className="h-[520px]" />
       </div>

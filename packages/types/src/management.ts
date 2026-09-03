@@ -506,7 +506,14 @@ export interface StaffAppointmentItem {
   clientPhone: string;
   /** Agendamento avulso, sem cliente cadastrado (`guestName`/`guestPhone`). */
   isWalkIn: boolean;
-  services: Array<{ id: string; name: string; durationMin: number; priceCents: number }>;
+  services: Array<{
+    id: string;
+    name: string;
+    /** "Cor na agenda" do catálogo (`Service.color`). `null` = sem cor definida. */
+    color: string | null;
+    durationMin: number;
+    priceCents: number;
+  }>;
   totalPriceCents: number;
   /** Soma das durações — o bloco na grade é desenhado com ela. */
   durationMin: number;
