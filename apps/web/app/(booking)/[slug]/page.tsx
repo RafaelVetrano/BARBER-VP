@@ -72,6 +72,22 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
  * Componente de SERVIDOR: a primeira carga vem com HTML pronto, para o robô de
  * busca e para quem abre o link num 4G ruim. A interação (wizard, login) vive no
  * `BarbershopPage`, que é cliente.
+ *
+ * **Sem `loading.tsx` nesta pasta, e é de propósito** (agente 29). Ele existia
+ * e era a causa do *soft 404* registrado pela fase 11: o arquivo cria um limite
+ * de Suspense, o Next despeja a casca com status 200 e só então resolve o
+ * `fetch` — quando o `notFound()` abaixo dispara, o cabeçalho já foi enviado, e
+ * um slug inexistente respondia **200** com a tela "Barbearia não encontrada".
+ * Robô de busca indexa isso.
+ *
+ * Medido: com o `loading.tsx`, `/slug-inexistente` → 200; sem ele → 404.
+ *
+ * O esqueleto não custou nada ao ser removido: `generateMetadata` acima JÁ
+ * aguarda o mesmo `fetchBarbershop` antes de qualquer byte sair, e o `fetch`
+ * tem `revalidate: 60` — a segunda chamada é leitura de cache na mesma
+ * requisição, não ida à rede. Nenhuma navegação interna aponta para `/{slug}`
+ * (é sempre ponto de entrada de link externo), então não havia caso em que o
+ * esqueleto chegasse a aparecer.
  */
 export default async function Page({ params }: PageProps) {
   const shop = await fetchBarbershop(params.slug);

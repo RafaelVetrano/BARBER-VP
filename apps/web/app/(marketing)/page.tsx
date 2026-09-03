@@ -40,7 +40,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
   // Sobrescreve o `default` do layout: a home é a única página do site que
   // disputa busca por termo genérico, e "Site institucional" não é o termo.
-  title: 'BarberVP — Sistema de gestão para barbearias',
+  // `absolute`: sem isto o `template: '%s · BarberVP'` do layout raiz se aplica
+  // ao título da rota e sai "BarberVP — Sistema de gestão para barbearias ·
+  // BarberVP", com a marca duas vezes. Herdado da fase 10.
+  title: { absolute: 'BarberVP — Sistema de gestão para barbearias' },
   description: DESCRIPTION,
   alternates: { canonical: '/' },
   openGraph: {
