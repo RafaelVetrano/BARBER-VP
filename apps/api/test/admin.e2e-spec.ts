@@ -243,6 +243,148 @@ describe('super admin (e2e)', () => {
     expect(avancadoRow.tenantCount).toBeGreaterThanOrEqual(1);
   });
 
+  it('encerrar a impersonação à força mata o token JÁ emitido, sem esperar os 900s', async () => {
+    const response = await asAdmin().post(`/admin/tenants/${tenantId}/impersonate`).expect(201);
+    const impersonatedToken = response.body.accessToken as string;
+
+    // A sessão está viva.
+    await api().get(url('/clients')).set('Authorization', `Bearer ${impersonatedToken}`).expect(200);
+    // E o painel enxerga que há impersonação em curso.
+    const before = await asAdmin().get(`/admin/tenants/${tenantId}`).expect(200);
+    expect(before.body.impersonationActive).toBe(true);
+
+    const revoked = await asAdmin()
+      .post(`/admin/tenants/${tenantId}/impersonate/revoke`)
+      .expect(201);
+    expect(revoked.body.revoked).toBeGreaterThanOrEqual(1);
+
+    // O MESMO token, que funcionava dois passos acima, morre na hora: o guarda
+    // confere a `AuthSession` a cada requisição.
+    await api().get(url('/clients')).set('Authorization', `Bearer ${impersonatedToken}`).expect(401);
+
+    const after = await asAdmin().get(`/admin/tenants/${tenantId}`).expect(200);
+    expect(after.body.impersonationActive).toBe(false);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { tenantId, action: 'admin.impersonation_revoked' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+
+    // Sem impersonação em curso, encerrar de novo é 409 — e não um "ok" vazio.
+    await asAdmin().post(`/admin/tenants/${tenantId}/impersonate/revoke`).expect(409);
+  });
+
+  it('o login NORMAL do dono não é derrubado pelo kill-switch da impersonação', async () => {
+    const login = await api()
+      .post(url('/auth/login'))
+      .send({ email: ownerEmail, password })
+      .expect(200);
+    const ownerAccess = login.body.accessToken as string;
+
+    await asAdmin().post(`/admin/tenants/${tenantId}/impersonate`).expect(201);
+    await asAdmin().post(`/admin/tenants/${tenantId}/impersonate/revoke`).expect(201);
+
+    // O dono continua trabalhando: o filtro é `impersonatedBy != null`.
+    await api().get(url('/clients')).set('Authorization', `Bearer ${ownerAccess}`).expect(200);
+  });
+
+  it('cancelar a exclusão agendada limpa o purgeAt e devolve a conta para trial', async () => {
+    const purgeAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000);
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { status: 'CANCELED', purgeAt },
+    });
+
+    // O tenant SEGUE na lista (deletedAt é nulo) — era justamente isso que
+    // escondia a exclusão agendada do super admin.
+    const list = await asAdmin().get('/admin/tenants?perPage=100').expect(200);
+    const row = list.body.data.find((t: { id: string }) => t.id === tenantId);
+    expect(row).toBeDefined();
+    expect(row.purgeAt).not.toBeNull();
+
+    await asAdmin().post(`/admin/tenants/${tenantId}/deletion/cancel`).expect(201);
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { purgeAt: true, status: true },
+    });
+    expect(tenant?.purgeAt).toBeNull();
+    expect(tenant?.status).toBe('TRIAL');
+
+    // Sem exclusão agendada, cancelar de novo é 409.
+    await asAdmin().post(`/admin/tenants/${tenantId}/deletion/cancel`).expect(409);
+
+    await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } });
+  });
+
+  it('editar o teto do PLANO reprocessa os tenants que já estão nele', async () => {
+    // Um plano só deste caso, com dois barbeiros no tenant.
+    const plan = await asAdmin()
+      .post('/admin/plans')
+      .send({
+        code: `e2e-teto-${run}`,
+        name: 'Plano Teto e2e',
+        priceCents: 9_900,
+        tier: 1,
+        maxBarbers: 5,
+        features: featuresForTier(PlanTier.PROFISSIONAL),
+      })
+      .expect(201);
+    cleanupPlanCodes.push(plan.body.code);
+
+    await asAdmin().patch(`/admin/tenants/${tenantId}/plan`).send({ planId: plan.body.id }).expect(200);
+
+    await prisma.barber.createMany({
+      data: [
+        { tenantId, name: 'Teto Um', sortOrder: 90 },
+        { tenantId, name: 'Teto Dois', sortOrder: 91 },
+      ],
+    });
+
+    const ativosAntes = await prisma.barber.count({ where: { tenantId, active: true, deletedAt: null } });
+    expect(ativosAntes).toBeGreaterThan(1);
+
+    // ENCOLHE o teto do plano — sem passar pela troca de plano do tenant, que
+    // era o único caminho que reprocessava.
+    await asAdmin()
+      .patch(`/admin/plans/${plan.body.id}`)
+      .send({
+        code: plan.body.code,
+        name: 'Plano Teto e2e',
+        priceCents: 9_900,
+        tier: 1,
+        maxBarbers: 1,
+        features: featuresForTier(PlanTier.PROFISSIONAL),
+      })
+      .expect(200);
+
+    const ativosDepois = await prisma.barber.count({ where: { tenantId, active: true, deletedAt: null } });
+    expect(ativosDepois).toBe(1);
+    // Desligados PELO PLANO, e não pelo dono — é o que permite reativar depois.
+    expect(
+      await prisma.barber.count({ where: { tenantId, inactiveByPlan: true, deletedAt: null } }),
+    ).toBeGreaterThanOrEqual(1);
+
+    // E CRESCER o teto devolve as vagas que o próprio plano acabou de comprar.
+    await asAdmin()
+      .patch(`/admin/plans/${plan.body.id}`)
+      .send({
+        code: plan.body.code,
+        name: 'Plano Teto e2e',
+        priceCents: 9_900,
+        tier: 1,
+        maxBarbers: null,
+        features: featuresForTier(PlanTier.PROFISSIONAL),
+      })
+      .expect(200);
+
+    expect(await prisma.barber.count({ where: { tenantId, inactiveByPlan: true, deletedAt: null } })).toBe(0);
+
+    await prisma.barber.deleteMany({ where: { tenantId, name: { startsWith: 'Teto ' } } });
+    await asAdmin().patch(`/admin/tenants/${tenantId}/plan`).send({ planId: avancadoPlanId }).expect(200);
+  });
+
   it('billing: recusar N vezes seguidas suspende o tenant automaticamente', async () => {
     // Garante ciclo vencido de novo (o teste de troca de plano acima já rodou).
     await prisma.tenantSubscription.updateMany({

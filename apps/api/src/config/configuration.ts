@@ -50,8 +50,18 @@ export interface AppConfig {
     mail: Env['MAIL_DRIVER'];
     aiAssistant: Env['AI_ASSISTANT_DRIVER'];
   };
+  storage: {
+    driver: Env['STORAGE_DRIVER'];
+    localDir: string;
+    /** Sem barra final. */
+    publicBaseUrl: string;
+    /** Segmento estático, sem barras — `main.ts` e o driver compartilham. */
+    publicPath: string;
+  };
   billing: {
     maxFailedAttempts: number;
+    /** Dias até uma fatura `PENDING` ser exibida como "Atrasado". */
+    dueDays: number;
   };
   queue: {
     /** Workers ligados neste processo. Enfileirar e ler a fila independem disto. */
@@ -60,11 +70,18 @@ export interface AppConfig {
     subscriptionRenewalHour: number;
     saasBillingHour: number;
     maintenanceHour: number;
+    automationsHour: number;
     timezone: string;
   };
 }
 
 const stripTrailingSlash = (url: string): string => url.replace(/\/+$/, '');
+
+/**
+ * Prefixo dos arquivos servidos pelo storage local. Fica FORA do `API_PREFIX`
+ * de propósito: é conteúdo estático, não rota versionada da API.
+ */
+export const STORAGE_PUBLIC_PATH = 'uploads';
 
 export function buildConfig(env: Env): AppConfig {
   const isProduction = env.NODE_ENV === 'production';
@@ -122,8 +139,17 @@ export function buildConfig(env: Env): AppConfig {
       mail: env.MAIL_DRIVER,
       aiAssistant: env.AI_ASSISTANT_DRIVER,
     },
+    storage: {
+      driver: env.STORAGE_DRIVER,
+      localDir: env.STORAGE_LOCAL_DIR,
+      publicBaseUrl: stripTrailingSlash(
+        env.STORAGE_PUBLIC_BASE_URL ?? `http://localhost:${env.API_PORT}`,
+      ),
+      publicPath: STORAGE_PUBLIC_PATH,
+    },
     billing: {
       maxFailedAttempts: env.BILLING_MAX_FAILED_ATTEMPTS,
+      dueDays: env.BILLING_DUE_DAYS,
     },
     queue: {
       workersEnabled: env.QUEUE_WORKERS_ENABLED,
@@ -131,6 +157,7 @@ export function buildConfig(env: Env): AppConfig {
       subscriptionRenewalHour: env.QUEUE_SUBSCRIPTION_RENEWAL_HOUR,
       saasBillingHour: env.QUEUE_SAAS_BILLING_HOUR,
       maintenanceHour: env.QUEUE_MAINTENANCE_HOUR,
+      automationsHour: env.QUEUE_AUTOMATIONS_HOUR,
       timezone: env.QUEUE_TIMEZONE,
     },
   };

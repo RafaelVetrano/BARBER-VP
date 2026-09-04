@@ -141,7 +141,7 @@ export default function MensagensPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className="rounded-control border border-border px-3 py-1.5 text-fg disabled:opacity-40"
+                      className="min-h-11 rounded-control border border-border px-3 py-1.5 text-fg disabled:opacity-40 md:min-h-0"
                       disabled={meta.page <= 1}
                       onClick={() => setPage((current) => Math.max(1, current - 1))}
                     >
@@ -149,7 +149,7 @@ export default function MensagensPage() {
                     </button>
                     <button
                       type="button"
-                      className="rounded-control border border-border px-3 py-1.5 text-fg disabled:opacity-40"
+                      className="min-h-11 rounded-control border border-border px-3 py-1.5 text-fg disabled:opacity-40 md:min-h-0"
                       disabled={meta.page >= meta.totalPages}
                       onClick={() => setPage((current) => current + 1)}
                     >

@@ -220,7 +220,12 @@ export class ClientSubscriptionService {
     return this.toDetail(created);
   }
 
-  async pause(tenantId: string, clientId: string, request: RequestContext): Promise<ClientSubscriptionDetail> {
+  async pause(
+    tenantId: string,
+    clientId: string,
+    request: RequestContext,
+    actorUserId?: string,
+  ): Promise<ClientSubscriptionDetail> {
     const subscription = await this.loadActive(tenantId, clientId);
     if (subscription.status === SubscriptionStatus.PAUSED) {
       throw ApiException.conflict('A assinatura já está pausada.');
@@ -234,7 +239,7 @@ export class ClientSubscriptionService {
         entity: 'ClientSubscription',
         entityId: subscription.id,
         tenantId,
-        actorClientId: clientId,
+        ...actorOf(clientId, actorUserId),
       },
       request,
     );
@@ -248,7 +253,12 @@ export class ClientSubscriptionService {
    * zero —, porque devolver os usos de um período que nunca foi pago seria dar
    * corte de graça. Se ainda está dentro do ciclo, só destrava.
    */
-  async resume(tenantId: string, clientId: string, request: RequestContext): Promise<ClientSubscriptionDetail> {
+  async resume(
+    tenantId: string,
+    clientId: string,
+    request: RequestContext,
+    actorUserId?: string,
+  ): Promise<ClientSubscriptionDetail> {
     const subscription = await this.loadPaused(tenantId, clientId);
 
     const updated =
@@ -262,7 +272,7 @@ export class ClientSubscriptionService {
         entity: 'ClientSubscription',
         entityId: subscription.id,
         tenantId,
-        actorClientId: clientId,
+        ...actorOf(clientId, actorUserId),
       },
       request,
     );
@@ -271,7 +281,12 @@ export class ClientSubscriptionService {
   }
 
   /** "Perde os usos restantes do ciclo, sem multa" — sem estorno, sem cobrança. */
-  async cancel(tenantId: string, clientId: string, request: RequestContext): Promise<ClientSubscriptionDetail> {
+  async cancel(
+    tenantId: string,
+    clientId: string,
+    request: RequestContext,
+    actorUserId?: string,
+  ): Promise<ClientSubscriptionDetail> {
     const subscription = await this.loadActive(tenantId, clientId, [
       SubscriptionStatus.ACTIVE,
       SubscriptionStatus.PAST_DUE,
@@ -293,7 +308,7 @@ export class ClientSubscriptionService {
         entity: 'ClientSubscription',
         entityId: subscription.id,
         tenantId,
-        actorClientId: clientId,
+        ...actorOf(clientId, actorUserId),
       },
       request,
     );
@@ -467,4 +482,16 @@ function addMonths(date: Date, months: number): Date {
 function last4Of(cardNumber: string): string {
   const digits = cardNumber.replace(/\D/g, '');
   return digits.slice(-4);
+}
+
+/**
+ * Quem assinou a ação no log. Pausar/retomar/cancelar têm DUAS portas — o
+ * cliente na `MinhaConta` e o dono na aba Fidelidade — e o log precisa dizer
+ * qual delas foi usada. Sem `actorUserId` o ator é o próprio cliente.
+ */
+function actorOf(
+  clientId: string,
+  actorUserId?: string,
+): { actorUserId: string } | { actorClientId: string } {
+  return actorUserId ? { actorUserId } : { actorClientId: clientId };
 }

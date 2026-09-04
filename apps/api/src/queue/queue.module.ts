@@ -5,7 +5,13 @@ import { CONFIG, type AppConfig } from '../config/configuration';
 import { validateEnv } from '../config/env.schema';
 import { ClientAccountModule } from '../client-account/client-account.module';
 import { AdminModule } from '../admin/admin.module';
-import { QUEUE_BILLING, QUEUE_MAINTENANCE, QUEUE_OUTBOX, QUEUE_SUBSCRIPTIONS } from './queue.constants';
+import {
+  QUEUE_AUTOMATIONS,
+  QUEUE_BILLING,
+  QUEUE_MAINTENANCE,
+  QUEUE_OUTBOX,
+  QUEUE_SUBSCRIPTIONS,
+} from './queue.constants';
 import { QueueSchedulerService } from './queue-scheduler.service';
 import { QueueAdminService } from './queue-admin.service';
 import { QueueAdminController } from './queue-admin.controller';
@@ -14,6 +20,8 @@ import { SubscriptionRenewalProcessor } from './jobs/subscription-renewal.proces
 import { SaasBillingProcessor } from './jobs/saas-billing.processor';
 import { MaintenanceProcessor } from './jobs/maintenance.processor';
 import { MaintenanceService } from './jobs/maintenance.service';
+import { WhatsappAutomationsProcessor } from './jobs/whatsapp-automations.processor';
+import { WhatsappAutomationsService } from './jobs/whatsapp-automations.service';
 
 /**
  * Filas BullMQ (fase 09) — o que fecha as dívidas "BullMQ continua desligado"
@@ -39,6 +47,7 @@ const WORKER_PROVIDERS = [
   SubscriptionRenewalProcessor,
   SaasBillingProcessor,
   MaintenanceProcessor,
+  WhatsappAutomationsProcessor,
 ];
 
 @Module({
@@ -66,13 +75,19 @@ const WORKER_PROVIDERS = [
       { name: QUEUE_SUBSCRIPTIONS },
       { name: QUEUE_BILLING },
       { name: QUEUE_MAINTENANCE },
+      { name: QUEUE_AUTOMATIONS },
     ),
     ClientAccountModule,
     AdminModule,
   ],
   controllers: [QueueAdminController],
-  providers: [MaintenanceService, QueueSchedulerService, QueueAdminService],
-  exports: [MaintenanceService],
+  providers: [
+    MaintenanceService,
+    WhatsappAutomationsService,
+    QueueSchedulerService,
+    QueueAdminService,
+  ],
+  exports: [MaintenanceService, WhatsappAutomationsService],
 })
 export class QueueModule {
   static register(): DynamicModule {

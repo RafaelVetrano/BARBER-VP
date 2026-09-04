@@ -50,6 +50,7 @@ const USER_WITH_MEMBERSHIPS = {
   name: true,
   email: true,
   phone: true,
+  avatarUrl: true,
   passwordHash: true,
   active: true,
   isSuperAdmin: true,
@@ -271,8 +272,18 @@ export class EstablishmentAuthService {
    * de convite de equipe (fase 06), que precisa do MESMO par access/refresh
    * que login e registro emitem, sem duplicar a lógica de `roles`/claims.
    */
-  issueSessionForUser(userId: string, tenantId: string, request: RequestContext): Promise<IssuedAuth> {
-    return this.issueForUser(userId, tenantId, request);
+  /**
+   * Emite sessão para um usuário sem passar por senha. Único chamador: a
+   * IMPERSONAÇÃO do super admin — `impersonatedBy` marca a sessão para que ela
+   * possa ser encerrada à força depois (ver `AdminTenantsService.revokeImpersonations`).
+   */
+  issueSessionForUser(
+    userId: string,
+    tenantId: string,
+    request: RequestContext,
+    impersonatedBy?: string,
+  ): Promise<IssuedAuth> {
+    return this.issueForUser(userId, tenantId, request, impersonatedBy);
   }
 
   async login(dto: LoginEstablishmentDto, request: RequestContext): Promise<IssuedAuth> {
@@ -672,6 +683,7 @@ export class EstablishmentAuthService {
     userId: string,
     tenantId: string | null,
     request: RequestContext,
+    impersonatedBy?: string,
   ): Promise<IssuedAuth> {
     const issued = await this.sessions.issue({
       audience: PrismaTokenAudience.ESTABLISHMENT,
@@ -679,6 +691,7 @@ export class EstablishmentAuthService {
       tenantId,
       ip: clientIp(request),
       userAgent: request.headers['user-agent'] ?? null,
+      impersonatedBy: impersonatedBy ?? null,
     });
 
     return this.buildResponse(userId, tenantId, issued);
@@ -796,6 +809,7 @@ function toAuthUser(user: UserWithMemberships): AuthUser {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    avatarUrl: user.avatarUrl,
     isSuperAdmin: user.isSuperAdmin,
     hasClientAccount: user.client !== null,
   };

@@ -4,33 +4,64 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Slug da URL pública (`/agendar/{slug}`).
+ * Slug da URL pública (`/{slug}`).
  *
  * Vale para os dois lados: o registro deriva o slug do nome da barbearia e o
  * passo 3 do onboarding deixa o dono editar. Regra idêntica ao protótipo —
  * minúsculas e `[a-z0-9-]` — implementada por `slugify` em `@barbervp/types`,
  * de onde o frontend também importa.
+ */
+
+/**
+ * Slugs proibidos porque a URL já pertence a outra coisa.
  *
- * Reservados: rotas que a app de booking já usa e não podem virar barbearia.
+ * **Por que isto é bloqueio, e não estilo.** Desde a consolidação da fase 11 as
+ * quatro superfícies vivem numa árvore de rotas só, e no Next a rota ESTÁTICA
+ * ganha da dinâmica: uma barbearia com slug `cadastro` teria `/cadastro`
+ * resolvido para a tela de cadastro e **nunca abriria**. Antes eram domínios
+ * separados e o problema não existia — por isso a lista abaixo estava
+ * desatualizada em relação às rotas que existem hoje.
+ *
+ * Os dois primeiros grupos saem das rotas REAIS de `apps/web`; conferir com:
+ *
+ *     find apps/web/app -name page.tsx -not -path '*(dashboard)*' -not -path '*(admin)*'
+ *
+ * Rota nova fora de `(dashboard)`/`(admin)` entra aqui no mesmo commit.
  */
 const RESERVED_SLUGS = new Set([
+  // Rotas estáticas de `apps/web` — as que de fato sequestrariam o slug.
+  'agendar', // (booking)/agendar
+  'entrar', // (marketing)/(auth)/entrar
+  'cadastro', // (marketing)/(auth)/cadastro
+  'recuperar-senha', // (marketing)/(auth)/recuperar-senha
+  'privacidade', // (marketing)/(legal)/privacidade
+  'termos', // (marketing)/(legal)/termos
+
+  // Prefixos de superfície e arquivos servidos na raiz.
   'admin',
-  'agendar',
-  'api',
   'app',
+  'api',
+  'robots.txt',
+  'sitemap.xml',
+
+  // Defensivos: não são rota hoje, mas são candidatos óbvios a virarem uma, e
+  // um slug já em uso é caro de trocar depois (o link está no story do dono).
   'auth',
   'booking',
   'cliente',
   'conta',
   'dashboard',
-  'entrar',
   'login',
   'painel',
+  'planos',
+  'precos',
   'sobre',
   'suporte',
-  'termos',
   'www',
 ]);
+
+/** Exposto para o teste que compara a lista com as rotas reais. */
+export const RESERVED_SLUG_LIST: readonly string[] = [...RESERVED_SLUGS];
 
 @Injectable()
 export class SlugService {

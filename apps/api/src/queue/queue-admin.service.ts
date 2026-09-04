@@ -10,6 +10,7 @@ import type {
 import { ApiException } from '../common/errors/api.exception';
 import {
   ALL_QUEUES,
+  QUEUE_AUTOMATIONS,
   QUEUE_BILLING,
   QUEUE_MAINTENANCE,
   QUEUE_OUTBOX,
@@ -37,12 +38,14 @@ export class QueueAdminService {
     @InjectQueue(QUEUE_SUBSCRIPTIONS) subscriptions: Queue,
     @InjectQueue(QUEUE_BILLING) billing: Queue,
     @InjectQueue(QUEUE_MAINTENANCE) maintenance: Queue,
+    @InjectQueue(QUEUE_AUTOMATIONS) automations: Queue,
   ) {
     this.queues = {
       [QUEUE_OUTBOX]: outbox,
       [QUEUE_SUBSCRIPTIONS]: subscriptions,
       [QUEUE_BILLING]: billing,
       [QUEUE_MAINTENANCE]: maintenance,
+      [QUEUE_AUTOMATIONS]: automations,
     };
   }
 

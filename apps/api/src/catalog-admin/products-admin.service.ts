@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, type Product } from '@prisma/client';
+import { OrderStatus, Prisma, type Product } from '@prisma/client';
 import type { ProductListItem, ProductListResponse } from '@barbervp/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/errors/api.exception';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import { pageWindow, toPaginated } from '../common/dto/pagination.dto';
 import type { RequestContext } from '../common/types/request-context';
-import type { ProductListQueryDto, UpsertProductDto } from './dto/catalog-admin.dto';
+import type {
+  ProductListQueryDto,
+  RestockProductDto,
+  UpsertProductDto,
+} from './dto/catalog-admin.dto';
 
 /** CRUD de `Product` — estoque com alerta de `estoqueMin` (tela "Serviços & Produtos"). */
 @Injectable()
@@ -157,6 +161,100 @@ export class ProductsAdminService {
     return toListItem(updated);
   }
 
+  /**
+   * "Repor estoque" do kebab (protótipo l.1818).
+   *
+   * SOMA unidades — nunca escreve um estoque absoluto. Duas reposições
+   * simultâneas com `SET stock = x` perderiam uma das duas; o `increment`
+   * resolve no banco. (O protótipo cravava `estoqueMin + 10`, um número que
+   * ninguém escolheu; aqui a quantidade vem de quem está repondo.)
+   */
+  async restock(
+    tenantId: string,
+    id: string,
+    dto: RestockProductDto,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<ProductListItem> {
+    await this.loadOwned(tenantId, id);
+
+    const updated = await this.prisma.product.update({
+      where: { id },
+      data: { stock: { increment: dto.quantity } },
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.PRODUCT_RESTOCKED,
+        entity: 'Product',
+        entityId: id,
+        tenantId,
+        actorUserId,
+        metadata: { quantity: dto.quantity, stock: updated.stock },
+      },
+      request,
+    );
+
+    return toListItem(updated);
+  }
+
+  /**
+   * "Excluir" do kebab (protótipo l.1820) — **soft-delete**, pelo mesmo motivo
+   * do serviço: `OrderItem` referencia o produto e comandas fechadas precisam
+   * continuar dizendo o que foi vendido.
+   *
+   * Produto com estoque ainda em prateleira é recusado: excluir apagaria um
+   * ativo do inventário sem baixa nenhuma. Quem quer só tirar da venda,
+   * desativa.
+   */
+  async remove(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<void> {
+    const product = await this.prisma.product.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true, stock: true },
+    });
+    if (!product) {
+      throw ApiException.notFound('Produto não encontrado.');
+    }
+    if (product.stock > 0) {
+      throw ApiException.conflict(
+        `Ainda há ${product.stock} unidade(s) de ${product.name} em estoque. Dê baixa ou desative o produto em vez de excluir.`,
+      );
+    }
+
+    const openItems = await this.prisma.orderItem.count({
+      where: { tenantId, productId: id, order: { status: OrderStatus.OPEN } },
+    });
+    if (openItems > 0) {
+      throw ApiException.conflict('Este produto está em uma comanda aberta.');
+    }
+
+    await this.prisma.product.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        active: false,
+        name: `${product.name} (excluído ${Date.now()})`,
+      },
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.PRODUCT_DELETED,
+        entity: 'Product',
+        entityId: id,
+        tenantId,
+        actorUserId,
+        metadata: { name: product.name },
+      },
+      request,
+    );
+  }
+
   private async loadOwned(tenantId: string, id: string): Promise<void> {
     const product = await this.prisma.product.findFirst({
       where: { id, tenantId, deletedAt: null },
@@ -191,6 +289,14 @@ function toListItem(product: Product): ProductListItem {
     stock: product.stock,
     estoqueMin: product.estoqueMin,
     active: product.active,
+    // MESMO predicado do alerta do sino (`NotificationsService`, `stock <=
+    // estoqueMin`). O protótipo usava `<` no selo "Repor" e a home dizia "está
+    // no estoque mínimo" — as duas telas discordariam sobre o produto que
+    // acabou de encostar no mínimo. Encostou no mínimo é hora de repor.
     lowStock: product.stock <= product.estoqueMin,
+    marginBps:
+      product.costCents && product.costCents > 0
+        ? Math.round(((product.priceCents - product.costCents) / product.costCents) * 10_000)
+        : null,
   };
 }

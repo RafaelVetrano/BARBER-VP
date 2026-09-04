@@ -63,7 +63,13 @@ export {
   type PopoverProps,
 } from './components/popover';
 export { Segmented, type SegmentedOption, type SegmentedProps } from './components/segmented';
-export { ResponsiveTable, type ResponsiveTableProps, type TableColumn } from './components/responsive-table';
+export {
+  ResponsiveTable,
+  type ResponsiveTableProps,
+  type TableColumn,
+  type TableExpansion,
+  type TableSelection,
+} from './components/responsive-table';
 export { EmptyState, type EmptyStateProps } from './components/empty-state';
 export { Skeleton, SkeletonGroup, type SkeletonGroupProps, type SkeletonProps } from './components/skeleton';
 export { Avatar, initialsOf, type AvatarProps, type AvatarSize } from './components/avatar';

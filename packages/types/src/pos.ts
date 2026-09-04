@@ -32,6 +32,13 @@ export interface PosCatalogResponse {
   services: PosCatalogService[];
   products: PosCatalogProduct[];
   barbers: Array<{ id: string; name: string }>;
+  /**
+   * Número que a PRÓXIMA comanda deve receber — o `#N` do cabeçalho de "Nova
+   * comanda" (l.3130), mostrado antes de a comanda existir. É uma previsão: se
+   * outro caixa abrir uma comanda no meio, o número real (do `OrderDetail`)
+   * sai diferente e é ele que vale.
+   */
+  nextNumber: number;
 }
 
 // ── Comanda ──────────────────────────────────────────────────────────────
@@ -76,11 +83,26 @@ export interface OrderDetail {
   loyaltyPointsUsed: number;
   loyaltyDiscountCents: number;
   loyaltyBalance: number;
+  /**
+   * Prévia do resgate — o card de fidelidade do protótipo (l.3283) mostra
+   * "— R$ X · usa N pts" ANTES de o toggle ser ligado. Sem estes três campos
+   * a tela teria que adivinhar quanto vale um resgate, ou sumir com o bloco.
+   */
+  loyaltyEnabled: boolean;
+  loyaltyPointsRequired: number;
+  loyaltyRewardCents: number;
   totalCents: number;
   paidCents: number;
   notes: string | null;
   openedAt: string;
   closedAt: string | null;
+}
+
+/** Uma linha do resumo "2× Corte · 1× Pomada" do card de comanda aberta. */
+export interface OrderListLine {
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
 }
 
 export interface OrderListItem {
@@ -89,24 +111,48 @@ export interface OrderListItem {
   status: OrderStatus;
   clientName: string | null;
   barberName: string | null;
+  subtotalCents: number;
   totalCents: number;
   paymentMethods: PaymentMethod[];
+  /** O card da comanda aberta resume os itens; a tabela de fechadas ignora. */
+  lines: OrderListLine[];
   openedAt: string;
   closedAt: string | null;
 }
 
+/**
+ * Contagem das abas (l.6315). Como nos chips da aba Clientes, respeita a busca
+ * e IGNORA a aba escolhida — senão a aba ativa seria a única diferente de zero.
+ */
+export interface OrderListCounts {
+  abertas: number;
+  fechadasHoje: number;
+}
+
 export interface OrderListQuery extends PaginationQuery {
   status?: OrderStatus;
+  /** Aba "Fechadas hoje" — recorte do dia no fuso da barbearia, não do servidor. */
+  closedToday?: boolean;
   search?: string;
   barberId?: string;
 }
-export type OrderListResponse = Paginated<OrderListItem>;
+export type OrderListResponse = Paginated<OrderListItem> & { counts: OrderListCounts };
 
 export interface OpenOrderDto {
   clientId?: string | null;
   walkIn?: { name: string; phone: string } | null;
   barberId?: string | null;
   appointmentId?: string | null;
+}
+
+/**
+ * Troca de cliente/barbeiro numa comanda aberta — o "trocar" do cabeçalho.
+ * Campo ausente = não mexe; `barberId: null` = tira o barbeiro.
+ */
+export interface AssignOrderDto {
+  clientId?: string;
+  walkIn?: { name: string; phone: string };
+  barberId?: string | null;
 }
 
 export interface AddOrderItemDto {
@@ -143,3 +189,19 @@ export interface CloseOrderDto {
 export interface ReopenOrderDto {
   reason: string;
 }
+
+/**
+ * Rótulo do método de pagamento em pt-BR.
+ *
+ * Vive aqui porque comanda, relatório e o histórico do cliente mostram a
+ * MESMA palavra — três cópias do mapa é como "Débito" vira "Cartão" só numa
+ * das telas.
+ */
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  CASH: 'Dinheiro',
+  DEBIT: 'Débito',
+  CREDIT: 'Crédito',
+  PIX: 'Pix',
+  SUBSCRIPTION: 'Assinatura',
+  LOYALTY: 'Fidelidade',
+};

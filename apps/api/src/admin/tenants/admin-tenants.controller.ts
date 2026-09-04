@@ -72,4 +72,24 @@ export class AdminTenantsController {
   ): Promise<ImpersonateResultDto> {
     return this.tenants.impersonate(id, principal.id, request);
   }
+
+  @Post(':id/impersonate/revoke')
+  @ApiOperation({ summary: 'Encerra à força a impersonação em curso — vale na hora, sem esperar os 900s' })
+  revokeImpersonation(
+    @Param('id') id: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<{ revoked: number }> {
+    return this.tenants.revokeImpersonations(id, principal.id, request);
+  }
+
+  @Post(':id/deletion/cancel')
+  @ApiOperation({ summary: 'Desfaz uma exclusão de conta agendada (limpa o purgeAt)' })
+  cancelDeletion(
+    @Param('id') id: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<{ canceled: true }> {
+    return this.tenants.cancelScheduledDeletion(id, principal.id, request);
+  }
 }

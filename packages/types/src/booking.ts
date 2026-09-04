@@ -81,6 +81,11 @@ export interface PublicSubscriptionSummary {
   }>;
 }
 
+export interface PublicPhoto {
+  id: string;
+  url: string;
+}
+
 export interface PublicBarbershop {
   id: string;
   slug: string;
@@ -101,6 +106,10 @@ export interface PublicBarbershop {
     team: boolean;
     about: boolean;
     reviews: boolean;
+    /** Galeria de fotos — `TenantSettings.showPhotos`. */
+    photos: boolean;
+    /** Horário de funcionamento — `TenantSettings.showBusinessHours`. */
+    businessHours: boolean;
   };
   /** `false` desliga o wizard: a barbearia só quer ser vitrine. */
   allowOnlineBooking: boolean;
@@ -113,7 +122,14 @@ export interface PublicBarbershop {
     noShowBlockCount: number;
   };
   rating: { averageBps: number; count: number } | null;
+  /**
+   * Vazio quando o dono desligou o horário em "Minha Página". A lista é a
+   * própria seção: sem ela não há o que renderizar, e o front não precisa
+   * cruzar duas fontes para decidir.
+   */
   businessHours: PublicBusinessHour[];
+  /** Galeria (`TenantPhoto`), na ordem definida pelo dono. Vazia se desligada. */
+  photos: PublicPhoto[];
   services: PublicServiceSummary[];
   barbers: PublicBarberSummary[];
   plans: PublicClientPlanSummary[];

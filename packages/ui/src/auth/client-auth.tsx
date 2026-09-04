@@ -52,8 +52,19 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
     setStatus('anonymous');
   }, []);
 
+  /** Voo único — mesmo motivo do provider de estabelecimento: duas POSTs
+   *  simultâneas em `/client-auth/refresh` revogam a família do refresh. */
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const refresh = useCallback(async () => {
-    applySession(await clientApi.refresh(api));
+    refreshInFlight.current ??= clientApi
+      .refresh(api)
+      .then((session) => {
+        applySession(session);
+      })
+      .finally(() => {
+        refreshInFlight.current = null;
+      });
+    return refreshInFlight.current;
   }, [api, applySession]);
 
   useEffect(() => {
@@ -67,19 +78,14 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    void (async () => {
-      try {
-        const session = await clientApi.refresh(api);
-        if (!cancelled) applySession(session);
-      } catch {
-        if (!cancelled) clearSession();
-      }
-    })();
+    void refresh().catch(() => {
+      if (!cancelled) clearSession();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [api, applySession, clearSession]);
+  }, [refresh, clearSession]);
 
   const logout = useCallback(async () => {
     try {

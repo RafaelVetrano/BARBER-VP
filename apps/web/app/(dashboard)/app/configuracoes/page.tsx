@@ -1,436 +1,775 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Badge,
   Button,
   Card,
   CardHeader,
+  CheckIcon,
   EmptyState,
   Input,
-  PasswordInput,
+  LockIcon,
   PlusIcon,
+  ResponsiveTable,
+  Select,
   Skeleton,
   Switch,
   Tabs,
-  authErrorMessage,
-  establishmentApi,
-  isPasswordValid,
+  maskPhoneInput,
   useEstablishmentAuth,
   useToast,
 } from '@barbervp/ui';
-import { WEEKDAY_LABELS, formatBRL, minutesToTime, timeToMinutes } from '@barbervp/types';
-import type { OnboardingBusinessHour } from '@barbervp/types';
+import {
+  ANTECEDENCIA_OPTIONS,
+  CANCELAMENTO_OPTIONS,
+  FALTAS_OPTIONS,
+  TENANT_TIMEZONES,
+  formatBRL,
+  formatPhone,
+} from '@barbervp/types';
+import type {
+  SaasInvoiceItem,
+  SaasPlanOption,
+  TenantBusinessHour,
+  UnitItem,
+  UnitStatus,
+} from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
-import { FeatureLocked } from '@/components/dashboard/feature-locked';
-import { isFeatureGateError } from '@/lib/dashboard/feature-error';
+import { BlockError } from '@/components/dashboard/blocks';
+import { UpgradeModal } from '@/components/dashboard/upgrade-modal';
+import { BusinessHoursEditor } from '@/components/dashboard/settings/business-hours-editor';
+import { PlanChangeModal } from '@/components/dashboard/settings/plan-change-modal';
 import { UnitModal } from '@/components/dashboard/settings/unit-modal';
+import { LoyaltyProgramCard } from '@/components/dashboard/settings/loyalty-program-card';
+import { inputToCents } from '@/components/dashboard/finance/finance-shared';
+import { useDashboardShellQuery } from '@/lib/dashboard/api/dashboard';
 import {
   useBarbershopSettingsQuery,
   useChangePlanMutation,
   useCurrentPlanQuery,
+  useInvoicePdfMutation,
   usePreferencesQuery,
-  usePriceCalculatorMutation,
   useUnitsQuery,
   useUpdateBarbershopSettingsMutation,
   useUpdatePreferencesMutation,
 } from '@/lib/dashboard/api/settings';
 
+/**
+ * As QUATRO sub-abas do protótipo (`Dashboard.dc.html` l.2468–2472).
+ *
+ * "Meu perfil" NÃO é uma delas: o desenho tem uma tela própria para ela
+ * (`isMeuPerfilScreen`, l.2737), fora do nav, alcançada pelo menu do avatar —
+ * e é para lá que o item aponta agora (`/app/meu-perfil`).
+ */
 const TABS = [
-  { value: 'perfil', label: 'Meu perfil' },
   { value: 'barbearia', label: 'Barbearia' },
   { value: 'unidades', label: 'Unidades' },
-  { value: 'plano', label: 'Plano' },
+  { value: 'plano', label: 'Plano e cobrança' },
   { value: 'preferencias', label: 'Preferências' },
-  { value: 'calculadora', label: 'Calculadora de preço' },
 ] as const;
 type CfgTab = (typeof TABS)[number]['value'];
+
+const UNIT_STATUS: Record<UnitStatus, { label: string; tone: 'success' | 'warning' | 'danger' }> = {
+  ACTIVE: { label: 'Ativa', tone: 'success' },
+  SETUP: { label: 'Em configuração', tone: 'warning' },
+  INACTIVE: { label: 'Inativa', tone: 'danger' },
+};
+
+// ── Barbearia ──────────────────────────────────────────────────────────────
 
 function BarbeariaTab() {
   const { toast } = useToast();
   const settingsQuery = useBarbershopSettingsQuery();
   const update = useUpdateBarbershopSettingsMutation();
+
   const [name, setName] = useState('');
   const [document, setDocument] = useState('');
-  const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [hours, setHours] = useState<OnboardingBusinessHour[]>([]);
+  const [phone, setPhone] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [hours, setHours] = useState<TenantBusinessHour[]>([]);
 
   useEffect(() => {
-    if (!settingsQuery.data) return;
-    setName(settingsQuery.data.name);
-    setDocument(settingsQuery.data.document ?? '');
-    setPhone(settingsQuery.data.phone ?? '');
-    setAddress(settingsQuery.data.address ?? '');
-    setHours(settingsQuery.data.businessHours);
+    const data = settingsQuery.data;
+    if (!data) return;
+    setName(data.name);
+    setDocument(data.document ?? '');
+    setPhone(data.phone ? maskPhoneInput(formatPhone(data.phone)) : '');
+    setAddress(data.address ?? '');
+    setTimezone(data.timezone);
+    setHours(data.businessHours);
   }, [settingsQuery.data]);
 
-  const patchHour = (weekday: number, patch: Partial<OnboardingBusinessHour>) => {
+  const patchHour = (weekday: number, patch: Partial<TenantBusinessHour>) => {
     setHours((current) => current.map((h) => (h.weekday === weekday ? { ...h, ...patch } : h)));
   };
 
   const save = async () => {
     try {
-      await update.mutateAsync({ name, document, phone, address, businessHours: hours });
-      toast({ message: 'Dados salvos.', tone: 'success' });
+      await update.mutateAsync({
+        name,
+        document: document.trim() || null,
+        phone: phone.trim() || null,
+        address: address.trim() || null,
+        timezone,
+        businessHours: hours,
+      });
+      toast({ message: 'Dados da barbearia salvos.', tone: 'success' });
     } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível salvar.', tone: 'danger' });
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível salvar.',
+        tone: 'danger',
+      });
     }
   };
 
-  if (settingsQuery.isLoading) return <Skeleton className="h-64 w-full rounded-2xl" />;
+  // Esqueleto na altura do card final — carregar não pode empurrar o layout.
+  if (settingsQuery.isLoading) return <Skeleton className="h-[640px] max-w-[720px] rounded-xl" />;
+  if (settingsQuery.isError) {
+    return <BlockError label="os dados da barbearia" onRetry={() => void settingsQuery.refetch()} />;
+  }
+
+  // Tenant recém-criado ainda não tem as 7 linhas de expediente: a aba precisa
+  // renderizar mesmo assim (regra 4), com o bloco explicando o vazio.
+  const hasHours = hours.length > 0;
 
   return (
-    <div className="flex flex-col gap-5">
-      <Card>
-        <CardHeader title="Dados da barbearia" />
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input label="CNPJ" value={document} onChange={(e) => setDocument(e.target.value)} />
-          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <Input label="Endereço" value={address} onChange={(e) => setAddress(e.target.value)} />
-        </div>
-      </Card>
+    <Card className="max-w-[720px] gap-4 p-5">
+      <CardHeader title="Dados da barbearia" />
 
-      <Card>
-        <CardHeader title="Horário de funcionamento" />
-        <div className="mt-3 flex flex-col gap-2">
-          {hours.map((hour) => (
-            <div key={hour.weekday} className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface-2 p-3 sm:flex-row sm:items-center">
-              <span className="w-20 shrink-0 text-sm font-semibold text-fg">{WEEKDAY_LABELS[hour.weekday]}</span>
-              <Switch label="Aberto" checked={!hour.closed} onChange={(e) => patchHour(hour.weekday, { closed: !e.target.checked })} className="shrink-0 sm:w-28" />
-              {!hour.closed && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    className="h-9 rounded-control border border-border bg-surface px-2 text-sm text-fg outline-none"
-                    value={minutesToTime(hour.opensAt)}
-                    onChange={(e) => patchHour(hour.weekday, { opensAt: timeToMinutes(e.target.value) ?? hour.opensAt })}
-                  />
-                  <span className="text-fg-muted">às</span>
-                  <input
-                    type="time"
-                    className="h-9 rounded-control border border-border bg-surface px-2 text-sm text-fg outline-none"
-                    value={minutesToTime(hour.closesAt)}
-                    onChange={(e) => patchHour(hour.weekday, { closesAt: timeToMinutes(e.target.value) ?? hour.closesAt })}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
+      <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
+      <Input
+        label="CNPJ (opcional)"
+        value={document}
+        onChange={(e) => setDocument(e.target.value)}
+      />
+      <Input label="Endereço" value={address} onChange={(e) => setAddress(e.target.value)} />
+      {/* Mesmo par do cadastro de barbeiro: `formatPhone` tira o 55 do E.164
+          guardado e `maskPhoneInput` mantém a máscara enquanto se digita. Sem
+          isto o campo mostrava "551133334444" cru. */}
+      <Input
+        label="Telefone"
+        inputMode="tel"
+        value={phone}
+        onChange={(e) => setPhone(maskPhoneInput(e.target.value))}
+      />
+      <Select
+        label="Fuso horário"
+        value={timezone}
+        onChange={(e) => setTimezone(e.target.value)}
+        options={TENANT_TIMEZONES.map((tz) => ({ value: tz.value, label: tz.label }))}
+      />
 
-      <Button className="self-start" loading={update.isPending} onClick={() => void save()}>
-        Salvar alterações
-      </Button>
+      <div className="mt-1 h-px bg-border" />
+
+      <h4 className="text-sm font-semibold text-fg">Horário de funcionamento</h4>
+      {hasHours ? (
+        <BusinessHoursEditor hours={hours} onChange={patchHour} />
+      ) : (
+        <p className="text-[13px] text-fg-muted">
+          O expediente da casa ainda não foi definido. Ele é preenchido no wizard de configuração —
+          termine-o para liberar a agenda online.
+        </p>
+      )}
+
+      <div className="mt-1 flex justify-end">
+        <Button loading={update.isPending} onClick={() => void save()}>
+          Salvar alterações
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// ── Unidades ───────────────────────────────────────────────────────────────
+
+function UnidadesTab() {
+  const shellQuery = useDashboardShellQuery();
+  const unitsQuery = useUnitsQuery();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  /**
+   * O cadeado é o MESMO do "+ Nova unidade" da topbar (l.102–106): a lista
+   * continua visível e é o botão que trava. Quem realmente barra é o servidor —
+   * `POST /settings/units` responde 403 sem `multiUnidades`.
+   */
+  const locked = shellQuery.data ? !shellQuery.data.features.multiUnidades : false;
+
+  const columns = [
+    {
+      key: 'name',
+      header: 'Unidade',
+      mobile: 'title' as const,
+      render: (unit: UnitItem) => (
+        <span className="whitespace-nowrap font-semibold text-fg">{unit.name}</span>
+      ),
+    },
+    {
+      key: 'address',
+      header: 'Endereço',
+      mobile: 'subtitle' as const,
+      render: (unit: UnitItem) => <span className="text-fg-muted">{unit.address ?? '—'}</span>,
+    },
+    {
+      key: 'barbers',
+      header: 'Barbeiros',
+      align: 'right' as const,
+      mobile: 'meta' as const,
+      render: (unit: UnitItem) => <span className="font-semibold text-fg">{unit.barberCount}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      mobile: 'meta' as const,
+      render: (unit: UnitItem) => (
+        <Badge tone={UNIT_STATUS[unit.status].tone}>{UNIT_STATUS[unit.status].label}</Badge>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3 rounded-control border border-gold/35 bg-gold/10 p-3.5">
+        <span className="shrink-0 text-gold" aria-hidden="true">
+          ⓘ
+        </span>
+        <p className="text-[13px] font-medium text-fg">
+          Relatórios consolidados disponíveis em{' '}
+          <Link href="/app/relatorios" className="text-gold underline-offset-2 hover:underline">
+            Relatórios
+          </Link>
+          .
+        </p>
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          iconLeft={locked ? <LockIcon size={15} /> : <PlusIcon size={16} />}
+          onClick={() => (locked ? setUpgradeOpen(true) : setModalOpen(true))}
+        >
+          Nova unidade
+        </Button>
+      </div>
+
+      {unitsQuery.isLoading && <Skeleton className="h-56 rounded-xl" />}
+
+      {unitsQuery.isError && (
+        <Card flush>
+          <BlockError label="as unidades" onRetry={() => void unitsQuery.refetch()} />
+        </Card>
+      )}
+
+      {unitsQuery.data && (
+        <Card flush>
+          <ResponsiveTable
+            caption="Unidades da barbearia"
+            columns={columns}
+            rows={unitsQuery.data}
+            getRowKey={(unit) => unit.id}
+            empty={
+              <EmptyState
+                message="Nenhuma unidade cadastrada."
+                description={
+                  locked
+                    ? 'Múltiplas unidades fazem parte do plano Avançado.'
+                    : 'Cadastre a primeira em "Nova unidade".'
+                }
+              />
+            }
+          />
+        </Card>
+      )}
+
+      <UnitModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <UpgradeModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        minPlanLabel="Avançado"
+        description="Múltiplas unidades fazem parte do plano Avançado."
+        benefits={[
+          'Cadastre unidades ilimitadas',
+          'Relatórios consolidados entre unidades',
+          'Equipe e agenda por unidade',
+        ]}
+      />
     </div>
   );
 }
 
-function UnidadesTab() {
-  const unitsQuery = useUnitsQuery();
-  const [modalOpen, setModalOpen] = useState(false);
+// ── Plano e cobrança ───────────────────────────────────────────────────────
 
-  if (isFeatureGateError(unitsQuery.error)) {
-    return (
-      <FeatureLocked
-        title="Múltiplas unidades"
-        description="Gerencie várias unidades da mesma barbearia num só painel — disponível no plano Avançado."
-        benefits={['Cada unidade com seu próprio time', 'Agenda e caixa separados por endereço', 'Visão consolidada do negócio']}
-        minPlanLabel="Avançado"
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <Button size="sm" iconLeft={<PlusIcon size={16} />} onClick={() => setModalOpen(true)}>
-          Nova unidade
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {(unitsQuery.data ?? []).map((unit) => (
-          <Card key={unit.id}>
-            <CardHeader title={unit.name} description={unit.address ?? undefined} action={<Badge tone={unit.isDefault ? 'gold' : 'neutral'}>{unit.isDefault ? 'Matriz' : unit.active ? 'Ativa' : 'Inativa'}</Badge>} />
-            <p className="mt-2 text-sm text-fg-muted">{unit.barberCount} barbeiro(s)</p>
-          </Card>
-        ))}
-        {unitsQuery.data?.length === 0 && <EmptyState message="Nenhuma unidade cadastrada além da matriz." />}
-      </div>
-      <UnitModal open={modalOpen} onClose={() => setModalOpen(false)} />
-    </div>
-  );
+function invoiceStatus(invoice: SaasInvoiceItem): { label: string; tone: 'success' | 'warning' | 'danger' } {
+  if (invoice.status === 'PAID') return { label: 'Pago', tone: 'success' };
+  if (invoice.status === 'FAILED') return { label: 'Recusado', tone: 'danger' };
+  return invoice.overdue ? { label: 'Atrasado', tone: 'danger' } : { label: 'Pendente', tone: 'warning' };
 }
 
 function PlanoTab() {
   const { toast } = useToast();
   const planQuery = useCurrentPlanQuery();
   const changePlan = useChangePlanMutation();
+  const invoicePdf = useInvoicePdfMutation();
+  const [targetPlanId, setTargetPlanId] = useState<string | null>(null);
 
-  if (planQuery.isLoading) return <Skeleton className="h-64 w-full rounded-2xl" />;
+  if (planQuery.isLoading) return <Skeleton className="h-[560px] rounded-xl" />;
+  if (planQuery.isError) {
+    return <BlockError label="o plano da barbearia" onRetry={() => void planQuery.refetch()} />;
+  }
+
   const plan = planQuery.data;
   if (!plan) return null;
 
-  const handleChange = async (planId: string) => {
-    if (!confirm('Confirmar a troca de plano?')) return;
+  const confirmChange = async (planId: string) => {
     try {
       await changePlan.mutateAsync({ planId });
-      toast({ message: 'Plano atualizado.', tone: 'success' });
+      setTargetPlanId(null);
+      toast({ message: 'Plano alterado.', tone: 'success' });
     } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível trocar de plano.', tone: 'danger' });
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível trocar de plano.',
+        tone: 'danger',
+      });
     }
   };
 
+  const downloadPdf = (invoice: SaasInvoiceItem) => {
+    invoicePdf.mutate(invoice.id, {
+      onError: (error) =>
+        toast({
+          message: error instanceof Error ? error.message : 'Não foi possível baixar a fatura.',
+          tone: 'danger',
+        }),
+    });
+  };
+
+  const invoiceColumns = [
+    {
+      key: 'issuedAt',
+      header: 'Data',
+      mobile: 'title' as const,
+      render: (invoice: SaasInvoiceItem) => (
+        <span className="whitespace-nowrap font-medium text-fg">
+          {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')}
+        </span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Valor',
+      mobile: 'meta' as const,
+      render: (invoice: SaasInvoiceItem) => (
+        <span className="whitespace-nowrap font-semibold text-fg">
+          {formatBRL(invoice.amountCents)}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      mobile: 'meta' as const,
+      render: (invoice: SaasInvoiceItem) => {
+        const status = invoiceStatus(invoice);
+        return <Badge tone={status.tone}>{status.label}</Badge>;
+      },
+    },
+    {
+      key: 'pdf',
+      header: '',
+      align: 'right' as const,
+      render: (invoice: SaasInvoiceItem) => (
+        <button
+          type="button"
+          className="text-xs font-semibold text-gold underline-offset-2 hover:underline disabled:opacity-60"
+          disabled={invoicePdf.isPending}
+          onClick={() => downloadPdf(invoice)}
+        >
+          PDF
+        </button>
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-5">
-      <Card highlighted>
-        <CardHeader title={`Plano ${plan.plan.name}`} description={`${formatBRL(plan.plan.priceCents)}/mês · renova em ${new Date(plan.renewsAt).toLocaleDateString('pt-BR')}`} />
-        <p className="mt-2 text-sm text-fg-muted">{plan.barbersInUse} barbeiro(s) ativo(s){plan.plan.maxBarbers !== null ? ` de ${plan.plan.maxBarbers}` : ' (ilimitado)'}</p>
+      <Card className="flex-row flex-wrap items-center justify-between gap-4 p-5">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2.5">
+            <span className="font-display text-lg font-bold text-fg">{plan.plan.name}</span>
+            <Badge tone="success">Ativo</Badge>
+          </div>
+          <span className="text-[13px] text-fg-muted">
+            {formatBRL(plan.plan.priceCents)}/mês
+            {plan.renewsAt
+              ? ` · renova em ${new Date(plan.renewsAt).toLocaleDateString('pt-BR')}`
+              : ' · sem assinatura ativa'}
+          </span>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() =>
+            document
+              .getElementById('planos-comparacao')
+              ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+          }
+        >
+          Mudar de plano
+        </Button>
       </Card>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div
+        id="planos-comparacao"
+        className="grid gap-4"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}
+      >
         {plan.availablePlans.map((option) => (
-          <Card key={option.id} highlighted={option.isPopular}>
-            <CardHeader title={option.name} description={`${formatBRL(option.priceCents)}/mês`} />
-            {option.id === plan.plan.id ? (
-              <Badge tone="gold" className="mt-3 self-start">Plano atual</Badge>
-            ) : (
-              <Button size="sm" variant="outline" className="mt-3" loading={changePlan.isPending} onClick={() => void handleChange(option.id)}>
-                {option.tier > plan.plan.tier ? 'Fazer upgrade' : 'Trocar para este'}
-              </Button>
-            )}
-          </Card>
+          <PlanCard
+            key={option.id}
+            option={option}
+            current={option.id === plan.plan.id}
+            onChange={() => setTargetPlanId(option.id)}
+          />
         ))}
       </div>
 
-      <Card>
-        <CardHeader title="Faturas" />
-        <ul className="mt-3 flex flex-col gap-2">
-          {plan.invoices.map((invoice) => (
-            <li key={invoice.id} className="flex items-center justify-between text-sm">
-              <span className="text-fg-muted">{new Date(invoice.issuedAt).toLocaleDateString('pt-BR')}</span>
-              <span className="font-semibold text-fg">{formatBRL(invoice.amountCents)}</span>
-              <Badge tone={invoice.status === 'PAID' ? 'success' : 'warning'}>{invoice.status === 'PAID' ? 'Pago' : invoice.status}</Badge>
-            </li>
-          ))}
-          {plan.invoices.length === 0 && <li className="text-sm text-fg-muted">Sem faturas ainda.</li>}
-        </ul>
+      <Card flush>
+        <h3 className="border-b border-border px-5 py-4 font-display text-base font-bold text-fg">
+          Histórico de faturas
+        </h3>
+        <ResponsiveTable
+          caption="Faturas da assinatura"
+          columns={invoiceColumns}
+          rows={plan.invoices}
+          getRowKey={(invoice) => invoice.id}
+          empty={<EmptyState message="Nenhuma fatura emitida ainda." />}
+        />
       </Card>
+
+      <PlanChangeModal
+        planId={targetPlanId}
+        onClose={() => setTargetPlanId(null)}
+        onConfirm={(planId) => void confirmChange(planId)}
+        confirming={changePlan.isPending}
+      />
     </div>
   );
 }
+
+/**
+ * Card de um plano na grade de comparação (l.2633–2650).
+ *
+ * Os bullets são `SaasPlan.marketing` — a MESMA cópia que a landing mostra. O
+ * `baseLabel` ("Tudo do Essencial, mais:") sai dourado e sem ✓, como no
+ * desenho, porque não é um recurso: é o encadeamento dos planos.
+ */
+function PlanCard({
+  option,
+  current,
+  onChange,
+}: {
+  option: SaasPlanOption;
+  current: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <Card highlighted={current} className="gap-4 p-5">
+      <div className="flex flex-col gap-0.5">
+        <span className="font-display text-base font-bold text-fg">{option.name}</span>
+        <span className="text-[13px] text-fg-muted">
+          <span className="font-display text-[22px] font-bold text-fg">
+            {formatBRL(option.priceCents)}
+          </span>
+          /mês
+        </span>
+      </div>
+
+      {option.marketing && (
+        <div className="flex flex-col gap-2.5">
+          {option.marketing.baseLabel && (
+            <span className="text-[13px] font-medium text-gold">{option.marketing.baseLabel}</span>
+          )}
+          {option.marketing.features.map((feature) => (
+            <span key={feature} className="flex items-start gap-2 text-[13px] text-fg">
+              <CheckIcon size={15} className="mt-0.5 shrink-0 text-success" />
+              {feature}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <Button
+        className="mt-auto"
+        variant={current ? 'outline' : 'primary'}
+        disabled={current}
+        fullWidth
+        onClick={onChange}
+      >
+        {current ? 'Plano atual' : 'Mudar de plano'}
+      </Button>
+    </Card>
+  );
+}
+
+// ── Preferências ───────────────────────────────────────────────────────────
+
+/**
+ * Monta as opções de um seletor garantindo que o valor GRAVADO esteja nelas.
+ *
+ * Um tenant pode ter uma política fora do menu (o seed nasce com 2h de
+ * cancelamento, e o desenho oferece 1/3/12/24). Sem esta costura o `<select>`
+ * cairia na primeira opção e a próxima gravação trocaria, em silêncio, uma
+ * regra de negócio da barbearia.
+ */
+function optionsWithCurrent(
+  values: readonly number[],
+  current: number,
+  label: (value: number) => string,
+): { value: string; label: string }[] {
+  const all = values.includes(current) ? [...values] : [...values, current].sort((a, b) => a - b);
+  return all.map((value) => ({ value: String(value), label: label(value) }));
+}
+
+const minutesLabel = (minutes: number) =>
+  minutes < 60
+    ? `${minutes}min`
+    : minutes % 60 === 0
+      ? `${minutes / 60}h`
+      : `${Math.floor(minutes / 60)}h${minutes % 60}`;
 
 function PreferenciasTab() {
   const { toast } = useToast();
   const prefsQuery = usePreferencesQuery();
   const update = useUpdatePreferencesMutation();
-  const prefs = prefsQuery.data;
 
-  if (prefsQuery.isLoading) return <Skeleton className="h-48 w-full rounded-2xl" />;
+  // A meta é digitada, então vive como rascunho e só sobe no `blur` — salvar a
+  // cada tecla mandaria "1", "12", "120" enquanto o dono ainda escreve "1200".
+  const [goalInput, setGoalInput] = useState('');
+  const goalCents = prefsQuery.data?.monthlyGoalCents ?? null;
+  useEffect(() => {
+    setGoalInput(goalCents === null ? '' : (goalCents / 100).toFixed(2).replace('.', ','));
+  }, [goalCents]);
+
+  if (prefsQuery.isLoading) return <Skeleton className="h-[420px] max-w-[640px] rounded-xl" />;
+  if (prefsQuery.isError) {
+    return <BlockError label="as preferências" onRetry={() => void prefsQuery.refetch()} />;
+  }
+
+  const prefs = prefsQuery.data;
   if (!prefs) return null;
 
   const save = (patch: Parameters<typeof update.mutate>[0]) => {
     update.mutate(patch, {
-      onError: (error) => toast({ message: error instanceof Error ? error.message : 'Não foi possível salvar.', tone: 'danger' }),
+      onError: (error) =>
+        toast({
+          message: error instanceof Error ? error.message : 'Não foi possível salvar.',
+          tone: 'danger',
+        }),
     });
   };
 
-  return (
-    <Card>
-      <CardHeader title="Preferências de agendamento" />
-      <div className="mt-3 flex flex-col gap-4">
-        <label className="flex items-center justify-between">
-          <span className="text-sm text-fg">Bloquear agendamento online após faltas</span>
-          <Switch checked={prefs.bloquearFaltasAtivo} onChange={(e) => save({ bloquearFaltasAtivo: e.target.checked })} />
-        </label>
-        <Input
-          label="Número de faltas"
-          type="number"
-          min={1}
-          defaultValue={prefs.bloquearFaltasQtd}
-          onBlur={(e) => save({ bloquearFaltasQtd: Number(e.target.value) || prefs.bloquearFaltasQtd })}
-        />
-        <Input
-          label="Antecedência mínima para agendar (minutos)"
-          type="number"
-          min={0}
-          defaultValue={prefs.antecedenciaMinima}
-          onBlur={(e) => save({ antecedenciaMinima: Number(e.target.value) })}
-        />
-        <Input
-          label="Janela de cancelamento sem penalidade (horas)"
-          type="number"
-          min={0}
-          defaultValue={prefs.cancelamentoHoras}
-          onBlur={(e) => save({ cancelamentoHoras: Number(e.target.value) })}
-        />
-      </div>
-    </Card>
-  );
-}
-
-/**
- * "Meu perfil" — o destino do primeiro item do menu do avatar (fase 13).
- *
- * O protótipo tem uma tela inteira para isto (`Dashboard.dc.html`, linhas
- * 2737–2817: "Dados pessoais", "Segurança", "Privacidade e dados"). Aqui está
- * só o que já tem endpoint: os dados da sessão e a troca de senha
- * (`POST /auth/password/change`, que existia em `auth-api.ts` sem nenhuma UI
- * que a chamasse). O resto vem na auditoria de Configurações — o que NÃO se
- * faz é deixar o item de menu apontando para uma aba que não existe e cair
- * silenciosamente em "Barbearia".
- */
-function PerfilTab() {
-  const { client, user, activeMembership } = useEstablishmentAuth();
-  const { toast } = useToast();
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const canSubmit = current.length > 0 && isPasswordValid(next) && !saving;
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      await establishmentApi.changePassword(client, { currentPassword: current, newPassword: next });
-      setCurrent('');
-      setNext('');
-      // O backend derruba as DEMAIS sessões e mantém esta — avisar, senão o
-      // usuário descobre sozinho ao trocar de dispositivo.
-      toast({ tone: 'success', message: 'Senha alterada. As outras sessões foram encerradas.' });
-    } catch (error) {
-      toast({ tone: 'danger', message: authErrorMessage(error, 'Não foi possível alterar a senha.') });
-    } finally {
-      setSaving(false);
-    }
+  /** Campo vazio = sem meta (`null`), que é o que apaga a linha do gráfico. */
+  const saveGoal = () => {
+    const next = goalInput.trim() === '' ? null : inputToCents(goalInput);
+    if (next === goalCents) return;
+    save({ monthlyGoalCents: next });
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader title="Dados pessoais" description="Vêm do seu login e valem para todas as barbearias que você atende." />
-        <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-fg-muted">Nome</dt>
-            <dd className="text-sm font-medium text-fg">{user?.name ?? '—'}</dd>
+    <Card className="max-w-[640px] gap-0 p-5">
+      <div className="flex flex-col gap-2.5 border-b border-border pb-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px] font-medium text-fg">Bloquear após</span>
+            <Select
+              aria-label="Número de faltas que bloqueiam o agendamento online"
+              className="w-20"
+              value={String(prefs.bloquearFaltasQtd)}
+              onChange={(e) => save({ bloquearFaltasQtd: Number(e.target.value) })}
+              options={optionsWithCurrent(FALTAS_OPTIONS, prefs.bloquearFaltasQtd, String)}
+            />
+            <span className="text-[13px] font-medium text-fg">faltas</span>
           </div>
-          <div>
-            <dt className="text-xs text-fg-muted">E-mail</dt>
-            <dd className="truncate text-sm font-medium text-fg">{user?.email ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-fg-muted">Barbearia ativa</dt>
-            <dd className="text-sm font-medium text-fg">{activeMembership?.tenantName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-fg-muted">Seu papel</dt>
-            <dd className="text-sm font-medium text-fg">
-              {activeMembership?.role === 'OWNER'
-                ? 'Dono'
-                : activeMembership?.role === 'MANAGER'
-                  ? 'Gerente'
-                  : 'Barbeiro'}
-            </dd>
-          </div>
-        </dl>
-      </Card>
-
-      <Card>
-        <CardHeader title="Segurança" description="Trocar a senha encerra as suas outras sessões." />
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <PasswordInput
-            label="Senha atual"
-            autoComplete="current-password"
-            value={current}
-            onChange={(event) => setCurrent(event.target.value)}
-          />
-          <PasswordInput
-            label="Nova senha"
-            autoComplete="new-password"
-            showStrength
-            value={next}
-            onChange={(event) => setNext(event.target.value)}
+          <Switch
+            aria-label="Bloquear agendamento online por faltas"
+            checked={prefs.bloquearFaltasAtivo}
+            onChange={(e) => save({ bloquearFaltasAtivo: e.target.checked })}
           />
         </div>
-        <Button className="mt-4 self-start" disabled={!canSubmit} loading={saving} onClick={() => void submit()}>
-          Alterar senha
-        </Button>
-      </Card>
+        <span className="text-xs text-fg-muted">
+          Clientes com faltas consecutivas não poderão agendar online até liberação manual.
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border py-3.5">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-fg">
+            Antecedência mínima de agendamento online
+          </p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            Tempo mínimo antes do horário para o cliente agendar.
+          </p>
+        </div>
+        <Select
+          aria-label="Antecedência mínima de agendamento online"
+          className="w-28"
+          value={String(prefs.antecedenciaMinima)}
+          onChange={(e) => save({ antecedenciaMinima: Number(e.target.value) })}
+          options={optionsWithCurrent(
+            ANTECEDENCIA_OPTIONS,
+            prefs.antecedenciaMinima,
+            minutesLabel,
+          )}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2.5 py-3.5">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-fg">Cancelamento pelo cliente até</p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            Prazo limite para o cliente cancelar sem custo.
+          </p>
+        </div>
+        <Select
+          aria-label="Prazo de cancelamento pelo cliente"
+          className="w-32"
+          value={String(prefs.cancelamentoHoras)}
+          onChange={(e) => save({ cancelamentoHoras: Number(e.target.value) })}
+          options={optionsWithCurrent(
+            CANCELAMENTO_OPTIONS,
+            prefs.cancelamentoHoras,
+            (hours) => `${hours}h antes`,
+          )}
+        />
+      </div>
+
+      {/*
+        META MENSAL — acrescentada pelo agente 29.
+
+        `TenantSettings.monthlyGoalCents` já era gravável por
+        `PATCH /settings/preferences` e o gráfico do Dashboard já a desenhava
+        como linha tracejada, mas NENHUMA tela tinha o campo: a linha da meta
+        só aparecia para quem editasse o banco à mão. Fica aqui, com as outras
+        regras de operação da casa.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border py-3.5">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-fg">Meta de faturamento mensal</p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            Vira a linha tracejada do gráfico do Dashboard. Deixe vazio para não ter meta.
+          </p>
+        </div>
+        <Input
+          aria-label="Meta de faturamento mensal"
+          className="w-36"
+          inputMode="decimal"
+          addonLeft="R$"
+          value={goalInput}
+          onChange={(event) => setGoalInput(event.target.value)}
+          onBlur={saveGoal}
+        />
+      </div>
+
+      {/*
+        O protótipo desenha aqui um quarto bloco, "Tema escuro" (l.2730). Ele
+        NÃO foi portado: o `SPEC.md` fixa tema escuro em todas as superfícies,
+        "sem alternância claro/escuro no produto real", e o design system não
+        tem paleta clara. Um interruptor sem um segundo tema atrás seria
+        exatamente o botão decorativo que a regra 2 proíbe. Ver CONTEXT.md.
+      */}
+    </Card>
+
+    {/*
+      O PROGRAMA DE PONTOS mora aqui desde o agente 29: é regra de operação da
+      casa, vizinha do bloqueio por faltas e da antecedência mínima, e não dado
+      cadastral (que é a aba Barbearia). Até então `GET|PATCH /loyalty/program`
+      não tinha tela NENHUMA — um recurso usado em três telas que ninguém podia
+      ligar. O card traz o próprio gate `fidelidadePontos`.
+    */}
+    <LoyaltyProgramCard />
     </div>
   );
 }
 
-function CalculadoraTab() {
-  const calc = usePriceCalculatorMutation();
-  const [custo, setCusto] = useState('15');
-  const [margem, setMargem] = useState('30');
-  const [fixos, setFixos] = useState('3459');
-  const [atendimentos, setAtendimentos] = useState('480');
-  const [comissao, setComissao] = useState('40');
+// ── Casca ──────────────────────────────────────────────────────────────────
 
-  if (isFeatureGateError(calc.error)) {
+function ConfiguracoesContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { activeMembership } = useEstablishmentAuth();
+
+  /**
+   * `SPEC.md` → RBAC: o gerente administra a barbearia, mas billing e plano do
+   * SaaS são do dono. A aba some do menu porque o endpoint responde 403 — não
+   * se oferece um caminho que termina em erro.
+   */
+  const isOwner = activeMembership?.role === 'OWNER';
+  const tabs = useMemo(
+    () => TABS.filter((tab) => tab.value !== 'plano' || isOwner),
+    [isOwner],
+  );
+
+  const requested = searchParams.get('tab') as CfgTab | null;
+  const initial = tabs.some((tab) => tab.value === requested) ? (requested as CfgTab) : 'barbearia';
+  const [tab, setTab] = useState<CfgTab>(initial);
+
+  // O upsell manda para `?tab=plano` de qualquer tela da casca; a aba precisa
+  // reagir à URL, e não só ao primeiro render.
+  useEffect(() => {
+    if (requested && tabs.some((item) => item.value === requested)) {
+      setTab(requested);
+    }
+  }, [requested, tabs]);
+
+  const select = (value: CfgTab) => {
+    setTab(value);
+    router.replace(`/app/configuracoes?tab=${value}`, { scroll: false });
+  };
+
+  /**
+   * `BARBER` não tem Configurações — nem no nav (`navForRole`) nem na API
+   * (`@Roles('OWNER','MANAGER')`). Quem digita a URL merece a frase, e não
+   * quatro sub-abas que respondem 403 com um "Tentar de novo" que nunca vai
+   * dar certo: um botão de repetir uma ação impossível é um botão falso.
+   */
+  if (activeMembership?.role === 'BARBER') {
     return (
-      <FeatureLocked
-        title="Calculadora de preço inteligente"
-        description="Sugestão de preço a partir de custo, margem e comissão — disponível no plano Avançado."
-        benefits={['Rateio automático dos custos fixos por atendimento', 'Preço sugerido já contando a comissão do barbeiro', 'Menos achismo na hora de precificar']}
-        minPlanLabel="Avançado"
-      />
+      <DashboardChrome activeKey="configuracoes">
+        <EmptyState
+          message="Configurações é a área do dono e do gerente."
+          description="Seus dados pessoais e sua senha ficam em Meu perfil."
+          action={
+            <Button variant="outline" onClick={() => router.push('/app/meu-perfil')}>
+              Ir para Meu perfil
+            </Button>
+          }
+        />
+      </DashboardChrome>
     );
   }
 
-  const submit = () => {
-    calc.mutate({
-      custoCents: Math.round(Number(custo.replace(',', '.')) * 100),
-      margemPercent: Number(margem.replace(',', '.')),
-      custosFixosCents: Math.round(Number(fixos.replace(',', '.')) * 100),
-      atendimentosMes: Number(atendimentos),
-      comissaoPercent: Number(comissao.replace(',', '.')),
-    });
-  };
-
-  return (
-    <Card>
-      <CardHeader title="Calculadora de preço inteligente" description="Sugere o preço de um serviço a partir do custo, margem e comissão." />
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Input label="Custo variável (R$)" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} />
-        <Input label="Margem desejada (%)" inputMode="decimal" value={margem} onChange={(e) => setMargem(e.target.value)} />
-        <Input label="Custos fixos do mês (R$)" inputMode="decimal" value={fixos} onChange={(e) => setFixos(e.target.value)} />
-        <Input label="Atendimentos/mês" inputMode="decimal" value={atendimentos} onChange={(e) => setAtendimentos(e.target.value)} />
-        <Input label="Comissão do barbeiro (%)" inputMode="decimal" value={comissao} onChange={(e) => setComissao(e.target.value)} />
-      </div>
-      <Button className="mt-4 self-start" loading={calc.isPending} onClick={submit}>
-        Calcular preço sugerido
-      </Button>
-      {calc.data && (
-        <div className="mt-4 rounded-xl border border-gold/30 bg-gold/10 p-4">
-          <p className="text-xs text-fg-muted">Preço sugerido</p>
-          <p className="font-display text-2xl font-bold text-gold">{formatBRL(calc.data.precoSugeridoCents)}</p>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function ConfiguracoesContent() {
-  const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as CfgTab | null) ?? 'barbearia';
-  const [tab, setTab] = useState<CfgTab>(TABS.some((t) => t.value === initialTab) ? initialTab : 'barbearia');
-
   return (
     <DashboardChrome activeKey="configuracoes">
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-[1400px] flex-col gap-5">
         <h1 className="font-display text-xl font-bold text-fg">Configurações</h1>
-        <Tabs label="Configurações" value={tab} onChange={(v) => setTab(v as CfgTab)} items={TABS.map((t) => ({ value: t.value, label: t.label }))} />
-        {tab === 'perfil' && <PerfilTab />}
+        <Tabs
+          label="Configurações"
+          variant="segmented"
+          value={tab}
+          onChange={(value) => select(value as CfgTab)}
+          items={tabs.map((item) => ({ value: item.value, label: item.label }))}
+          // `width: fit-content` é o desenho (l.2468) — mas só onde cabe:
+          // abaixo de `md` a barra ocupa a largura e rola por dentro.
+          className="md:w-fit"
+        />
         {tab === 'barbearia' && <BarbeariaTab />}
         {tab === 'unidades' && <UnidadesTab />}
-        {tab === 'plano' && <PlanoTab />}
+        {tab === 'plano' && isOwner && <PlanoTab />}
         {tab === 'preferencias' && <PreferenciasTab />}
-        {tab === 'calculadora' && <CalculadoraTab />}
       </div>
     </DashboardChrome>
   );
@@ -439,8 +778,8 @@ function ConfiguracoesContent() {
 /**
  * `useSearchParams()` (a aba inicial vem de `?tab=`) obriga a um limite de
  * Suspense: o hook tira a rota da renderização estática e, sem ele, o
- * `next build` falha no prerender — era o que quebrava o build de produção
- * desta app. O fallback repete a casca da tela, então não há salto visual.
+ * `next build` falha no prerender. O fallback repete a casca da tela, então
+ * não há salto visual.
  */
 export default function ConfiguracoesPage() {
   return (
@@ -453,9 +792,10 @@ export default function ConfiguracoesPage() {
 function ConfiguracoesFallback() {
   return (
     <DashboardChrome activeKey="configuracoes">
-      <div className="flex flex-col gap-5">
+      <div className="flex max-w-[1400px] flex-col gap-5">
         <h1 className="font-display text-xl font-bold text-fg">Configurações</h1>
-        <Skeleton className="h-64" />
+        <Skeleton className="h-9 w-[420px] max-w-full rounded-control" />
+        <Skeleton className="h-[640px] max-w-[720px] rounded-xl" />
       </div>
     </DashboardChrome>
   );

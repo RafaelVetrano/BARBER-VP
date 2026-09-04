@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -13,6 +13,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { DiscountType, OrderItemKind, OrderStatus, PaymentMethod } from '@prisma/client';
@@ -23,6 +24,12 @@ export class OrderListQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(OrderStatus)
   status?: OrderStatus;
+
+  @ApiPropertyOptional({ description: 'Só as fechadas do dia corrente no fuso da barbearia.' })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  closedToday?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -66,6 +73,29 @@ export class OpenOrderDto {
   @IsOptional()
   @IsString()
   appointmentId?: string | null;
+}
+
+/**
+ * Troca de cliente/barbeiro numa comanda aberta. Todo campo é opcional e
+ * `undefined` significa "não mexe" — `null` em `barberId` é "tira o barbeiro".
+ */
+export class AssignOrderDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @ApiPropertyOptional({ type: WalkInDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WalkInDto)
+  walkIn?: WalkInDto;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  barberId?: string | null;
 }
 
 export class AddOrderItemDto {

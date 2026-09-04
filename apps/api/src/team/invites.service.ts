@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { StaffInviteStatus } from '@prisma/client';
-import { normalizeMobilePhone, type StaffInviteListItem, type StaffInvitePreview } from '@barbervp/types';
+import { Prisma, StaffInviteStatus } from '@prisma/client';
+import {
+  normalizeMobilePhone,
+  type StaffInviteLink,
+  type StaffInviteListItem,
+  type StaffInvitePreview,
+  type WorkScheduleDay,
+} from '@barbervp/types';
 import { CONFIG, type AppConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/errors/api.exception';
@@ -74,15 +80,24 @@ export class InvitesService {
       throw ApiException.conflict('Já existe um convite pendente para este e-mail.');
     }
 
+    const schedule = dto.schedule ?? null;
+    // Com `schedule`, os dias trabalhados são os que não são folga — deixar o
+    // dono mandar `workDays` junto abriria espaço para as duas listas
+    // discordarem, e a tela de aceite mostra a segunda.
+    const workDays = schedule
+      ? schedule.filter((day) => !day.isDayOff).map((day) => day.weekday)
+      : (dto.workDays ?? []);
+
     const secret = randomSecret();
     const created = await this.prisma.staffInvite.create({
       data: {
         tenantId,
         email,
-        phone: dto.phone ? normalizeMobilePhone(dto.phone) : null,
+        phone: normalizeInvitePhone(dto.phone),
         name: dto.name.trim(),
         serviceIds: dto.serviceIds,
-        workDays: dto.workDays,
+        workDays,
+        schedule: (schedule as Prisma.InputJsonValue | null) ?? Prisma.DbNull,
         tokenHash: hashSecret(secret, this.config.jwt.refreshSecret),
         expiresAt: this.expiresAt(),
         invitedByUserId: principal.id,
@@ -174,6 +189,47 @@ export class InvitesService {
     return toItem(updated);
   }
 
+  /**
+   * "Gerar link de cadastro" (protótipo l.2145, onde estava
+   * "Simular cadastro concluído").
+   *
+   * O token vive em hash — não há como devolver o que foi enviado por e-mail.
+   * Este método REEMITE: o link novo passa a valer e o antigo morre na hora,
+   * exatamente como no reenvio, só que sem disparar e-mail. Serve para o dono
+   * que está com o barbeiro do lado e conclui o cadastro ali mesmo.
+   */
+  async issueLink(
+    tenantId: string,
+    id: string,
+    principal: AuthPrincipal,
+    request: RequestContext,
+  ): Promise<StaffInviteLink> {
+    const invite = await this.loadPending(tenantId, id);
+
+    const secret = randomSecret();
+    const updated = await this.prisma.staffInvite.update({
+      where: { id: invite.id },
+      data: { tokenHash: hashSecret(secret, this.config.jwt.refreshSecret), expiresAt: this.expiresAt() },
+      select: { id: true, expiresAt: true },
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.STAFF_INVITE_LINK_ISSUED,
+        entity: 'StaffInvite',
+        entityId: updated.id,
+        tenantId,
+        actorUserId: principal.id,
+      },
+      request,
+    );
+
+    return {
+      url: this.inviteLink(updated.id, secret),
+      expiresAt: updated.expiresAt.toISOString(),
+    };
+  }
+
   // ── Fluxo público (sem tenant/sessão resolvidos) ────────────────────────
 
   async preview(token: string): Promise<StaffInvitePreview> {
@@ -239,6 +295,12 @@ export class InvitesService {
     const passwordHash = await this.passwords.hash(dto.password);
 
     const userId = await this.prisma.$transaction(async (tx) => {
+      // O teto do plano é reconferido AQUI, e não só na emissão do convite:
+      // entre um e outro o dono pode ter feito downgrade, reativado alguém ou
+      // aceito outro convite. Dentro da transação, para que dois aceites
+      // simultâneos não passem os dois pela mesma vaga.
+      await this.planLimits.assertCanAcceptInvite(tx, invite.tenantId);
+
       let user = await tx.user.findUnique({ where: { email: invite.email }, select: { id: true } });
 
       if (user) {
@@ -277,24 +339,12 @@ export class InvitesService {
         select: { id: true },
       });
 
-      const hours = await tx.tenantBusinessHour.findMany({ where: { tenantId: invite.tenantId } });
-      const hourByWeekday = new Map(hours.map((hour) => [hour.weekday, hour]));
-      const workDays = new Set(invite.workDays);
-
       await tx.workSchedule.createMany({
-        data: Array.from({ length: 7 }, (_, weekday) => {
-          const hour = hourByWeekday.get(weekday);
-          const isDayOff = !workDays.has(weekday) || !hour || hour.closed;
-          const startTime = hour?.opensAt ?? 540;
-          return {
-            tenantId: invite.tenantId,
-            barberId: barber.id,
-            weekday,
-            startTime,
-            endTime: isDayOff ? startTime + 1 : (hour?.closesAt ?? 1200),
-            isDayOff,
-          };
-        }),
+        data: (await this.scheduleForInvite(tx, invite)).map((day) => ({
+          tenantId: invite.tenantId,
+          barberId: barber.id,
+          ...day,
+        })),
       });
 
       await tx.staffInvite.update({
@@ -321,6 +371,67 @@ export class InvitesService {
 
   // ── Internos ──────────────────────────────────────────────────────────────
 
+  /**
+   * A escala com que o barbeiro nasce.
+   *
+   * Preferência para a semana montada no modal (`schedule`), que traz almoço e
+   * horários dia a dia. Sem ela — convites emitidos antes desta auditoria —
+   * cai no horário de funcionamento da barbearia filtrado por `workDays`, que
+   * era o comportamento anterior.
+   */
+  private async scheduleForInvite(
+    tx: Prisma.TransactionClient,
+    invite: { tenantId: string; workDays: number[]; schedule: Prisma.JsonValue },
+  ): Promise<
+    Array<{
+      weekday: number;
+      startTime: number;
+      endTime: number;
+      lunchStart: number | null;
+      lunchEnd: number | null;
+      isDayOff: boolean;
+    }>
+  > {
+    const stored = Array.isArray(invite.schedule)
+      ? (invite.schedule as unknown as WorkScheduleDay[])
+      : null;
+
+    if (stored && stored.length > 0) {
+      const byWeekday = new Map(stored.map((day) => [day.weekday, day]));
+      return Array.from({ length: 7 }, (_, weekday) => {
+        const day = byWeekday.get(weekday);
+        const isDayOff = day?.isDayOff ?? true;
+        const startTime = day?.startTime ?? 540;
+        return {
+          weekday,
+          startTime,
+          endTime: isDayOff ? startTime + 1 : (day?.endTime ?? 1200),
+          lunchStart: isDayOff ? null : (day?.lunchStart ?? null),
+          lunchEnd: isDayOff ? null : (day?.lunchEnd ?? null),
+          isDayOff,
+        };
+      });
+    }
+
+    const hours = await tx.tenantBusinessHour.findMany({ where: { tenantId: invite.tenantId } });
+    const hourByWeekday = new Map(hours.map((hour) => [hour.weekday, hour]));
+    const workDays = new Set(invite.workDays);
+
+    return Array.from({ length: 7 }, (_, weekday) => {
+      const hour = hourByWeekday.get(weekday);
+      const isDayOff = !workDays.has(weekday) || !hour || hour.closed;
+      const startTime = hour?.opensAt ?? 540;
+      return {
+        weekday,
+        startTime,
+        endTime: isDayOff ? startTime + 1 : (hour?.closesAt ?? 1200),
+        lunchStart: null,
+        lunchEnd: null,
+        isDayOff,
+      };
+    });
+  }
+
   private async loadPending(tenantId: string, id: string) {
     const invite = await this.prisma.staffInvite.findFirst({
       where: { id, tenantId, status: StaffInviteStatus.PENDING },
@@ -343,6 +454,10 @@ export class InvitesService {
     }
   }
 
+  private inviteLink(inviteId: string, secret: string): string {
+    return `${this.config.urls.dashboard}/aceitar-convite?token=${inviteId}.${secret}`;
+  }
+
   private expiresAt(): Date {
     return new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000);
   }
@@ -363,7 +478,7 @@ export class InvitesService {
     tenantName: string,
     tenantId: string,
   ): Promise<void> {
-    const link = `${this.config.urls.dashboard}/aceitar-convite?token=${inviteId}.${secret}`;
+    const link = this.inviteLink(inviteId, secret);
     await this.mail.send({
       tenantId,
       to: email,
@@ -377,6 +492,18 @@ export class InvitesService {
       payload: { kind: 'staff-invite', inviteId },
     });
   }
+}
+
+/** Mesma regra do cadastro de barbeiro: número quebrado recusa, vazio passa. */
+function normalizeInvitePhone(input: string | null | undefined): string | null {
+  if (!input || input.trim() === '') {
+    return null;
+  }
+  const normalized = normalizeMobilePhone(input);
+  if (!normalized) {
+    throw ApiException.badRequest('WhatsApp inválido. Use DDD + 9 dígitos.');
+  }
+  return normalized;
 }
 
 function toItem(row: {

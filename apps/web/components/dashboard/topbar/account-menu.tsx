@@ -16,6 +16,10 @@ import {
  *
  * Antes da fase 13 este menu tinha só o e-mail (desabilitado) e "Sair" — os
  * dois itens de navegação estavam faltando.
+ *
+ * A foto sai de `User.avatarUrl` (agente 27): trocá-la em "Meu perfil" tem de
+ * aparecer AQUI, que é onde ela fica visível o tempo todo — por isso o
+ * `PATCH /me` renova a sessão, de onde este componente lê.
  */
 export function AccountMenu() {
   const router = useRouter();
@@ -30,7 +34,7 @@ export function AccountMenu() {
       triggerClassName="flex size-11 items-center justify-center gap-2 rounded-[9px] transition-colors hover:bg-surface-2 md:size-auto md:p-1"
       trigger={
         <>
-          <Avatar name={name} size="sm" />
+          <Avatar name={name} src={user?.avatarUrl} size="sm" />
           <ChevronDownIcon size={14} className="hidden shrink-0 text-fg-muted sm:block" />
         </>
       }
@@ -47,7 +51,7 @@ export function AccountMenu() {
           <PopoverItem
             onSelect={() => {
               close();
-              router.push('/app/configuracoes?tab=perfil');
+              router.push('/app/meu-perfil');
             }}
           >
             Meu perfil

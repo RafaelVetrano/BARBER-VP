@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Header, Param, Patch, Post, Req, Res } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import type {
   BarbershopSettings,
   CurrentPlanResponse,
+  PlanChangePreview,
   PreferencesSettings,
-  PriceCalculatorResult,
   UnitItem,
 } from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -14,7 +15,6 @@ import type { AuthPrincipal, RequestContext } from '../common/types/request-cont
 import { SettingsService } from './settings.service';
 import {
   ChangePlanDto,
-  PriceCalculatorDto,
   UpdateBarbershopSettingsDto,
   UpdatePreferencesDto,
   UpsertUnitDto,
@@ -46,10 +46,18 @@ export class SettingsController {
     return this.settings.updateBarbershop(tenantId, dto, principal.id, request);
   }
 
-  // ── Unidades (Avançado) ──────────────────────────────────────────────────
+  // ── Unidades ─────────────────────────────────────────────────────────────
+  //
+  // A LEITURA é livre; o gate `multiUnidades` (Avançado) está nas ESCRITAS.
+  //
+  // Antes o `GET` também era gated, e a consequência era que a sub-aba
+  // "Unidades" inteira virava um paywall fora do plano. O protótipo faz o
+  // oposto: a lista aparece e o cadeado fica no item "+ Nova unidade"
+  // (topbar, l.102–106) — o dono vê o que tem hoje e entende exatamente o que
+  // o upgrade compra. Quem decide continua sendo o servidor: `POST`/`PATCH`
+  // respondem 403 sem o plano, e é isso que a suíte de isolamento verifica.
 
   @Get('units')
-  @RequireFeature('multiUnidades')
   @ApiOperation({ summary: 'Lista as unidades' })
   async units(@CurrentTenant('id') tenantId: string): Promise<UnitItem[]> {
     return this.settings.listUnits(tenantId);
@@ -80,15 +88,32 @@ export class SettingsController {
     return this.settings.updateUnit(tenantId, id, dto, principal.id, request);
   }
 
-  // ── Plano ────────────────────────────────────────────────────────────────
+  // ── Plano e cobrança (só o dono) ─────────────────────────────────────────
+  //
+  // `SPEC.md` → RBAC: "MANAGER: dashboard completo EXCETO configurações de
+  // billing/plano do SaaS". O gerente administra a barbearia; contratar,
+  // trocar e pagar a assinatura é do dono. Estava aberto aos dois — um gerente
+  // podia fazer downgrade e desligar barbeiros.
 
   @Get('plan')
+  @Roles('OWNER')
   @ApiOperation({ summary: 'Plano atual, faturas e planos disponíveis' })
   async plan(@CurrentTenant('id') tenantId: string): Promise<CurrentPlanResponse> {
     return this.settings.currentPlan(tenantId);
   }
 
+  @Get('plan/preview/:planId')
+  @Roles('OWNER')
+  @ApiOperation({ summary: 'Ganhos e perdas da troca — o corpo do `modalTrocarPlano`' })
+  async planPreview(
+    @Param('planId') planId: string,
+    @CurrentTenant('id') tenantId: string,
+  ): Promise<PlanChangePreview> {
+    return this.settings.previewPlanChange(tenantId, planId);
+  }
+
   @Post('plan/change')
+  @Roles('OWNER')
   @ApiOperation({ summary: 'Troca de plano' })
   async changePlan(
     @Body() dto: ChangePlanDto,
@@ -97,6 +122,23 @@ export class SettingsController {
     @Req() request: RequestContext,
   ): Promise<CurrentPlanResponse> {
     return this.settings.changePlan(tenantId, dto, principal.id, request);
+  }
+
+  @Get('plan/invoices/:id.pdf')
+  @Roles('OWNER')
+  @Header('Cache-Control', 'no-store')
+  @ApiProduces('application/pdf')
+  @ApiOperation({ summary: 'Recibo de uma fatura — o link "PDF" do histórico' })
+  async invoicePdf(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const file = await this.settings.invoicePdf(tenantId, id);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    response.setHeader('Content-Length', file.body.length);
+    response.end(file.body);
   }
 
   // ── Preferências ─────────────────────────────────────────────────────────
@@ -118,12 +160,6 @@ export class SettingsController {
     return this.settings.updatePreferences(tenantId, dto, principal.id, request);
   }
 
-  // ── Calculadora de preço inteligente (Avançado) ─────────────────────────
-
-  @Post('price-calculator')
-  @RequireFeature('calculadoraPreco')
-  @ApiOperation({ summary: 'Sugere um preço de serviço a partir de custo/margem' })
-  priceCalculator(@Body() dto: PriceCalculatorDto): PriceCalculatorResult {
-    return this.settings.priceCalculator(dto);
-  }
+  // A calculadora de preço saiu daqui: o protótipo a desenha na aba "Serviços
+  // & Produtos" (l.1856), e é lá que ela vive agora — `PriceCalculatorController`.
 }

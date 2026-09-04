@@ -18,5 +18,8 @@ import { PlanLimitsService } from './plan-limits.service';
   imports: [AuthModule],
   controllers: [BarbersController, InvitesController, InviteAcceptController],
   providers: [BarbersService, InvitesService, PlanLimitsService],
+  // Configurações usa o mesmo `maxBarbeiros` na troca de plano — a regra do
+  // teto mora aqui, e não duplicada lá (agentes 24 e 26 compartilham).
+  exports: [PlanLimitsService],
 })
 export class TeamModule {}

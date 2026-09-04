@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { ServiceListItem, ServiceListResponse } from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -44,6 +44,18 @@ export class ServicesAdminController {
     @Req() request: RequestContext,
   ): Promise<ServiceListItem> {
     return this.services.update(tenantId, id, dto, actorUserId, request);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Exclui um serviço (soft-delete — o histórico continua legível)' })
+  remove(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser('id') actorUserId: string,
+    @Req() request: RequestContext,
+  ): Promise<void> {
+    return this.services.remove(tenantId, id, actorUserId, request);
   }
 
   @Patch(':id/activate')

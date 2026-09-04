@@ -6,9 +6,11 @@ import { formatBRL } from '@barbervp/types';
 import type { AdminPlanItem } from '@barbervp/types';
 import {
   useAdminTenantQuery,
+  useCancelTenantDeletionMutation,
   useChangeTenantPlanMutation,
   useImpersonateMutation,
   useReactivateTenantMutation,
+  useRevokeImpersonationMutation,
   useSuspendTenantMutation,
 } from '@/lib/admin/api/tenants';
 import { DASHBOARD_URL } from '@/lib/urls';
@@ -35,6 +37,8 @@ export function TenantDetailDrawer({
   const reactivate = useReactivateTenantMutation(tenantId ?? '');
   const changePlan = useChangeTenantPlanMutation(tenantId ?? '');
   const impersonate = useImpersonateMutation(tenantId ?? '');
+  const revokeImpersonation = useRevokeImpersonationMutation(tenantId ?? '');
+  const cancelDeletion = useCancelTenantDeletionMutation(tenantId ?? '');
   const [selectedPlanId, setSelectedPlanId] = useState('');
 
   const tenant = tenantQuery.data;
@@ -46,6 +50,33 @@ export function TenantDetailDrawer({
       window.location.assign(target);
     } catch (error) {
       toast({ message: error instanceof Error ? error.message : 'Não foi possível impersonar.', tone: 'danger' });
+    }
+  };
+
+  const handleRevokeImpersonation = async () => {
+    try {
+      const result = await revokeImpersonation.mutateAsync();
+      toast({
+        message: `Impersonação encerrada (${result.revoked} sessão(ões)).`,
+        tone: 'success',
+      });
+    } catch (error) {
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível encerrar.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const handleCancelDeletion = async () => {
+    try {
+      await cancelDeletion.mutateAsync();
+      toast({ message: 'Exclusão cancelada. A conta voltou para trial.', tone: 'success' });
+    } catch (error) {
+      toast({
+        message: error instanceof Error ? error.message : 'Não foi possível cancelar a exclusão.',
+        tone: 'danger',
+      });
     }
   };
 
@@ -126,6 +157,33 @@ export function TenantDetailDrawer({
             </ul>
           </div>
 
+          {/*
+            EXCLUSÃO AGENDADA — o bloco só existe quando há `purgeAt`.
+
+            O dono pode desistir sozinho entrando pelo próprio login, mas se
+            ele PERDER o acesso dentro dos 30 dias ninguém desfazia e a
+            `MaintenanceService` apagava a barbearia no vencimento. Este é o
+            único outro caminho.
+          */}
+          {tenant.purgeAt && (
+            <div className="flex flex-col gap-2 rounded-xl border border-danger/40 bg-danger/10 p-3">
+              <p className="text-sm font-semibold text-fg">Exclusão agendada</p>
+              <p className="text-xs text-fg-muted">
+                Os dados serão apagados em{' '}
+                {new Date(tenant.purgeAt).toLocaleDateString('pt-BR')}. Cancelar devolve a conta
+                para trial — a assinatura NÃO volta sozinha, o dono escolhe um plano de novo.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                loading={cancelDeletion.isPending}
+                onClick={() => void handleCancelDeletion()}
+              >
+                Cancelar exclusão
+              </Button>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2">
             {tenant.status === 'SUSPENDED' ? (
               <Button loading={reactivate.isPending} onClick={() => reactivate.mutate()}>
@@ -136,9 +194,25 @@ export function TenantDetailDrawer({
                 Suspender tenant
               </Button>
             )}
-            <Button variant="outline" loading={impersonate.isPending} disabled={tenant.status === 'SUSPENDED'} onClick={() => void handleImpersonate()}>
-              Impersonar OWNER
-            </Button>
+
+            {/*
+              Dois ramos de render, nunca um botão desabilitado (regra 4): ou há
+              impersonação em curso e o que se oferece é ENCERRÁ-LA, ou não há e
+              o que se oferece é abrir uma.
+            */}
+            {tenant.impersonationActive ? (
+              <Button
+                variant="danger"
+                loading={revokeImpersonation.isPending}
+                onClick={() => void handleRevokeImpersonation()}
+              >
+                Encerrar impersonação em curso
+              </Button>
+            ) : (
+              <Button variant="outline" loading={impersonate.isPending} disabled={tenant.status === 'SUSPENDED'} onClick={() => void handleImpersonate()}>
+                Impersonar OWNER
+              </Button>
+            )}
           </div>
         </div>
       )}

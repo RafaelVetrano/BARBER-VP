@@ -108,3 +108,25 @@ export function planMarketingFrom(value: unknown): PlanMarketing | null {
   const baseLabel = typeof raw['baseLabel'] === 'string' ? raw['baseLabel'] : null;
   return { baseLabel, features };
 }
+
+/**
+ * Rótulo de cada feature na TROCA DE PLANO (`modalTrocarPlano`,
+ * `Dashboard.dc.html` l.3483) e no upsell.
+ *
+ * Mora aqui, e não na tela, porque quem monta as listas "Você vai ganhar" e
+ * "Você vai perder" é a API: o diff sai do `features` REAL dos dois planos
+ * (`SaasPlan.features`, editável pelo super admin), não de uma tabela de tiers
+ * repetida no cliente. O frontend só renderiza as frases que recebeu.
+ */
+export const FEATURE_LABELS: Record<FeatureKey, string> = {
+  contasPagarReceber: 'Contas a pagar/receber',
+  vales: 'Vales e adiantamentos',
+  comissoes: 'Comissões automáticas',
+  fidelidadePontos: 'Fidelidade (pontos)',
+  fidelidadeSorteios: 'Sorteio automático',
+  whatsappCompleto: 'WhatsApp completo (aniversário, reativação, avaliação)',
+  relatoriosAvancados: 'Relatórios avançados',
+  fidelidadeAssinaturas: 'Assinaturas de clientes (mensalistas)',
+  multiUnidades: 'Múltiplas unidades',
+  calculadoraPreco: 'Calculadora de preço inteligente',
+};

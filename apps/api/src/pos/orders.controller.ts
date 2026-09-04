@@ -9,6 +9,7 @@ import { OrdersService } from './orders.service';
 import {
   AddOrderItemDto,
   ApplyOrderDiscountDto,
+  AssignOrderDto,
   CloseOrderDto,
   OpenOrderDto,
   OrderListQueryDto,
@@ -69,6 +70,19 @@ export class OrdersController {
   ): Promise<OrderDetail> {
     const scope = await this.scopes.resolve(tenantId, principal);
     return this.orders.open(tenantId, scope, dto, principal.id, request);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Troca cliente/barbeiro de uma comanda aberta' })
+  async assign(
+    @Param('id') id: string,
+    @Body() dto: AssignOrderDto,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<OrderDetail> {
+    const scope = await this.scopes.resolve(tenantId, principal);
+    return this.orders.assign(tenantId, scope, id, dto, principal.id, request);
   }
 
   @Post(':id/items')

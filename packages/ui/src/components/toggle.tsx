@@ -112,7 +112,19 @@ export const Switch = forwardRef<HTMLInputElement, ToggleBaseProps>(function Swi
           {description && <span className="mt-0.5 block text-fg-muted">{description}</span>}
         </label>
       )}
-      <span className="relative flex shrink-0 items-center">
+      {/*
+        O trilho tem 24px de altura — é o desenho. O ALVO DE TOQUE tem 44
+        (regra 6): o `<label>` em volta é o que o dedo acerta, e ele cresce
+        verticalmente sem mexer no visual do interruptor.
+
+        Precisa ser `<label htmlFor>`, e não uma `<span>`: um interruptor sem
+        rótulo visível (as linhas de Configurações, onde o texto é bloco
+        separado no protótipo) ficaria com 44×24 de alvo real.
+      */}
+      <label
+        htmlFor={ids.id}
+        className="relative flex min-h-11 shrink-0 cursor-pointer items-center md:min-h-0"
+      >
         <input
           ref={ref}
           id={ids.id}
@@ -122,7 +134,7 @@ export const Switch = forwardRef<HTMLInputElement, ToggleBaseProps>(function Swi
           {...props}
         />
         <span className="pointer-events-none absolute left-[3px] size-[18px] rounded-full bg-fg transition-transform duration-150 peer-checked:translate-x-5" />
-      </span>
+      </label>
     </div>
   );
 });

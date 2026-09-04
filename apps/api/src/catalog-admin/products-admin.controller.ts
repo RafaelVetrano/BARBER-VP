@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { ProductListItem, ProductListResponse } from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
 import type { RequestContext } from '../common/types/request-context';
 import { ProductsAdminService } from './products-admin.service';
-import { ProductListQueryDto, UpsertProductDto } from './dto/catalog-admin.dto';
+import { ProductListQueryDto, RestockProductDto, UpsertProductDto } from './dto/catalog-admin.dto';
 
 @ApiTags('catalog')
 @ApiBearerAuth('access-token')
@@ -44,6 +44,30 @@ export class ProductsAdminController {
     @Req() request: RequestContext,
   ): Promise<ProductListItem> {
     return this.products.update(tenantId, id, dto, actorUserId, request);
+  }
+
+  @Post(':id/restock')
+  @ApiOperation({ summary: 'Repõe estoque — soma unidades ao saldo atual' })
+  restock(
+    @Param('id') id: string,
+    @Body() dto: RestockProductDto,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser('id') actorUserId: string,
+    @Req() request: RequestContext,
+  ): Promise<ProductListItem> {
+    return this.products.restock(tenantId, id, dto, actorUserId, request);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Exclui um produto (soft-delete — o histórico continua legível)' })
+  remove(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser('id') actorUserId: string,
+    @Req() request: RequestContext,
+  ): Promise<void> {
+    return this.products.remove(tenantId, id, actorUserId, request);
   }
 
   @Patch(':id/activate')

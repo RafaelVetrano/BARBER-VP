@@ -74,8 +74,16 @@ const APPS = {
       '/app',
       '/app/agenda',
       '/app/clientes',
-      '/app/servicos-produtos',
-      '/app/equipe',
+      // As três sub-abas do catálogo medem layouts diferentes: tabela de 6
+      // colunas, tabela de 7 e a grade 2×1 da calculadora (fase 23).
+      '/app/servicos-produtos?tab=servicos',
+      '/app/servicos-produtos?tab=produtos',
+      '/app/servicos-produtos?tab=calculadora',
+      // As três visões da Equipe medem layouts diferentes: a grade de cards,
+      // a matriz 7 colunas da escala (rola por dentro) e as linhas de convite.
+      '/app/equipe?tab=equipe',
+      '/app/equipe?tab=escala',
+      '/app/equipe?tab=convites',
       '/app/comandas',
       '/app/financeiro',
       '/app/comissoes',
@@ -83,8 +91,16 @@ const APPS = {
       '/app/relatorios',
       '/app/whatsapp',
       '/app/assistente-ia',
-      '/app/configuracoes',
+      // As quatro sub-abas de Configurações medem layouts diferentes: o
+      // formulário de 720px com a linha de horário (que tem 6 controles numa
+      // linha só no desktop), a tabela de unidades, a grade de planos com
+      // `auto-fit` e o painel de preferências (fase 26).
+      '/app/configuracoes?tab=barbearia',
+      '/app/configuracoes?tab=unidades',
+      '/app/configuracoes?tab=plano',
+      '/app/configuracoes?tab=preferencias',
       '/app/minha-pagina',
+      '/app/meu-perfil',
     ],
     /*
      * O `/playground` é a galeria de componentes da fase 02, não uma tela de

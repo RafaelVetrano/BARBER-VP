@@ -141,3 +141,19 @@ export function timeToMinutes(time: string): number | null {
   if (h > 24 || m > 59) return null;
   return h * 60 + m;
 }
+
+/**
+ * Rótulo curto do dia — é o que cabe nos 36px da linha de horário de
+ * funcionamento (`Dashboard.dc.html` l.2508). Indexado por `weekday`, igual a
+ * `WEEKDAY_LABELS`.
+ */
+export const WEEKDAY_SHORT_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] as const;
+
+/**
+ * Ordem de exibição da semana: segunda primeiro, domingo por último.
+ *
+ * O banco guarda `weekday` compatível com `Date#getDay` (0 = domingo), mas
+ * toda tela do produto lista a semana começando na segunda — é como o dono lê
+ * o expediente da casa (`WEEK_DAYS` do protótipo, l.4399).
+ */
+export const WEEK_ORDER_MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0] as const;

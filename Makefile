@@ -5,7 +5,7 @@ COMPOSE := docker compose
 API := $(COMPOSE) exec -T api pnpm --filter @barbervp/api exec
 
 .DEFAULT_GOAL := help
-.PHONY: help env install up down logs ps migrate migrate-create seed reset test test-e2e test-isolation responsive lint typecheck build build-web build-api prod-build sh psql redis-cli
+.PHONY: help env install up down logs ps migrate migrate-create seed seed-demo reset test test-e2e test-isolation responsive lint typecheck build build-web build-api prod-build sh psql redis-cli
 
 help: ## Lista os alvos disponíveis
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -39,6 +39,9 @@ migrate-create: ## Cria uma migration nova (make migrate-create name=xxx)
 seed: ## Popula o banco com os dados do SPEC (2 tenants)
 	$(API) prisma db seed
 
+seed-demo: ## Popula o banco com o volume de DEMONSTRAÇÃO (auditoria de tela)
+	$(COMPOSE) exec -T api pnpm --filter @barbervp/api run seed:demo
+
 reset: ## Derruba tudo COM volumes, sobe, migra e semeia do zero
 	$(COMPOSE) down -v
 	$(MAKE) up
@@ -66,8 +69,16 @@ lint: ## Lint em todo o monorepo
 typecheck: ## Typecheck em todo o monorepo
 	pnpm turbo run typecheck
 
+# `NODE_ENV=production` EXPLÍCITO nos alvos de build.
+#
+# Rodado de dentro dos containers de desenvolvimento — que definem
+# `NODE_ENV=development` —, o `next build` mistura os runtimes e quebra ~35
+# páginas na pré-renderização com "Cannot read properties of null (reading
+# 'useContext')". A pista está na pilha, que junta `app-page.runtime.prod.js`
+# com `...dev.js`: é runtime errado, não código errado. Fora do container o
+# build passa, o que faz a pegadinha custar meia hora cada vez que reaparece.
 build: ## Build de todos os pacotes/apps
-	pnpm turbo run build
+	NODE_ENV=production pnpm turbo run build
 
 prod-build: ## Build das imagens de produção (web + api)
 	$(COMPOSE) -f docker-compose.prod.yml build
@@ -83,9 +94,9 @@ redis-cli: ## redis-cli no redis do compose
 
 build-web: ## Build isolado do frontend (é o que a Vercel roda)
 	pnpm --filter @barbervp/types build
-	pnpm --filter @barbervp/web build
+	NODE_ENV=production pnpm --filter @barbervp/web build
 
 build-api: ## Build isolado do backend (é o que a Railway roda)
 	pnpm --filter @barbervp/types build
 	pnpm --filter @barbervp/api exec prisma generate
-	pnpm --filter @barbervp/api build
+	NODE_ENV=production pnpm --filter @barbervp/api build

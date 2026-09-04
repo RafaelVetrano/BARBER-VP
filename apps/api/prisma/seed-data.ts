@@ -175,14 +175,56 @@ export const SERVICE_COMBOS: Array<{ combo: ServiceKey; parts: ServiceKey[] }> =
 
 // ──────────────────────────────────────────────────────── Barbeiros ─────────
 
+/**
+ * O `phone` é o WhatsApp que o card da aba Equipe mostra sob o nome
+ * (`Dashboard.dc.html` l.2060). Faixa 9880xxxx, separada da dos clientes
+ * (9876xxxx), para nunca colidir na busca por telefone.
+ */
 export const BARBERS = [
-  { key: 'carlos', name: 'Carlos Silva', specialty: 'Fade', ratingBps: 490 },
-  { key: 'rafael', name: 'Rafael Souza', specialty: 'Barba clássica', ratingBps: 480 },
-  { key: 'diego', name: 'Diego Alves', specialty: 'Cortes modernos', ratingBps: 500 },
-  { key: 'bruno', name: 'Bruno Costa', specialty: 'Navalha', ratingBps: 470 },
+  { key: 'carlos', name: 'Carlos Silva', specialty: 'Fade', ratingBps: 490, phone: '5511988000001' },
+  { key: 'rafael', name: 'Rafael Souza', specialty: 'Barba clássica', ratingBps: 480, phone: '5511988000002' },
+  { key: 'diego', name: 'Diego Alves', specialty: 'Cortes modernos', ratingBps: 500, phone: '5511988000003' },
+  { key: 'bruno', name: 'Bruno Costa', specialty: 'Navalha', ratingBps: 470, phone: '5511988000004' },
 ] as const;
 
 export type BarberKey = (typeof BARBERS)[number]['key'];
+
+/**
+ * Unidades do tenant demo (`Dashboard.dc.html` → Configurações → Unidades,
+ * l.2564). O demo assina o Avançado, então a aba multi-unidade tem de ter o
+ * que mostrar — e o seletor da topbar, o que trocar.
+ *
+ * Os endereços são os da barbearia semeada, não os do desenho: a matriz é o
+ * mesmo endereço de `TenantSettings.address`. A terceira unidade nasce SEM
+ * barbeiro de propósito — é ela que produz o status "Em configuração" na
+ * tabela, que de outro modo nenhum ambiente exercitaria.
+ */
+export const UNITS = [
+  {
+    key: 'matriz',
+    name: 'Barbearia Central (matriz)',
+    address: 'Rua XV de Novembro, 480 — Centro, São Paulo/SP',
+    phone: '551133334444',
+    isDefault: true,
+    barbers: ['carlos', 'rafael', 'diego'],
+  },
+  {
+    key: 'zona-sul',
+    name: 'Barbearia Central — Zona Sul',
+    address: 'Av. Ibirapuera, 340 — Moema, São Paulo/SP',
+    phone: '551133335555',
+    isDefault: false,
+    barbers: ['bruno'],
+  },
+  {
+    key: 'norte',
+    name: 'Barbearia Central — Norte',
+    address: 'Av. Marginal, 900 — Guarulhos/SP',
+    phone: null,
+    isDefault: false,
+    barbers: [],
+  },
+] as const;
 
 /** Pigmentação é exclusiva do Diego Alves; o resto todos atendem. */
 export const EXCLUSIVE_SERVICES: Partial<Record<ServiceKey, BarberKey[]>> = {
@@ -267,6 +309,14 @@ export const PRODUCTS = [
  * registro. Os demais seguem sem senha, como desde a fase 01 (contas que só
  * entrariam pelo cadastro completo).
  */
+/**
+ * Faixa de telefone reservada aos clientes de seed (base E demo). O `reset()`
+ * apaga por este prefixo, então qualquer cliente novo de seed tem de nascer
+ * dentro dele — do contrário a segunda execução colide no `@unique` do
+ * telefone.
+ */
+export const SEED_CLIENT_PHONE_PREFIX = '551198765';
+
 export const CLIENTS = [
   {
     name: 'André Martins',
@@ -362,11 +412,23 @@ export const USERS = {
 // ────────────────────────────────────────────── Comissões e fidelidade ─────
 
 export const COMMISSION_RULES = [
-  { name: 'Comissão padrão', type: 'FIXED' as const, percentBps: 4_000, tiers: [] },
+  {
+    name: 'Comissão padrão',
+    type: 'FIXED' as const,
+    percentBps: 4_000,
+    // Produto comissiona menos que serviço — a margem de revenda é menor que a
+    // da mão de obra. Sem isto a coluna "Comissão produtos" da aba nasceria
+    // zerada no tenant demo e ninguém veria a regra funcionando.
+    percentProdutosBps: 1_000,
+    deductVales: true,
+    tiers: [],
+  },
   {
     name: 'Comissão por faixa de faturamento',
     type: 'TIERED' as const,
     percentBps: null,
+    percentProdutosBps: 1_500,
+    deductVales: true,
     // SPEC: até R$5.000 → 40%, até R$8.000 → 45%, acima → 50%.
     tiers: [
       { upToCents: 500_000, percentBps: 4_000, sortOrder: 0 },
@@ -387,6 +449,16 @@ export const LOYALTY_PROGRAM = {
 } as const;
 
 // ────────────────────────────────────────── Automações de WhatsApp ─────────
+
+/**
+ * Há quantos meses o lembrete de WhatsApp está ligado nesta barbearia.
+ *
+ * O gráfico "Taxa de faltas por mês" (Relatórios) marca esse mês com a linha
+ * "WhatsApp de lembrete ativado" — sem uma data plantada, a barbearia demo
+ * teria a automação ligada "desde agora" e o marcador cairia sempre no último
+ * ponto, onde não explica queda nenhuma.
+ */
+export const WHATSAPP_REMINDER_ENABLED_MONTHS_AGO = 3;
 
 export const WHATSAPP_TEMPLATES = [
   {
@@ -413,14 +485,18 @@ export const WHATSAPP_TEMPLATES = [
   {
     event: 'BIRTHDAY' as const,
     enabled: false,
-    offsetMinutes: null,
+    // Minutos desde a meia-noite: 09:00, a abertura da casa. É o que o
+    // `<input type="time">` da aba WhatsApp mostra.
+    offsetMinutes: 9 * 60,
     template:
       'Feliz aniversário, {nome}! 🎉 A Barbearia Central te espera com um mimo especial: {link_agendamento}',
   },
   {
     event: 'REACTIVATION' as const,
     enabled: false,
-    offsetMinutes: null,
+    // Dias de inatividade × 1440 — 30 dias, o mesmo corte de "inativo" da aba
+    // Clientes (`CLIENT_INACTIVE_DAYS`). É a janela que a faixa dourada conta.
+    offsetMinutes: 30 * 24 * 60,
     template:
       'Faz um tempo que a gente não te vê, {nome}. Bora dar um trato no visual? {link_agendamento}',
   },
@@ -484,23 +560,3 @@ export const ACCOUNTS_RECEIVABLE = [
   { description: 'Venda parcelada — Produtos premium', category: 'Venda parcelada', customer: 'Thiago Melo', installment: 3, installments: 3, amountCents: 22_000, dueInDays: 24, status: 'PENDING' as const },
 ] as const;
 
-export const RAFFLES = [
-  {
-    name: 'Sorteio Kit Barba Premium',
-    description: 'Concorra a um kit completo de barba. 1 cupom a cada 10 pontos.',
-    prize: 'Kit Barba Premium',
-    status: 'ACTIVE' as const,
-    pointsPerEntry: 10,
-    startsInDays: -10,
-    endsInDays: 20,
-  },
-  {
-    name: 'Sorteio Corte Grátis por 3 meses',
-    description: 'Campanha encerrada de setembro.',
-    prize: '3 meses de corte grátis',
-    status: 'FINISHED' as const,
-    pointsPerEntry: 20,
-    startsInDays: -70,
-    endsInDays: -40,
-  },
-] as const;

@@ -99,6 +99,14 @@ enum CommissionEntryStatus {
   PAID
 }
 
+/// O que gerou o lançamento de comissão. Serviço entra na progressão por
+/// faturamento (`CommissionTier`); produto usa sempre o percentual único da
+/// regra ("% produtos (todas as faixas)" no modal de regras).
+enum CommissionEntryKind {
+  SERVICE
+  PRODUCT
+}
+
 enum CashRegisterStatus {
   OPEN
   CLOSED
@@ -121,17 +129,20 @@ enum AccountStatus {
   CANCELED
 }
 
+/// Periodicidade de uma conta recorrente ("Recorrente?" + "Frequência" dos
+/// modais de Contas a pagar/receber). A criação materializa as ocorrências do
+/// horizonte à frente; a coluna guarda a regra que as gerou.
+enum AccountRecurrence {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
 enum LoyaltyPointsKind {
   EARN
   REDEEM
   EXPIRE
   ADJUST
-}
-
-enum RaffleStatus {
-  ACTIVE
-  FINISHED
-  CANCELED
 }
 
 enum OutboxStatus {
@@ -167,6 +178,10 @@ enum ScheduleExceptionType {
   VACATION
   HOLIDAY
   CUSTOM_HOURS
+  /// Bloqueio pontual da agenda ("Bloquear horário" da aba Agenda). Com
+  /// `startTime`/`endTime` corta só aquela faixa; sem eles, o dia inteiro.
+  /// Difere de `CUSTOM_HOURS`, que REDEFINE o expediente em vez de subtrair.
+  BLOCK
 }
 
 /// Público do token (claim `aud`). Sessão de estabelecimento e de cliente são
@@ -217,25 +232,25 @@ enum SaasInvoiceStatus {
 // Modelos sem `tenantId` — vivem acima da fronteira de tenant.
 
 model SaasPlan {
-  id        String   @id @default(cuid())
+  id         String   @id @default(cuid())
   /// `essencial` | `profissional` | `avancado`
-  code      String   @unique
-  name      String
+  code       String   @unique
+  name       String
   priceCents Int
   /// 0 = Essencial, 1 = Profissional, 2 = Avançado (ver `PlanTier`).
-  tier      Int
+  tier       Int
   /// `null` = ilimitado.
   maxBarbers Int?
   /// Mapa de feature flags — ver `@barbervp/types` → `PlanFeatures`.
-  features  Json
+  features   Json
   /// Cópia de marketing da landing (`PlanMarketing`): `baseLabel` + bullets.
   /// Coluna separada de `features` de propósito — ver `PlanMarketing`.
-  marketing Json?
-  isPopular Boolean  @default(false)
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  marketing  Json?
+  isPopular  Boolean  @default(false)
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
 
   tenants       Tenant[]
   subscriptions TenantSubscription[]
@@ -257,56 +272,62 @@ model Tenant {
   createdAt DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt DateTime     @updatedAt @db.Timestamptz(3)
   deletedAt DateTime?    @db.Timestamptz(3)
+  /// Exclusao pedida pelo dono em "Meu perfil" (`modalExcluirConta`): data em
+  /// que a faxina apaga a barbearia de vez. Ate la o dono continua entrando e
+  /// pode desistir — e a janela de 30 dias que o proprio modal promete.
+  /// `null` = nenhuma exclusao agendada.
+  purgeAt   DateTime?    @db.Timestamptz(3)
 
   plan SaasPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
 
-  subscriptions       TenantSubscription[]
-  memberships         Membership[]
-  settings            TenantSettings?
-  businessHours       TenantBusinessHour[]
-  units               Unit[]
-  barbers             Barber[]
-  services            Service[]
-  barberServices      BarberService[]
-  workSchedules       WorkSchedule[]
-  scheduleExceptions  ScheduleException[]
-  staffInvites        StaffInvite[]
-  appointments        Appointment[]
-  clientProfiles      ClientProfile[]
-  clientPlans         ClientPlan[]
-  clientPlanItems     ClientPlanItem[]
-  clientSubscriptions ClientSubscription[]
-  subscriptionUsages  SubscriptionUsage[]
-  loyaltyProgram      LoyaltyProgram?
-  loyaltyPoints       LoyaltyPoints[]
-  loyaltyRaffles      LoyaltyRaffle[]
-  loyaltyRaffleEntries LoyaltyRaffleEntry[]
-  products            Product[]
-  orders              Order[]
-  orderItems          OrderItem[]
-  payments            Payment[]
-  commissionRules     CommissionRule[]
-  commissionTiers     CommissionTier[]
-  commissionEntries   CommissionEntry[]
-  vales               Vale[]
-  cashRegisters       CashRegister[]
-  cashMovements       CashMovement[]
-  bankAccounts        BankAccount[]
-  accountsPayable     AccountPayable[]
-  accountsReceivable  AccountReceivable[]
-  whatsappConfigs     WhatsappAutomationConfig[]
-  auditLogs           AuditLog[]
-  notificationOutbox  NotificationOutbox[]
-  mailOutbox          MailOutbox[]
-  serviceComboParts   ServiceComboPart[]
-  appointmentServices AppointmentService[]
-  reviews             Review[]
-  photos              TenantPhoto[]
-  aiChatMessages      AiChatMessage[]
-  saasInvoices        SaasInvoice[]
+  subscriptions        TenantSubscription[]
+  memberships          Membership[]
+  settings             TenantSettings?
+  businessHours        TenantBusinessHour[]
+  units                Unit[]
+  barbers              Barber[]
+  services             Service[]
+  barberServices       BarberService[]
+  workSchedules        WorkSchedule[]
+  scheduleExceptions   ScheduleException[]
+  staffInvites         StaffInvite[]
+  appointments         Appointment[]
+  clientProfiles       ClientProfile[]
+  clientPlans          ClientPlan[]
+  clientPlanItems      ClientPlanItem[]
+  clientSubscriptions  ClientSubscription[]
+  subscriptionUsages   SubscriptionUsage[]
+  loyaltyProgram       LoyaltyProgram?
+  loyaltyPoints        LoyaltyPoints[]
+  products             Product[]
+  orders               Order[]
+  orderItems           OrderItem[]
+  payments             Payment[]
+  commissionRules      CommissionRule[]
+  commissionTiers      CommissionTier[]
+  commissionEntries    CommissionEntry[]
+  vales                Vale[]
+  cashRegisters        CashRegister[]
+  cashMovements        CashMovement[]
+  bankAccounts         BankAccount[]
+  accountsPayable      AccountPayable[]
+  accountsReceivable   AccountReceivable[]
+  whatsappConfigs      WhatsappAutomationConfig[]
+  auditLogs            AuditLog[]
+  notificationOutbox   NotificationOutbox[]
+  mailOutbox           MailOutbox[]
+  serviceComboParts    ServiceComboPart[]
+  appointmentServices  AppointmentService[]
+  reviews              Review[]
+  photos               TenantPhoto[]
+  aiChatMessages       AiChatMessage[]
+  saasInvoices         SaasInvoice[]
+  priceCalculator      PriceCalculatorConfig?
+  priceCalcFixedCosts  PriceCalcFixedCost[]
 
   @@index([status])
   @@index([planId])
+  @@index([purgeAt])
 }
 
 model TenantSubscription {
@@ -326,8 +347,8 @@ model TenantSubscription {
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
 
-  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan   SaasPlan @relation(fields: [planId], references: [id])
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     SaasPlan      @relation(fields: [planId], references: [id])
   invoices SaasInvoice[]
 
   @@index([tenantId, status])
@@ -364,6 +385,9 @@ model User {
   passwordHash    String
   name            String
   phone           String?
+  /// Foto do menu do avatar e da tela "Meu perfil". Enviada pelo
+  /// `StorageAdapter`, igual ao logo da barbearia.
+  avatarUrl       String?
   isSuperAdmin    Boolean   @default(false)
   active          Boolean   @default(true)
   emailVerifiedAt DateTime? @db.Timestamptz(3)
@@ -371,19 +395,19 @@ model User {
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
 
-  memberships   Membership[]
-  barbers       Barber[]
-  auditLogs     AuditLog[]
-  cashRegisters CashRegister[]
-  cashMovements CashMovement[]
-  sessions      AuthSession[]
-  passwordResets PasswordResetToken[]
+  memberships      Membership[]
+  barbers          Barber[]
+  auditLogs        AuditLog[]
+  cashRegisters    CashRegister[]
+  cashMovements    CashMovement[]
+  sessions         AuthSession[]
+  passwordResets   PasswordResetToken[]
   /// Convites de equipe que este usuário disparou (fase 06).
   sentStaffInvites StaffInvite[]
   /// Conta de cliente final vinculada a este login (fluxo "vincular conta" do
   /// Cadastro Estabelecimento). Um `User` tem no máximo um `Client`.
-  client        Client?
-  aiChatMessages AiChatMessage[]
+  client           Client?
+  aiChatMessages   AiChatMessage[]
 
   @@index([isSuperAdmin])
 }
@@ -443,8 +467,6 @@ model Client {
   appointments  Appointment[]
   subscriptions ClientSubscription[]
   loyaltyPoints LoyaltyPoints[]
-  raffleEntries LoyaltyRaffleEntry[]
-  wonRaffles    LoyaltyRaffle[]
   orders        Order[]
   auditLogs     AuditLog[]
   sessions      AuthSession[]
@@ -459,27 +481,27 @@ model Client {
 /// Perfil do cliente DENTRO de uma barbearia. `phone` é desnormalizado do
 /// `Client` para servir a busca quente `(tenantId, phone)` do dashboard sem join.
 model ClientProfile {
-  id            String    @id @default(cuid())
-  tenantId      String
-  clientId      String
+  id               String    @id @default(cuid())
+  tenantId         String
+  clientId         String
   /// Cópia de `Client.phone` — mantida em sincronia na escrita.
-  phone         String
-  notes         String?
+  phone            String
+  notes            String?
   /// Faltas acumuladas — comparadas a `TenantSettings.bloquearFaltasQtd`.
-  noShowCount   Int       @default(0)
-  blocked       Boolean   @default(false)
+  noShowCount      Int       @default(0)
+  blocked          Boolean   @default(false)
   /// Barbeiro preferido do cliente NESTA barbearia (Dashboard → Clientes).
   favoriteBarberId String?
-  firstVisitAt  DateTime? @db.Timestamptz(3)
-  lastVisitAt   DateTime? @db.Timestamptz(3)
-  totalSpentCents Int     @default(0)
-  visitCount    Int       @default(0)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
-  deletedAt     DateTime? @db.Timestamptz(3)
+  firstVisitAt     DateTime? @db.Timestamptz(3)
+  lastVisitAt      DateTime? @db.Timestamptz(3)
+  totalSpentCents  Int       @default(0)
+  visitCount       Int       @default(0)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime? @db.Timestamptz(3)
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant         Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client         Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   favoriteBarber Barber? @relation("ClientFavoriteBarber", fields: [favoriteBarberId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, clientId])
@@ -528,6 +550,10 @@ model Barber {
   email            String?
   commissionRuleId String?
   active           Boolean   @default(true)
+  /// `true` quando quem desligou foi o DOWNGRADE de plano, nao o dono. O
+  /// barbeiro some da agenda igual a um inativo comum, mas a tela mostra
+  /// "Inativo pelo plano" e o upgrade o reativa sozinho.
+  inactiveByPlan   Boolean   @default(false)
   hiredAt          DateTime? @db.Timestamptz(3)
   sortOrder        Int       @default(0)
   createdAt        DateTime  @default(now()) @db.Timestamptz(3)
@@ -539,16 +565,16 @@ model Barber {
   user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   commissionRule CommissionRule? @relation(fields: [commissionRuleId], references: [id], onDelete: SetNull)
 
-  barberServices     BarberService[]
-  workSchedules      WorkSchedule[]
-  scheduleExceptions ScheduleException[]
-  appointments       Appointment[]
-  orders             Order[]
-  orderItems         OrderItem[]
-  commissionEntries  CommissionEntry[]
-  vales              Vale[]
-  reviews            Review[]
-  favoritedByProfiles ClientProfile[] @relation("ClientFavoriteBarber")
+  barberServices       BarberService[]
+  workSchedules        WorkSchedule[]
+  scheduleExceptions   ScheduleException[]
+  appointments         Appointment[]
+  orders               Order[]
+  orderItems           OrderItem[]
+  commissionEntries    CommissionEntry[]
+  vales                Vale[]
+  reviews              Review[]
+  favoritedByProfiles  ClientProfile[]     @relation("ClientFavoriteBarber")
   staffInvitesAccepted StaffInvite[]
 
   @@unique([tenantId, userId])
@@ -563,6 +589,16 @@ model Service {
   durationMin Int
   priceCents  Int
   category    String?
+  /// Cor da bolinha na agenda e na tabela do catálogo (`SP_COLORS` do
+  /// protótipo, l.4375). `null` = a UI cai na cor de destaque padrão; nunca
+  /// inventa uma cor por índice, senão duas barbearias com o mesmo serviço
+  /// veriam cores diferentes conforme a ordem de cadastro.
+  color       String?
+  /// Comissão ESPECÍFICA deste serviço, em basis points (4500 = 45%).
+  /// `null` = o serviço usa a regra do barbeiro (`CommissionRule`), que é o
+  /// comportamento de sempre. É o toggle "Comissão específica (opcional)" do
+  /// modal (protótipo l.1985) — que no desenho não persistia nada.
+  commissionBps Int?
   /// Combo automático quando os serviços-base são escolhidos juntos no wizard.
   /// Quem são "os serviços-base" está em `ServiceComboPart` — `isCombo` sozinho
   /// não diz o que o combo substitui.
@@ -582,9 +618,9 @@ model Service {
   subscriptionUsages  SubscriptionUsage[]
   orderItems          OrderItem[]
   /// Peças que ESTE serviço (combo) substitui.
-  comboParts          ServiceComboPart[] @relation("ComboService")
+  comboParts          ServiceComboPart[]   @relation("ComboService")
   /// Combos em que este serviço entra como peça.
-  partOfCombos        ServiceComboPart[] @relation("PartService")
+  partOfCombos        ServiceComboPart[]   @relation("PartService")
 
   @@unique([tenantId, name])
   @@index([tenantId, active, sortOrder])
@@ -665,10 +701,13 @@ model ScheduleException {
   startDate DateTime              @db.Date
   endDate   DateTime              @db.Date
   type      ScheduleExceptionType
-  /// Só para `CUSTOM_HOURS` — minutos desde a meia-noite.
+  /// Minutos desde a meia-noite. Em `CUSTOM_HOURS` REDEFINE o expediente; em
+  /// `BLOCK` SUBTRAI a faixa. Nulos em `BLOCK` = dia inteiro bloqueado.
   startTime Int?
   endTime   Int?
   reason    String?
+  /// Observações do modal "Bloquear horário".
+  notes     String?
   createdAt DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt DateTime              @updatedAt @db.Timestamptz(3)
 
@@ -692,8 +731,13 @@ model StaffInvite {
   role            MembershipRole    @default(BARBER)
   /// Serviços pré-marcados para o convidado atender (`BarberService` ao aceitar).
   serviceIds      String[]
-  /// Dias de trabalho pré-definidos — 0 (domingo) a 6 (sábado).
+  /// Dias de trabalho pré-definidos — 0 (domingo) a 6 (sábado). Derivado de
+  /// `schedule` quando ele existe; é o que a tela de aceite mostra.
   workDays        Int[]
+  /// A semana inteira montada no modal de "+ Novo barbeiro" (`WorkScheduleDay[]`):
+  /// entrada, saída e almoço de cada dia. `null` nos convites antigos, que
+  /// caem no horário de funcionamento da barbearia ao aceitar.
+  schedule        Json?
   tokenHash       String            @unique
   status          StaffInviteStatus @default(PENDING)
   invitedByUserId String
@@ -705,9 +749,9 @@ model StaffInvite {
   createdAt       DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
 
-  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invitedBy  User    @relation(fields: [invitedByUserId], references: [id])
-  barber     Barber? @relation(fields: [barberId], references: [id], onDelete: SetNull)
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation(fields: [invitedByUserId], references: [id])
+  barber    Barber? @relation(fields: [barberId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([email])
@@ -720,7 +764,7 @@ model StaffInvite {
 /// `Unsupported` e nunca é escrita pelo Prisma Client. Ver
 /// `migrations/.../migration.sql`.
 model Appointment {
-  id                  String                   @id @default(cuid())
+  id                  String                    @id @default(cuid())
   tenantId            String
   unitId              String?
   barberId            String
@@ -736,27 +780,27 @@ model Appointment {
   /// Dados do visitante quando não há conta (guest booking).
   guestName           String?
   guestPhone          String?
-  startsAt            DateTime                 @db.Timestamptz(3)
-  endsAt              DateTime                 @db.Timestamptz(3)
+  startsAt            DateTime                  @db.Timestamptz(3)
+  endsAt              DateTime                  @db.Timestamptz(3)
   timeRange           Unsupported("tstzrange")?
-  status              AppointmentStatus        @default(SCHEDULED)
-  origin              AppointmentOrigin        @default(PUBLIC)
+  status              AppointmentStatus         @default(SCHEDULED)
+  origin              AppointmentOrigin         @default(PUBLIC)
   priceCents          Int
   notes               String?
   /// Quando o atendimento é coberto por assinatura do cliente.
   subscriptionUsageId String?
-  confirmedAt         DateTime?                @db.Timestamptz(3)
-  canceledAt          DateTime?                @db.Timestamptz(3)
+  confirmedAt         DateTime?                 @db.Timestamptz(3)
+  canceledAt          DateTime?                 @db.Timestamptz(3)
   cancelReason        String?
-  createdAt           DateTime                 @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime                 @updatedAt @db.Timestamptz(3)
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                  @updatedAt @db.Timestamptz(3)
 
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit              Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  barber            Barber             @relation(fields: [barberId], references: [id], onDelete: Cascade)
-  service           Service            @relation(fields: [serviceId], references: [id])
-  client            Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  subscriptionUsage SubscriptionUsage? @relation(fields: [subscriptionUsageId], references: [id], onDelete: SetNull)
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit              Unit?                @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  barber            Barber               @relation(fields: [barberId], references: [id], onDelete: Cascade)
+  service           Service              @relation(fields: [serviceId], references: [id])
+  client            Client?              @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  subscriptionUsage SubscriptionUsage?   @relation(fields: [subscriptionUsageId], references: [id], onDelete: SetNull)
   order             Order?
   services          AppointmentService[]
   /// Avaliação por estrelas do cliente para ESTE atendimento (fase 05,
@@ -782,17 +826,17 @@ model Appointment {
 /// Preço e duração são FOTOGRAFIA do momento da reserva: mudar a tabela de
 /// preços amanhã não pode reescrever o que já foi combinado com o cliente.
 model AppointmentService {
-  id            String   @id @default(cuid())
-  tenantId      String
-  appointmentId String
-  serviceId     String
-  sortOrder     Int      @default(0)
+  id                  String   @id @default(cuid())
+  tenantId            String
+  appointmentId       String
+  serviceId           String
+  sortOrder           Int      @default(0)
   /// Preço cobrado por esta linha — `0` quando a assinatura cobriu.
-  priceCents    Int
-  durationMin   Int
+  priceCents          Int
+  durationMin         Int
   /// Saldo de assinatura debitado por esta linha, quando houve cobertura.
   subscriptionUsageId String?
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
 
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointment       Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
@@ -811,26 +855,26 @@ model AppointmentService {
 /// A COLETA (pedir avaliação depois do atendimento) é do template `REVIEW` do
 /// WhatsApp, fase 07/09; aqui só há leitura e o que o seed planta.
 model Review {
-  id         String   @id @default(cuid())
-  tenantId   String
+  id            String   @id @default(cuid())
+  tenantId      String
   /// Cliente autor, quando a avaliação nasceu de uma conta.
-  clientId   String?
+  clientId      String?
   /// Barbeiro avaliado — `null` = avaliação da barbearia.
-  barberId   String?
+  barberId      String?
   /// Atendimento avaliado (fase 05, "Avaliar atendimento" do histórico da
   /// `MinhaConta`) — `null` nas avaliações do seed/vitrine, que não nascem de um
   /// agendamento específico. `@unique` porque só existe UMA nota por visita.
-  appointmentId String? @unique
+  appointmentId String?  @unique
   /// Nome exibido ("João P."), desnormalizado para sobreviver à exclusão LGPD
   /// da conta sem derrubar a nota da barbearia.
-  authorName String
+  authorName    String
   /// 1 a 5 estrelas (CHECK `review_rating_bounds`).
-  rating     Int
-  comment    String?
+  rating        Int
+  comment       String?
   /// Só avaliação publicada entra na página e na média.
-  published  Boolean  @default(true)
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+  published     Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client      Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -897,9 +941,9 @@ model ClientSubscription {
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
 
-  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client   Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  plan     ClientPlan @relation(fields: [planId], references: [id])
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan     ClientPlan          @relation(fields: [planId], references: [id])
   usages   SubscriptionUsage[]
   payments Payment[]
 
@@ -923,12 +967,12 @@ model SubscriptionUsage {
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
-  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  subscription ClientSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  service      Service            @relation(fields: [serviceId], references: [id])
-  appointments Appointment[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription        ClientSubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  service             Service              @relation(fields: [serviceId], references: [id])
+  appointments        Appointment[]
   appointmentServices AppointmentService[]
-  orderItems   OrderItem[]
+  orderItems          OrderItem[]
 
   @@unique([subscriptionId, serviceId, periodStart])
   @@index([tenantId, periodEnd])
@@ -937,18 +981,18 @@ model SubscriptionUsage {
 // ──────────────────────────────────────────────────────────── Fidelidade ────
 
 model LoyaltyProgram {
-  id                String   @id @default(cuid())
-  tenantId          String   @unique
-  active            Boolean  @default(false)
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique
+  active             Boolean  @default(false)
   /// Centavos gastos que valem 1 ponto.
-  gastoPorPonto     Int      @default(100)
-  pontosParaDesconto Int     @default(100)
+  gastoPorPonto      Int      @default(100)
+  pontosParaDesconto Int      @default(100)
   /// Desconto concedido, em centavos, ao resgatar `pontosParaDesconto`.
-  valorDesconto     Int      @default(1000)
+  valorDesconto      Int      @default(1000)
   /// `null` = pontos não expiram.
-  expiracaoMeses    Int?
-  createdAt         DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  expiracaoMeses     Int?
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
@@ -974,62 +1018,24 @@ model LoyaltyPoints {
   @@index([tenantId, expiresAt])
 }
 
-model LoyaltyRaffle {
-  id             String       @id @default(cuid())
-  tenantId       String
-  name           String
-  description    String?
-  prize          String
-  status         RaffleStatus @default(ACTIVE)
-  pointsPerEntry Int          @default(10)
-  startsAt       DateTime     @db.Timestamptz(3)
-  endsAt         DateTime     @db.Timestamptz(3)
-  winnerClientId String?
-  drawnAt        DateTime?    @db.Timestamptz(3)
-  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
-
-  tenant  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  winner  Client?              @relation(fields: [winnerClientId], references: [id], onDelete: SetNull)
-  entries LoyaltyRaffleEntry[]
-
-  @@index([tenantId, status, endsAt])
-}
-
-model LoyaltyRaffleEntry {
-  id        String   @id @default(cuid())
-  tenantId  String
-  raffleId  String
-  clientId  String
-  entries   Int      @default(1)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  raffle LoyaltyRaffle @relation(fields: [raffleId], references: [id], onDelete: Cascade)
-  client Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@unique([raffleId, clientId])
-  @@index([tenantId, raffleId])
-}
-
 // ────────────────────────────────────────────── Produtos, comandas, caixa ───
 
 model Product {
-  id         String    @id @default(cuid())
-  tenantId   String
-  name       String
-  sku        String?
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  sku         String?
   description String?
-  category   String?
-  priceCents Int
-  costCents  Int?
-  stock      Int       @default(0)
+  category    String?
+  priceCents  Int
+  costCents   Int?
+  stock       Int       @default(0)
   /// Dispara alerta de estoque baixo no dashboard.
-  estoqueMin Int       @default(0)
-  active     Boolean   @default(true)
-  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
-  deletedAt  DateTime? @db.Timestamptz(3)
+  estoqueMin  Int       @default(0)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt   DateTime? @db.Timestamptz(3)
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
@@ -1040,34 +1046,34 @@ model Product {
 
 /// Comanda.
 model Order {
-  id            String        @id @default(cuid())
-  tenantId      String
-  unitId        String?
-  clientId      String?
+  id                   String        @id @default(cuid())
+  tenantId             String
+  unitId               String?
+  clientId             String?
   /// Nome do walk-in sem cadastro (comanda aberta direto no balcão, sem
   /// agendamento) — só preenchido quando `clientId` é `null` e não há
   /// `appointmentId` (que já carrega `guestName` do próprio agendamento).
-  guestName     String?
-  barberId      String?
-  appointmentId String?       @unique
+  guestName            String?
+  barberId             String?
+  appointmentId        String?       @unique
   /// Sequencial por tenant, exibido na UI.
-  number        Int
-  status        OrderStatus   @default(OPEN)
-  subtotalCents Int           @default(0)
-  discountType  DiscountType?
+  number               Int
+  status               OrderStatus   @default(OPEN)
+  subtotalCents        Int           @default(0)
+  discountType         DiscountType?
   /// Em basis points quando PERCENT (1000 = 10%), em centavos quando FIXED.
-  discountValue Int           @default(0)
-  discountCents Int           @default(0)
-  useLoyalty    Boolean       @default(false)
-  loyaltyPointsUsed Int       @default(0)
-  loyaltyDiscountCents Int    @default(0)
-  totalCents    Int           @default(0)
-  notes         String?
-  openedAt      DateTime      @default(now()) @db.Timestamptz(3)
-  closedAt      DateTime?     @db.Timestamptz(3)
-  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
-  deletedAt     DateTime?     @db.Timestamptz(3)
+  discountValue        Int           @default(0)
+  discountCents        Int           @default(0)
+  useLoyalty           Boolean       @default(false)
+  loyaltyPointsUsed    Int           @default(0)
+  loyaltyDiscountCents Int           @default(0)
+  totalCents           Int           @default(0)
+  notes                String?
+  openedAt             DateTime      @default(now()) @db.Timestamptz(3)
+  closedAt             DateTime?     @db.Timestamptz(3)
+  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
+  deletedAt            DateTime?     @db.Timestamptz(3)
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit        Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
@@ -1091,21 +1097,21 @@ model Order {
 }
 
 model OrderItem {
-  id                   String        @id @default(cuid())
-  tenantId             String
-  orderId              String
-  kind                 OrderItemKind
-  serviceId            String?
-  productId            String?
+  id                    String        @id @default(cuid())
+  tenantId              String
+  orderId               String
+  kind                  OrderItemKind
+  serviceId             String?
+  productId             String?
   /// Quem executou — base do cálculo de comissão.
-  barberId             String?
-  description          String
-  quantity             Int           @default(1)
-  unitPriceCents       Int
-  totalCents           Int
-  coveredBySubscription Boolean      @default(false)
-  subscriptionUsageId  String?
-  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  barberId              String?
+  description           String
+  quantity              Int           @default(1)
+  unitPriceCents        Int
+  totalCents            Int
+  coveredBySubscription Boolean       @default(false)
+  subscriptionUsageId   String?
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
 
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1154,8 +1160,15 @@ model CommissionRule {
   tenantId   String
   name       String
   type       CommissionRuleType
-  /// Só para FIXED — basis points (4000 = 40%).
+  /// Só para FIXED — basis points sobre SERVIÇOS (4000 = 40%).
   percentBps Int?
+  /// Comissão sobre PRODUTOS, em basis points. Vale para os DOIS tipos de
+  /// regra: o protótipo põe "% produtos (todas as faixas)" também no modo de
+  /// faixas, ou seja, produto nunca progride por faturamento.
+  percentProdutosBps Int @default(0)
+  /// "Descontar vales automaticamente" — quando `false`, o vale continua
+  /// listado e visível, mas não abate o total nem é quitado no fechamento.
+  deductVales Boolean @default(true)
   active     Boolean            @default(true)
   createdAt  DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt  DateTime           @updatedAt @db.Timestamptz(3)
@@ -1196,6 +1209,7 @@ model CommissionEntry {
   baseCents      Int
   percentBps     Int
   amountCents    Int
+  kind           CommissionEntryKind   @default(SERVICE)
   status         CommissionEntryStatus @default(PENDING)
   paidAt         DateTime?             @db.Timestamptz(3)
   createdAt      DateTime              @default(now()) @db.Timestamptz(3)
@@ -1219,6 +1233,9 @@ model Vale {
   tenantId       String
   barberId       String
   amountCents    Int
+  /// Dia do adiantamento — a coluna "Data" da tabela de Vales. `referenceMonth`
+  /// é derivado dele e continua sendo a competência que a comissão desconta.
+  date           DateTime  @db.Date
   referenceMonth DateTime  @db.Date
   description    String?
   settledAt      DateTime? @db.Timestamptz(3)
@@ -1265,6 +1282,14 @@ model CashMovement {
   /// Positivo entra, negativo sai.
   amountCents     Int
   description     String?
+  /// Forma de pagamento da movimentação — coluna "Forma de pagamento" da
+  /// tabela de movimentações e base do resumo do fechamento. `null` na
+  /// abertura/fechamento, que não têm forma.
+  method          PaymentMethod?
+  /// Rótulo da coluna "Categoria" (Serviço, Produto, Sangria, Reforço de
+  /// caixa…). Texto e não enum porque o protótipo compõe rótulos derivados
+  /// dos itens da comanda ("Serviço + Produto").
+  category        String?
   orderId         String?
   paymentId       String?
   createdByUserId String?
@@ -1283,23 +1308,23 @@ model CashMovement {
 // ─────────────────────────────────────────────────────────────── Financeiro ─
 
 model BankAccount {
-  id           String    @id @default(cuid())
-  tenantId     String
-  name         String
-  bank         String?
-  agency       String?
-  account      String?
+  id              String          @id @default(cuid())
+  tenantId        String
+  name            String
+  bank            String?
+  agency          String?
+  account         String?
   /// Descrição livre do tipo (ex.: "Pix / Transferência / Cartão", "Caixa físico") —
   /// texto solto no protótipo, sem enum próprio.
-  type         String?
+  type            String?
   /// Formas de pagamento que caem nesta conta — alimenta o seletor "Conta de
   /// entrada/saída" do modal de Contas a pagar/receber.
   acceptedMethods PaymentMethod[]
-  balanceCents Int       @default(0)
-  active       Boolean   @default(true)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
-  deletedAt    DateTime? @db.Timestamptz(3)
+  balanceCents    Int             @default(0)
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+  deletedAt       DateTime?       @db.Timestamptz(3)
 
   tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payables    AccountPayable[]
@@ -1309,118 +1334,175 @@ model BankAccount {
 }
 
 model AccountPayable {
-  id            String        @id @default(cuid())
+  id            String             @id @default(cuid())
   tenantId      String
   description   String
   category      String
   supplier      String?
   amountCents   Int
-  dueDate       DateTime      @db.Date
-  paidAt        DateTime?     @db.Timestamptz(3)
-  status        AccountStatus @default(PENDING)
-  installment   Int           @default(1)
-  installments  Int           @default(1)
+  dueDate       DateTime           @db.Date
+  paidAt        DateTime?          @db.Timestamptz(3)
+  status        AccountStatus      @default(PENDING)
+  installment   Int                @default(1)
+  installments  Int                @default(1)
+  /// Amarra as parcelas/ocorrências criadas de uma vez. Conta avulsa fica com
+  /// `null`; um parcelamento de 12× tem 12 linhas com o mesmo `seriesId`.
+  seriesId      String?
+  /// Preenchido só na série recorrente — guarda a regra que gerou as linhas.
+  recurrence    AccountRecurrence?
   bankAccountId String?
   notes         String?
-  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
-  deletedAt     DateTime?     @db.Timestamptz(3)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?          @db.Timestamptz(3)
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status, dueDate])
+  @@index([tenantId, seriesId])
 }
 
 model AccountReceivable {
-  id            String        @id @default(cuid())
+  id            String             @id @default(cuid())
   tenantId      String
   description   String
   category      String
   customer      String?
   amountCents   Int
-  dueDate       DateTime      @db.Date
-  receivedAt    DateTime?     @db.Timestamptz(3)
-  status        AccountStatus @default(PENDING)
-  installment   Int           @default(1)
-  installments  Int           @default(1)
+  dueDate       DateTime           @db.Date
+  receivedAt    DateTime?          @db.Timestamptz(3)
+  status        AccountStatus      @default(PENDING)
+  installment   Int                @default(1)
+  installments  Int                @default(1)
+  /// Amarra as parcelas/ocorrências criadas de uma vez. Conta avulsa fica com
+  /// `null`; um parcelamento de 12× tem 12 linhas com o mesmo `seriesId`.
+  seriesId      String?
+  /// Preenchido só na série recorrente — guarda a regra que gerou as linhas.
+  recurrence    AccountRecurrence?
   bankAccountId String?
   notes         String?
-  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
-  deletedAt     DateTime?     @db.Timestamptz(3)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?          @db.Timestamptz(3)
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status, dueDate])
+  @@index([tenantId, seriesId])
 }
 
 // ─────────────────────────────────────────── Configurações e automações ─────
 
 model TenantSettings {
-  id                 String   @id @default(cuid())
-  tenantId           String   @unique
+  id                  String    @id @default(cuid())
+  tenantId            String    @unique
   /// Liga/desliga o bloqueio por faltas — `bloquearFaltasQtd` fica guardado
   /// mesmo desligado, para o campo não zerar ao reativar.
-  bloquearFaltasAtivo Boolean @default(true)
+  bloquearFaltasAtivo Boolean   @default(true)
   /// Nº de faltas que bloqueiam o agendamento online (padrão 3).
-  bloquearFaltasQtd  Int      @default(3)
+  bloquearFaltasQtd   Int       @default(3)
   /// Antecedência mínima para agendar, em minutos.
-  antecedenciaMinima Int      @default(60)
+  antecedenciaMinima  Int       @default(60)
   /// Janela para o cliente cancelar/remarcar sem penalidade, em horas.
   ///
   /// FONTE ÚNICA da política: o protótipo escrevia "3h" na tela de sucesso do
   /// agendamento e "2h" na `MinhaConta`. Toda tela lê este campo.
-  cancelamentoHoras  Int      @default(2)
+  cancelamentoHoras   Int       @default(2)
   /// Granularidade da grade de horários, em minutos (15 = 09:00, 09:15, …).
-  slotIntervalMin    Int      @default(15)
+  slotIntervalMin     Int       @default(15)
   /// Lembretes automáticos antes do horário, em horas (24h e 2h no padrão).
   /// `0` desliga o lembrete correspondente.
-  lembrete1Horas     Int      @default(24)
-  lembrete2Horas     Int      @default(2)
+  lembrete1Horas      Int       @default(24)
+  lembrete2Horas      Int       @default(2)
   /// Meta de faturamento do mês, em centavos (fase 13 — a linha tracejada do
   /// gráfico "Faturamento — últimos 30 dias" do Dashboard).
   ///
   /// `null` = barbearia sem meta definida: o gráfico simplesmente não desenha
   /// a linha. O protótipo cravava "Meta: R$ 28.000/mês" no HTML; aqui a meta é
   /// dado da barbearia, não do desenho.
-  monthlyGoalCents   Int?
+  monthlyGoalCents    Int?
   /// Branding da página pública.
-  sobre              String?
-  instagram          String?
-  whatsapp           String?
+  sobre               String?
+  instagram           String?
+  whatsapp            String?
   /// Endereço de UMA linha, renderizado a partir dos campos estruturados
   /// abaixo — é o que a página pública e o WhatsApp exibem.
-  address            String?
+  address             String?
   /// Endereço estruturado (passo 2 do onboarding, preenchido via ViaCEP).
-  addressZip         String?
-  addressStreet      String?
-  addressNumber      String?
-  addressComplement  String?
+  addressZip          String?
+  addressStreet       String?
+  addressNumber       String?
+  addressComplement   String?
   addressNeighborhood String?
-  addressCity        String?
-  addressState       String?
-  logoUrl            String?
-  coverUrl           String?
-  showServices       Boolean  @default(true)
-  showTeam           Boolean  @default(true)
-  showAbout          Boolean  @default(true)
-  showReviews        Boolean  @default(true)
+  addressCity         String?
+  addressState        String?
+  logoUrl             String?
+  coverUrl            String?
+  showServices        Boolean   @default(true)
+  showTeam            Boolean   @default(true)
+  showAbout           Boolean   @default(true)
+  showReviews         Boolean   @default(true)
   /// Toggles reais de "Minha Página" (`mpShowFotos`/`mpShowHorario` do bundle) —
   /// distintos de `showTeam`/`showAbout` acima, que a fase 04 já usa para a
   /// vitrine pública e esta tela não expõe editor próprio.
-  showPhotos         Boolean  @default(true)
-  showBusinessHours  Boolean  @default(true)
-  allowOnlineBooking Boolean  @default(true)
+  showPhotos          Boolean   @default(true)
+  showBusinessHours   Boolean   @default(true)
+  allowOnlineBooking  Boolean   @default(true)
   /// Wizard de configuração: maior passo já concluído (0 = nada) e conclusão.
   /// Permite retomar o onboarding de onde parou, em qualquer dispositivo.
-  onboardingStep     Int      @default(0)
-  onboardingDoneAt   DateTime? @db.Timestamptz(3)
+  onboardingStep      Int       @default(0)
+  onboardingDoneAt    DateTime? @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// Estado da **calculadora de preço inteligente** (aba Serviços & Produtos,
+/// sub-aba "Calculadora de preço" — protótipo l.1856–2022). Plano Avançado.
+///
+/// A calculadora do protótipo era um rascunho volátil: fechar a aba perdia
+/// tudo. Aqui ela é configuração da barbearia — o dono ajusta os custos uma
+/// vez e volta a consultar. Os NÚMEROS DERIVADOS (preço mínimo, ponto de
+/// equilíbrio, lucro) não são colunas: saem de `computePriceCalculator`
+/// (`@barbervp/types`), a mesma função pura que a API e o front usam, para os
+/// dois nunca discordarem sobre a mesma conta.
+model PriceCalculatorConfig {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique
+  /// Custo variável por atendimento (insumos), em centavos.
+  custoVariavelCents Int      @default(0)
+  /// Comissão média paga ao barbeiro, em basis points (4500 = 45%).
+  comissaoMediaBps   Int      @default(0)
+  /// Posição do slider "Atendimentos estimados/mês" (100–1200, passo 10).
+  atendimentosMes    Int      @default(300)
+  /// Posição do slider "Margem desejada" (0–60%), em basis points.
+  margemBps          Int      @default(2000)
+  /// Preço usado na caixa "Simulação", em centavos.
+  precoPraticadoCents Int     @default(0)
   createdAt          DateTime @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// Uma linha da lista "Custos fixos mensais" da calculadora. Linha própria, e
+/// não um `Json` embutido: o dono renomeia, remove e reordena item a item, e
+/// um relatório futuro de custo fixo por categoria precisa disso somável.
+model PriceCalcFixedCost {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  amountCents Int     @default(0)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sortOrder])
 }
 
 /// Galeria de fotos de "Minha Página" — mesma convenção de `logoUrl`/`coverUrl`
@@ -1440,13 +1522,18 @@ model TenantPhoto {
 /// Horário de funcionamento da barbearia por dia da semana.
 /// Minutos desde a meia-noite, no fuso do tenant.
 model TenantBusinessHour {
-  id       String  @id @default(cuid())
-  tenantId String
+  id         String  @id @default(cuid())
+  tenantId   String
   /// 0 = domingo … 6 = sábado.
-  weekday  Int
-  opensAt  Int
-  closesAt Int
-  closed   Boolean @default(false)
+  weekday    Int
+  opensAt    Int
+  closesAt   Int
+  closed     Boolean @default(false)
+  /// Intervalo de almoço DA CASA (toggle "Almoço", `Dashboard.dc.html`
+  /// l.2521). Nulos os dois = não fecha para o almoço. Duas CHECKs no banco
+  /// garantem o par completo e a janela dentro do expediente.
+  lunchStart Int?
+  lunchEnd   Int?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1460,6 +1547,10 @@ model WhatsappAutomationConfig {
   tenantId      String
   event         WhatsappEvent
   enabled       Boolean       @default(false)
+  /// Quando a automação foi LIGADA (null enquanto nunca foi). O gráfico "Taxa
+  /// de faltas por mês" (Relatórios) marca este mês com a linha "WhatsApp de
+  /// lembrete ativado" — `updatedAt` não serve, muda a cada edição de template.
+  enabledAt     DateTime?     @db.Timestamptz(3)
   template      String
   /// Antecedência do disparo, em minutos (usado por REMINDER).
   offsetMinutes Int?
@@ -1474,17 +1565,24 @@ model WhatsappAutomationConfig {
 /// Histórico do Assistente IA ("Navalha") — também a base da contagem de uso
 /// mensal por plano (`AI_MESSAGE_LIMIT_BY_TIER` em `@barbervp/types`).
 model AiChatMessage {
-  id        String        @id @default(cuid())
-  tenantId  String
-  userId    String
-  role      AiMessageRole
-  content   String
+  id       String        @id @default(cuid())
+  tenantId String
+  userId   String
+  role     AiMessageRole
+  content  String
+  /// Cartão estruturado da resposta (`AiChatCard`) — o bloco com número,
+  /// sparkline ou lista que o protótipo desenha ao lado do balão.
+  card     Json?
+  /// "Limpar conversa" esconde a mensagem do histórico SEM apagá-la: a cota
+  /// mensal do plano é contada nestas linhas e um delete a zeraria.
+  hiddenAt  DateTime?     @db.Timestamptz(3)
   createdAt DateTime      @default(now()) @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId, createdAt])
+  @@index([tenantId, role, createdAt])
 }
 
 // ─────────────────────────────────────────────────────── Sessões e códigos ───
@@ -1498,35 +1596,43 @@ model AiChatMessage {
 /// reaparecer, a família inteira (`familyId`) é revogada — é o sinal clássico
 /// de token roubado.
 model AuthSession {
-  id           String        @id @default(cuid())
+  id            String        @id @default(cuid())
   /// Exatamente um dos dois é preenchido (ver CHECK `auth_session_subject`).
-  userId       String?
-  clientId     String?
-  audience     TokenAudience
+  userId        String?
+  clientId      String?
+  audience      TokenAudience
   /// Tenant ativo quando a sessão nasceu — o seletor de contexto emite uma nova.
-  tenantId     String?
-  refreshHash  String
+  tenantId      String?
+  refreshHash   String
   /// Agrupa a cadeia de rotações originada de um mesmo login.
-  familyId     String
-  expiresAt    DateTime      @db.Timestamptz(3)
-  revokedAt    DateTime?     @db.Timestamptz(3)
+  familyId      String
+  /// Preenchido só em sessão de IMPERSONAÇÃO: o `User.id` do super admin que a
+  /// abriu. Sem isto não há como o super admin encerrar à força uma
+  /// impersonação em curso — a sessão é indistinguível de um login normal do
+  /// OWNER. Sem FK de propósito: é ponteiro de auditoria, e o `AuditLog` já
+  /// guarda o registro completo (com `SetNull`) de quem impersonou quem.
+  impersonatedBy String?
+  expiresAt     DateTime      @db.Timestamptz(3)
+  revokedAt     DateTime?     @db.Timestamptz(3)
   /// Motivo da revogação: `rotated` | `logout` | `reuse` | `password-change`.
   revokedReason String?
-  replacedById String?       @unique
-  ip           String?
-  userAgent    String?
-  lastUsedAt   DateTime      @default(now()) @db.Timestamptz(3)
-  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  replacedById  String?       @unique
+  ip            String?
+  userAgent     String?
+  lastUsedAt    DateTime      @default(now()) @db.Timestamptz(3)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
 
-  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client      Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  replacedBy  AuthSession? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
-  replaces    AuthSession? @relation("SessionRotation")
+  user       User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client     Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  replacedBy AuthSession? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   AuthSession? @relation("SessionRotation")
 
   @@index([userId, revokedAt])
   @@index([clientId, revokedAt])
   @@index([familyId])
   @@index([expiresAt])
+  /// Serve o kill-switch: "impersonações em curso NESTE tenant".
+  @@index([tenantId, impersonatedBy, revokedAt])
 }
 
 /// Código OTP de 6 dígitos (registro e recuperação do cliente).
@@ -1535,27 +1641,27 @@ model AuthSession {
 /// jeito que o refresh. `attempts` limita a força bruta dentro da janela e o
 /// rate limit por destino/IP mora no `OtpService`.
 model OtpCode {
-  id          String     @id @default(cuid())
-  purpose     OtpPurpose
-  channel     OtpChannel
+  id                String     @id @default(cuid())
+  purpose           OtpPurpose
+  channel           OtpChannel
   /// Telefone E.164 ou e-mail normalizado — para onde o código foi.
-  destination String
-  codeHash    String
+  destination       String
+  codeHash          String
   /// `null` no registro (a conta ainda não existe quando o código é emitido).
-  clientId    String?
+  clientId          String?
   /// Payload do registro pendente, guardado até o código ser confirmado.
-  payload     Json?
-  attempts    Int        @default(0)
-  maxAttempts Int        @default(5)
-  resendCount Int        @default(0)
-  expiresAt   DateTime   @db.Timestamptz(3)
-  consumedAt  DateTime?  @db.Timestamptz(3)
+  payload           Json?
+  attempts          Int        @default(0)
+  maxAttempts       Int        @default(5)
+  resendCount       Int        @default(0)
+  expiresAt         DateTime   @db.Timestamptz(3)
+  consumedAt        DateTime?  @db.Timestamptz(3)
   /// Token de uso único devolvido na verificação de recuperação de senha.
-  exchangeHash String?
-  exchangeExpiresAt DateTime? @db.Timestamptz(3)
-  lastSentAt  DateTime   @default(now()) @db.Timestamptz(3)
-  ip          String?
-  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  exchangeHash      String?
+  exchangeExpiresAt DateTime?  @db.Timestamptz(3)
+  lastSentAt        DateTime   @default(now()) @db.Timestamptz(3)
+  ip                String?
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
 
   client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
@@ -1606,27 +1712,27 @@ model AuditLog {
 /// Fila de saída do `NotificationAdapter` — o `MockNotificationDriver` loga e
 /// persiste aqui, sem chamar API externa nenhuma.
 model NotificationOutbox {
-  id          String              @id @default(cuid())
+  id           String              @id @default(cuid())
   /// `null` em mensagens da plataforma, fora de qualquer barbearia — é o caso
   /// do OTP de cadastro do cliente, cuja conta é global (simétrico ao
   /// `MailOutbox`, que já nasceu assim).
-  tenantId    String?
-  channel     NotificationChannel @default(WHATSAPP)
+  tenantId     String?
+  channel      NotificationChannel @default(WHATSAPP)
   /// Telefone/destino já normalizado.
-  recipient   String
-  templateKey String
-  body        String
-  payload     Json?
-  status      OutboxStatus        @default(PENDING)
-  attempts    Int                 @default(0)
+  recipient    String
+  templateKey  String
+  body         String
+  payload      Json?
+  status       OutboxStatus        @default(PENDING)
+  attempts     Int                 @default(0)
   /// Quando a mensagem DEVE sair. `null` = imediata (o caso do OTP e da
   /// confirmação). Os lembretes de agendamento nascem com data futura e
   /// `PENDING`; a fila BullMQ da fase 09 é quem vai drená-los.
-  scheduledFor DateTime?          @db.Timestamptz(3)
-  sentAt      DateTime?           @db.Timestamptz(3)
-  error       String?
-  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime            @updatedAt @db.Timestamptz(3)
+  scheduledFor DateTime?           @db.Timestamptz(3)
+  sentAt       DateTime?           @db.Timestamptz(3)
+  error        String?
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(3)
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

@@ -92,3 +92,38 @@ export function useImpersonateMutation(id: string) {
     },
   });
 }
+
+/**
+ * Encerra à força a impersonação em curso. Vale NA HORA — o `JwtAuthGuard`
+ * confere a `AuthSession` a cada requisição, então o access token já emitido
+ * morre junto, sem esperar os 900s.
+ */
+export function useRevokeImpersonationMutation(id: string) {
+  const { client } = useEstablishmentAuth();
+  const invalidate = useInvalidateTenants(id);
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await client.post<{ revoked: number }>(
+        `/admin/tenants/${id}/impersonate/revoke`,
+      );
+      return data;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Desfaz a exclusão de conta agendada. É a única saída quando o dono perde o
+ * acesso ao próprio login dentro dos 30 dias — sem isto a `MaintenanceService`
+ * apagava a barbearia no vencimento e ninguém podia impedir.
+ */
+export function useCancelTenantDeletionMutation(id: string) {
+  const { client } = useEstablishmentAuth();
+  const invalidate = useInvalidateTenants(id);
+  return useMutation({
+    mutationFn: async () => {
+      await client.post(`/admin/tenants/${id}/deletion/cancel`);
+    },
+    onSuccess: invalidate,
+  });
+}

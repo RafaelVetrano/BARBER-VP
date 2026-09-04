@@ -23,6 +23,22 @@ export interface NavDef {
 export const NAV_DEFS: NavDef[] = [
   { key: 'dashboard', label: 'Dashboard', href: '/app', ready: true },
   { key: 'agenda', label: 'Agenda', href: '/app/agenda', ready: true },
+  /**
+   * DESVIO CONSCIENTE do protótipo, decidido pelo agente 29 (2026-09-03).
+   *
+   * `DashboardFuncionario.dc.html` (l.1615 do bloco `NAV_DEFS`) TEM "Clientes"
+   * no nav do barbeiro. Aqui ele não aparece, e fica assim: a base de clientes
+   * é `@Roles('OWNER','MANAGER')` no servidor desde a fase 06, seguindo o
+   * `SPEC.md` → RBAC ("`BARBER`: própria agenda, próprias comissões, comandas
+   * que atende"). Mostrar o item levaria o barbeiro a uma tela que responde
+   * 403, e a alternativa — abrir `/clients` para `BARBER` — afrouxaria o RBAC,
+   * o que a regra 3 desta fase proíbe explicitamente.
+   *
+   * O que o barbeiro precisa do cliente ele já tem, no recorte certo: o drawer
+   * do agendamento traz nome, telefone, faltas e últimas visitas daquele
+   * atendimento. Reabrir a decisão exige antes decidir o RECORTE no servidor
+   * (só clientes que ele atendeu?), que é fase de produto, não reparo.
+   */
   { key: 'clientes', label: 'Clientes', href: '/app/clientes', ready: true, roles: ['OWNER', 'MANAGER'] },
   { key: 'comandas', label: 'Comandas', href: '/app/comandas', ready: true },
   {
@@ -38,7 +54,17 @@ export const NAV_DEFS: NavDef[] = [
     href: '/app/comissoes',
     ready: true,
   },
-  { key: 'fidelidade', label: 'Fidelidade', href: '/app/fidelidade', ready: true },
+  // O `DashboardFuncionario.dc.html` (l.1612) NÃO tem Fidelidade no nav: a aba
+  // administra os planos que a casa vende, não a produção do barbeiro. O
+  // backend já recusa (`@Roles('OWNER','MANAGER')`) — aqui o link some para
+  // não oferecer um 403.
+  {
+    key: 'fidelidade',
+    label: 'Fidelidade',
+    href: '/app/fidelidade',
+    ready: true,
+    roles: ['OWNER', 'MANAGER'],
+  },
   { key: 'whatsapp', label: 'WhatsApp', href: '/app/whatsapp', ready: true, roles: ['OWNER', 'MANAGER'] },
   {
     key: 'assistente-ia',
@@ -47,13 +73,10 @@ export const NAV_DEFS: NavDef[] = [
     ready: true,
     roles: ['OWNER', 'MANAGER'],
   },
-  {
-    key: 'relatorios',
-    label: 'Relatórios',
-    href: '/app/relatorios',
-    ready: true,
-    roles: ['OWNER', 'MANAGER'],
-  },
+  // `BARBER` vê Relatórios: o `DashboardFuncionario.dc.html` tem o item no nav
+  // (l.1617) e uma aba própria (l.667–775) com a produção dele. O recorte é do
+  // servidor (`StaffScope`), não do menu.
+  { key: 'relatorios', label: 'Relatórios', href: '/app/relatorios', ready: true },
   {
     key: 'servicos-produtos',
     label: 'Serviços & Produtos',

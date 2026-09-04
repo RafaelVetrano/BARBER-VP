@@ -78,6 +78,15 @@ services:
       NOTIFICATION_DRIVER: ${NOTIFICATION_DRIVER:-mock}
       PAYMENT_DRIVER: ${PAYMENT_DRIVER:-mock}
       MAIL_DRIVER: ${MAIL_DRIVER:-mock}
+      # Storage de arquivo (fase 25). O driver `local` grava no volume abaixo e
+      # NÃO serve para mais de uma réplica de API — o arquivo fica na máquina
+      # que recebeu o POST. Com bucket (S3/R2), troque `STORAGE_DRIVER` e o
+      # volume deixa de ser necessário.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_DIR: /var/lib/barbervp/uploads
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:?defina STORAGE_PUBLIC_BASE_URL}
+    volumes:
+      - api-uploads:/var/lib/barbervp/uploads
     ports:
       - '${API_PORT:-3333}:3333'
 
@@ -106,3 +115,5 @@ volumes:
     name: barbervp-prod-db-data
   redis-data:
     name: barbervp-prod-redis-data
+  api-uploads:
+    name: barbervp-prod-api-uploads

@@ -1,117 +1,139 @@
 'use client';
 
-import { useState } from 'react';
-import { Button, Card, CardHeader, LockIcon, Skeleton, Switch, useToast } from '@barbervp/ui';
-import type { WhatsappAutomationItem, WhatsappEvent } from '@barbervp/types';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { WHATSAPP_EVENT_ORDER, type WhatsappEvent } from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
 import { UpgradeModal } from '@/components/dashboard/upgrade-modal';
-import { useUpdateWhatsappAutomationMutation, useWhatsappAutomationsQuery } from '@/lib/dashboard/api/whatsapp';
+import { useDashboardShellQuery } from '@/lib/dashboard/api/dashboard';
+import {
+  useWhatsappAutomationsQuery,
+  useWhatsappConnectionQuery,
+  useWhatsappHistoryQuery,
+  useWhatsappReactivationQuery,
+} from '@/lib/dashboard/api/whatsapp';
+import { AutomationsCard } from '@/components/dashboard/whatsapp/automations-card';
+import { ConnectionCard } from '@/components/dashboard/whatsapp/connection-card';
+import { HistoryTable } from '@/components/dashboard/whatsapp/history-table';
+import { MessageEditorModal } from '@/components/dashboard/whatsapp/message-editor-modal';
+import { ReactivationBanner } from '@/components/dashboard/whatsapp/reactivation-banner';
+import {
+  WHATSAPP_MIN_PLAN_LABEL,
+  WHATSAPP_UPGRADE_BENEFITS,
+  WHATSAPP_UPGRADE_DESCRIPTION,
+} from '@/components/dashboard/whatsapp/automation-labels';
 
-const EVENT_LABELS: Record<WhatsappEvent, string> = {
-  REMINDER: 'Lembrete',
-  CONFIRMATION: 'Confirmação',
-  CANCELLATION: 'Cancelamento',
-  BIRTHDAY: 'Aniversário',
-  REACTIVATION: 'Reativação',
-  REVIEW: 'Avaliação',
-};
+/**
+ * Aba WhatsApp — `Dashboard.dc.html` l.1624–1722.
+ *
+ * Ordem dos blocos, de cima para baixo, igual à do protótipo: conexão →
+ * automações → faixa de reativação → histórico de envios. Cada bloco tem a
+ * própria consulta, o próprio esqueleto e o próprio retry: o histórico cair
+ * não pode levar as automações junto.
+ */
+function WhatsappScreen() {
+  const params = useSearchParams();
+  const shellQuery = useDashboardShellQuery();
+  const automationsQuery = useWhatsappAutomationsQuery();
+  const connectionQuery = useWhatsappConnectionQuery();
+  const reactivationQuery = useWhatsappReactivationQuery();
+  const historyQuery = useWhatsappHistoryQuery();
 
-const EVENT_DESCRIPTIONS: Record<WhatsappEvent, string> = {
-  REMINDER: 'Enviado antes do horário — configure a antecedência.',
-  CONFIRMATION: 'Enviado assim que o agendamento é confirmado.',
-  CANCELLATION: 'Enviado quando o agendamento é cancelado.',
-  BIRTHDAY: 'Enviado no aniversário do cliente.',
-  REACTIVATION: 'Enviado para clientes que sumiram.',
-  REVIEW: 'Pede avaliação depois do atendimento.',
-};
-
-function AutomationCard({ automation }: { automation: WhatsappAutomationItem }) {
-  const { toast } = useToast();
-  const update = useUpdateWhatsappAutomationMutation();
-  const [template, setTemplate] = useState(automation.template);
-  const [offset, setOffset] = useState(String(automation.offsetMinutes ?? ''));
+  const [editing, setEditing] = useState<WhatsappEvent | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
-  const toggle = async (checked: boolean) => {
-    try {
-      await update.mutateAsync({ event: automation.event, dto: { enabled: checked } });
-    } catch {
-      setUpgradeOpen(true);
-    }
-  };
+  const items = automationsQuery.data?.items;
 
-  const saveTemplate = async () => {
-    try {
-      await update.mutateAsync({
-        event: automation.event,
-        dto: { template, offsetMinutes: automation.event === 'REMINDER' ? Number(offset) || null : undefined },
-      });
-      toast({ message: 'Template salvo.', tone: 'success' });
-    } catch (error) {
-      toast({ message: error instanceof Error ? error.message : 'Não foi possível salvar.', tone: 'danger' });
+  /**
+   * A faixa de alertas do Dashboard manda para cá com `?evento=REACTIVATION` e
+   * `?evento=BIRTHDAY` (`alerts-strip.tsx`). Antes o parâmetro era ignorado e
+   * os dois botões caíam numa lista sem nada aberto — agora abrem o editor da
+   * automação correspondente.
+   */
+  useEffect(() => {
+    const requested = params.get('evento');
+    if (!requested || !items) return;
+    if (!(WHATSAPP_EVENT_ORDER as readonly string[]).includes(requested)) return;
+
+    const target = items.find((item) => item.event === requested);
+    if (!target) return;
+    // Os dois links do Dashboard apontam para eventos GATEADOS (reativação e
+    // aniversário). Sem plano, abrir o editor daria um campo que só devolve
+    // 403 no salvar — o dono recebe o upsell, que é a informação de que ele
+    // precisa.
+    if (target.locked) {
+      setUpgradeOpen(true);
+      return;
     }
-  };
+    setEditing(target.event);
+    // Só na primeira vez que a lista chega: reabrir o modal a cada
+    // revalidação seria um pop-up perseguindo o dono.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items !== undefined]);
+
+  const editingAutomation = items?.find((item) => item.event === editing) ?? null;
 
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <CardHeader title={EVENT_LABELS[automation.event]} description={EVENT_DESCRIPTIONS[automation.event]} />
-        <div className="flex items-center gap-2">
-          {automation.requiresFullFeature && <LockIcon size={16} className="text-fg-muted" />}
-          <Switch checked={automation.enabled} onChange={(e) => void toggle(e.target.checked)} />
-        </div>
-      </div>
+    <div className="flex flex-col gap-5">
+      <ConnectionCard
+        connection={connectionQuery.data}
+        isLoading={connectionQuery.isPending}
+        isError={connectionQuery.isError}
+        onRetry={() => void connectionQuery.refetch()}
+      />
 
-      <div className="mt-3 flex flex-col gap-2">
-        {automation.event === 'REMINDER' && (
-          <input
-            className="h-9 w-40 rounded-control border border-border bg-surface-2 px-3 text-sm text-fg outline-none"
-            placeholder="Minutos de antecedência"
-            value={offset}
-            onChange={(e) => setOffset(e.target.value)}
-          />
-        )}
-        <textarea
-          className="min-h-24 w-full resize-y rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm text-fg outline-none"
-          value={template}
-          onChange={(e) => setTemplate(e.target.value)}
+      <AutomationsCard
+        automations={items}
+        isLoading={automationsQuery.isPending}
+        isError={automationsQuery.isError}
+        onRetry={() => void automationsQuery.refetch()}
+        onEdit={setEditing}
+        onLockedAttempt={() => setUpgradeOpen(true)}
+      />
+
+      <ReactivationBanner
+        summary={reactivationQuery.data}
+        isLoading={reactivationQuery.isPending}
+        isError={reactivationQuery.isError}
+        onRetry={() => void reactivationQuery.refetch()}
+        onLockedAttempt={() => setUpgradeOpen(true)}
+      />
+
+      <HistoryTable
+        page={historyQuery.data}
+        timezone={shellQuery.data?.tenant.timezone}
+        isLoading={historyQuery.isPending}
+        isError={historyQuery.isError}
+        onRetry={() => void historyQuery.refetch()}
+      />
+
+      {automationsQuery.data && (
+        <MessageEditorModal
+          automation={editingAutomation}
+          sample={automationsQuery.data.sample}
+          open={editingAutomation !== null}
+          onClose={() => setEditing(null)}
         />
-        <p className="text-xs text-fg-muted">
-          Variáveis: {'{nome} {data} {horario} {servico} {barbeiro} {link_agendamento}'}
-        </p>
-        <Button size="sm" variant="outline" className="self-start" onClick={() => void saveTemplate()}>
-          Salvar template
-        </Button>
-      </div>
+      )}
 
       <UpgradeModal
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
-        minPlanLabel="Profissional"
-        description="Automações além de lembrete/confirmação/cancelamento (aniversário, reativação, avaliação) fazem parte do WhatsApp completo."
-        benefits={['Aniversário automático com desconto', 'Reativação de clientes inativos', 'Pedido de avaliação pós-atendimento']}
+        minPlanLabel={WHATSAPP_MIN_PLAN_LABEL}
+        description={WHATSAPP_UPGRADE_DESCRIPTION}
+        benefits={WHATSAPP_UPGRADE_BENEFITS}
       />
-    </Card>
+    </div>
   );
 }
 
 export default function WhatsappPage() {
-  const automationsQuery = useWhatsappAutomationsQuery();
-
   return (
     <DashboardChrome activeKey="whatsapp">
-      <div className="flex flex-col gap-5">
-        <h1 className="font-display text-xl font-bold text-fg">WhatsApp</h1>
-        {automationsQuery.isLoading ? (
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {(automationsQuery.data ?? []).map((automation) => (
-              <AutomationCard key={automation.event} automation={automation} />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* `useSearchParams` obriga a fronteira de Suspense no App Router. */}
+      <Suspense fallback={null}>
+        <WhatsappScreen />
+      </Suspense>
     </DashboardChrome>
   );
 }

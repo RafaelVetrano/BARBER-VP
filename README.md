@@ -14,7 +14,13 @@ make install    # pnpm install no monorepo
 make up         # db + redis + api + web (docker compose)
 make migrate    # aplica as migrations (inclui a EXCLUDE anti double-booking)
 make seed       # popula os 2 tenants com os dados do SPEC
+make seed-demo  # (dev) o mesmo + o volume de demonstração: 40 clientes,
+                # 2 meses de agenda, ~1.200 comandas coerentes entre si
 ```
+
+`make seed` é o mínimo do SPEC. `make seed-demo` roda esse mesmo seed e depois
+engorda o tenant demo até todas as abas do dashboard terem dado — é o que a
+auditoria de tela usa, e nunca roda em produção. Os dois são idempotentes.
 
 | Serviço | URL |
 |---|---|

@@ -7,7 +7,7 @@ import { Button, EmptyState, Skeleton, SkeletonGroup, Tabs, useClientAuth, useTo
 import { bookingApi } from '@/lib/booking/booking-api';
 import { clientAccountApi } from '@/lib/booking/client-account-api';
 import { UpcomingAppointmentCard, HistoryAppointmentCard } from './appointment-card';
-import { ConfirmDialog } from './confirm-dialog';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { RescheduleDialog } from './reschedule-dialog';
 
 type SubTab = 'proximos' | 'historico';

@@ -2,10 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 import {
   AccountStatus,
+  CashMovementType,
+  CashRegisterStatus,
   CommissionRuleType,
   MembershipRole,
+  PaymentMethod,
   PrismaClient,
-  RaffleStatus,
+  SaasInvoiceStatus,
+  SubscriptionStatus,
+  OutboxStatus,
   WhatsappEvent,
   type Prisma,
 } from '@prisma/client';
@@ -41,14 +46,30 @@ export interface IsolatedTenant {
   // não há o que pedir cruzado, e o gate não mede nada.
   productId: string;
   bankAccountId: string;
+  /** Caixa ABERTO — o alvo das movimentações de caixa da fase 18. */
+  cashRegisterId: string;
   payableId: string;
   receivableId: string;
   commissionRuleId: string;
   valeId: string;
   clientPlanId: string;
-  raffleId: string;
+  clientSubscriptionId: string;
   unitId: string;
   whatsappConfigId: string;
+  /** Linha de `NotificationOutbox` — o histórico da aba WhatsApp. */
+  outboxId: string;
+  /** Convite PENDENTE — o alvo dos casos da aba Equipe (fase 24). */
+  staffInviteId: string;
+  // Fase 25 (Minha Página): a tabela "Avaliações recebidas" publica/despublica
+  // por id, e a galeria remove por id — sem uma linha de B, não há o que pedir
+  // cruzado nessas duas rotas.
+  reviewId: string;
+  photoId: string;
+  /**
+   * Fatura do SaaS — o alvo por id do recibo em PDF da aba Plano e cobrança
+   * (fase 26). Sem uma linha de B não há o que pedir cruzado nessa rota.
+   */
+  saasInvoiceId: string;
 }
 
 /** Senha dos donos do fixture. Mesma para os dois, para o teste ser curto. */
@@ -230,6 +251,7 @@ async function createTenant(
       tenantId: tenant.id,
       barberId: barber.id,
       amountCents: 5_000,
+      date: new Date(),
       referenceMonth: new Date(),
     },
     select: { id: true },
@@ -246,14 +268,49 @@ async function createTenant(
     select: { id: true },
   });
 
-  const raffle = await prisma.loyaltyRaffle.create({
+  // Assinante de verdade no plano acima — é o alvo das rotas de pausar/
+  // cancelar da aba Fidelidade, que precisam de caso de isolamento próprio.
+  const periodStart = new Date(Date.now() - 86_400_000);
+  const clientSubscription = await prisma.clientSubscription.create({
     data: {
       tenantId: tenant.id,
-      name: `Sorteio ${label.toUpperCase()}`,
-      prize: 'Kit barba',
-      status: RaffleStatus.ACTIVE,
-      startsAt: new Date(Date.now() - 86_400_000),
-      endsAt: new Date(Date.now() + 86_400_000),
+      clientId: client.id,
+      planId: clientPlan.id,
+      status: SubscriptionStatus.ACTIVE,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: new Date(Date.now() + 29 * 86_400_000),
+      nextChargeAt: new Date(Date.now() + 29 * 86_400_000),
+      usages: {
+        create: {
+          tenantId: tenant.id,
+          serviceId: service.id,
+          periodStart,
+          periodEnd: new Date(Date.now() + 29 * 86_400_000),
+          quota: 4,
+          used: 1,
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  // Caixa aberto com a movimentação de abertura, como o serviço cria.
+  const cashRegister = await prisma.cashRegister.create({
+    data: {
+      tenantId: tenant.id,
+      openedByUserId: owner.id,
+      status: CashRegisterStatus.OPEN,
+      openingCents: 10_000,
+      movements: {
+        create: {
+          tenantId: tenant.id,
+          type: CashMovementType.OPENING,
+          amountCents: 10_000,
+          description: 'Abertura do caixa',
+          method: PaymentMethod.CASH,
+          category: 'Abertura',
+        },
+      },
     },
     select: { id: true },
   });
@@ -274,9 +331,90 @@ async function createTenant(
     select: { id: true },
   });
 
+  // Uma mensagem no outbox por tenant: é o que o "Histórico de envios" da aba
+  // WhatsApp lê, e o caso de isolamento precisa de uma linha de B para provar
+  // que ela não vaza na leitura de A.
+  const outbox = await prisma.notificationOutbox.create({
+    data: {
+      tenantId: tenant.id,
+      recipient: `9999${suffix}${label === 'a' ? '1' : '2'}`,
+      templateKey: 'whatsapp.reactivation',
+      body: `Reativação ${label.toUpperCase()} para {nome}`,
+      status: OutboxStatus.SENT,
+      attempts: 1,
+      sentAt: new Date(),
+    },
+    select: { id: true },
+  });
+
+  // Convite pendente por tenant: sem uma linha em B, não há o que pedir
+  // cruzado nas rotas de convite da aba Equipe.
+  const staffInvite = await prisma.staffInvite.create({
+    data: {
+      tenantId: tenant.id,
+      email: `iso-invite-${label}-${suffix}@barbervp.test`,
+      name: `Convidado ${label.toUpperCase()}`,
+      serviceIds: [service.id],
+      workDays: [1, 2, 3],
+      tokenHash: `iso-token-${label}-${suffix}`,
+      invitedByUserId: owner.id,
+      expiresAt: new Date(Date.now() + 7 * 86_400_000),
+    },
+    select: { id: true },
+  });
+
+  // Avaliação PUBLICADA e foto de galeria por tenant — os dois alvos por id da
+  // aba Minha Página (fase 25).
+  const review = await prisma.review.create({
+    data: {
+      tenantId: tenant.id,
+      barberId: barber.id,
+      authorName: `Cliente ${label.toUpperCase()}`,
+      rating: 5,
+      comment: `Avaliação do tenant ${label.toUpperCase()}`,
+      published: true,
+    },
+    select: { id: true },
+  });
+
+  const photo = await prisma.tenantPhoto.create({
+    data: {
+      tenantId: tenant.id,
+      url: `https://exemplo.test/iso-${label}-${suffix}.jpg`,
+      sortOrder: 0,
+    },
+    select: { id: true },
+  });
+
+  const subscription = await prisma.tenantSubscription.create({
+    data: {
+      tenantId: tenant.id,
+      planId,
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000),
+    },
+    select: { id: true },
+  });
+
+  const saasInvoice = await prisma.saasInvoice.create({
+    data: {
+      tenantId: tenant.id,
+      subscriptionId: subscription.id,
+      amountCents: 13_900,
+      status: SaasInvoiceStatus.PAID,
+      paidAt: new Date(),
+    },
+    select: { id: true },
+  });
+
   return {
     id: tenant.id,
     slug: tenant.slug,
+    outboxId: outbox.id,
+    staffInviteId: staffInvite.id,
+    reviewId: review.id,
+    photoId: photo.id,
+    saasInvoiceId: saasInvoice.id,
     barberId: barber.id,
     serviceId: service.id,
     clientId: client.id,
@@ -287,12 +425,13 @@ async function createTenant(
     ownerEmail,
     productId: product.id,
     bankAccountId: bankAccount.id,
+    cashRegisterId: cashRegister.id,
     payableId: payable.id,
     receivableId: receivable.id,
     commissionRuleId: commissionRule.id,
     valeId: vale.id,
     clientPlanId: clientPlan.id,
-    raffleId: raffle.id,
+    clientSubscriptionId: clientSubscription.id,
     unitId: unit.id,
     whatsappConfigId: whatsappConfig.id,
   };

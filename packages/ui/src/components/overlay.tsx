@@ -30,6 +30,12 @@ export interface OverlayProps {
   /** Nome acessível quando não há `title` visível. */
   'aria-label'?: string;
   className?: string;
+  /**
+   * Classes da área rolável. Existe para o diálogo que traz o próprio layout
+   * (a comanda do POS é um grid de 3 colunas com divisórias de altura total —
+   * o `p-5` padrão empurraria as bordas para dentro).
+   */
+  bodyClassName?: string;
   children: ReactNode;
 }
 
@@ -67,6 +73,7 @@ function OverlayRoot({
   hideCloseButton,
   dismissOnOverlayClick = true,
   className,
+  bodyClassName,
   panelClassName,
   durationMs,
   children,
@@ -131,7 +138,9 @@ function OverlayRoot({
           </header>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">{children}</div>
+        <div className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain p-5', bodyClassName)}>
+          {children}
+        </div>
 
         {footer && <div className="shrink-0 border-t border-border p-5">{footer}</div>}
       </div>

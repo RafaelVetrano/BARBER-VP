@@ -27,6 +27,7 @@ const QUEUE_LABEL: Record<string, string> = {
   subscriptions: 'Renovação de assinaturas',
   billing: 'Cobrança do SaaS',
   maintenance: 'Faxina de dados expirados',
+  automations: 'Automações de calendário (WhatsApp)',
 };
 
 const QUEUE_HINT: Record<string, string> = {
@@ -34,6 +35,7 @@ const QUEUE_HINT: Record<string, string> = {
   subscriptions: 'Vira o ciclo das assinaturas de cliente vencidas.',
   billing: 'Gera as faturas dos tenants com período vencido.',
   maintenance: 'Apaga OTP, sessões e mensagens fora da retenção.',
+  automations: 'Aniversário, reativação de inativos e pedido de avaliação.',
 };
 
 const STATE_TONE: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {

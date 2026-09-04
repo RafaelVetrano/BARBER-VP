@@ -53,6 +53,14 @@ export class UpdateBarberDto {
   @ArrayUnique()
   @IsString({ each: true })
   serviceIds?: string[];
+
+  @ApiPropertyOptional({ description: 'A semana inteira, salva junto com o resto do modal' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => WorkScheduleDayDto)
+  schedule?: WorkScheduleDayDto[];
 }
 
 export class CreateBarberDto {
@@ -184,12 +192,22 @@ export class CreateStaffInviteDto {
   @IsString({ each: true })
   serviceIds!: string[];
 
+  @ApiPropertyOptional({ type: [Number], description: 'Ignorado quando vem `schedule`' })
+  @IsOptional()
   @IsArray()
   @ArrayUnique()
   @IsInt({ each: true })
   @Min(0, { each: true })
   @Max(6, { each: true })
-  workDays!: number[];
+  workDays?: number[];
+
+  @ApiPropertyOptional({ description: 'Semana com entrada, saída e almoço de cada dia' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => WorkScheduleDayDto)
+  schedule?: WorkScheduleDayDto[];
 }
 
 export class AcceptStaffInviteDto {

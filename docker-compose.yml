@@ -111,6 +111,11 @@ services:
       PAYMENT_DRIVER: ${PAYMENT_DRIVER:-mock}
       MAIL_DRIVER: ${MAIL_DRIVER:-mock}
       AI_ASSISTANT_DRIVER: ${AI_ASSISTANT_DRIVER:-mock}
+      # Storage de arquivo (fase 25) — em dev o bind mount `./:/app` já leva
+      # `apps/api/uploads` de volta para o host, então não há volume nomeado.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_DIR: ${STORAGE_LOCAL_DIR:-/app/apps/api/uploads}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:3333}
       BILLING_MAX_FAILED_ATTEMPTS: ${BILLING_MAX_FAILED_ATTEMPTS:-3}
       # Filas BullMQ (fase 09) — em dev a api é web E worker no mesmo processo.
       QUEUE_WORKERS_ENABLED: ${QUEUE_WORKERS_ENABLED:-true}

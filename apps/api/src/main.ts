@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -79,6 +80,27 @@ async function bootstrap(): Promise<void> {
 
   // `X-Forwarded-For` do proxy — necessário para o rate limit por IP funcionar.
   app.set('trust proxy', 1);
+
+  /**
+   * Arquivos do `StorageAdapter` local (logo, capa e galeria de Minha Página).
+   *
+   * Fora do `API_PREFIX` de propósito — é estático, não rota versionada — e
+   * com CORP liberado, porque quem exibe a imagem é a página pública da
+   * barbearia, servida noutra origem que não a da API. Com o driver de bucket
+   * este bloco simplesmente deixa de ser usado: as URLs passam a apontar para
+   * o CDN.
+   */
+  if (config.storage.driver === 'local') {
+    app.useStaticAssets(resolve(config.storage.localDir), {
+      prefix: `/${config.storage.publicPath}/`,
+      index: false,
+      redirect: false,
+      setHeaders: (response) => {
+        response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    });
+  }
 
   const swaggerConfig = SWAGGER_TAGS.reduce(
     (builder, [name, description]) => builder.addTag(name, description),

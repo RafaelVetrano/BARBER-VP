@@ -13,6 +13,7 @@ import { ShopHero } from './shop-hero';
 import {
   AboutSection,
   LocationSection,
+  PhotosSection,
   PlansSection,
   ReviewsSection,
   ServicesSection,
@@ -123,6 +124,7 @@ export function BarbershopPage({ initialShop }: BarbershopPageProps) {
         <TeamSection shop={shop} />
         <AboutSection shop={shop} />
         <ReviewsSection shop={shop} />
+        <PhotosSection shop={shop} />
         <LocationSection shop={shop} />
       </main>
 

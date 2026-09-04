@@ -3,6 +3,7 @@ import type {
   PublicBarbershop,
   PublicBarberSummary,
   PublicClientPlanSummary,
+  PublicPhoto,
   PublicReview,
   PublicServiceSummary,
 } from '@barbervp/types';
@@ -56,13 +57,19 @@ export class PublicPageService {
     const showServices = settings?.showServices ?? true;
     const showTeam = settings?.showTeam ?? true;
     const showReviews = settings?.showReviews ?? true;
+    // Os dois toggles abaixo existiam em "Minha Página" desde a fase 07 mas
+    // nunca chegavam aqui: o dono desligava e a página pública continuava
+    // mostrando. Corrigido na auditoria da aba (agente 25).
+    const showPhotos = settings?.showPhotos ?? true;
+    const showBusinessHours = settings?.showBusinessHours ?? true;
 
-    const [services, barbers, plans, reviews, rating, subscription] = await Promise.all([
+    const [services, barbers, plans, reviews, rating, photos, subscription] = await Promise.all([
       showServices ? this.listServices(tenant.id) : Promise.resolve([]),
       showTeam ? this.listBarbers(tenant.id) : Promise.resolve([]),
       this.listPlans(tenant.id),
       showReviews ? this.listReviews(tenant.id) : Promise.resolve([]),
       showReviews ? this.aggregateRating(tenant.id) : Promise.resolve(null),
+      showPhotos ? this.listPhotos(tenant.id) : Promise.resolve([]),
       clientId ? this.coverage.activeSubscription(tenant.id, clientId) : Promise.resolve(null),
     ]);
 
@@ -83,6 +90,8 @@ export class PublicPageService {
         team: showTeam,
         about: settings?.showAbout ?? true,
         reviews: showReviews,
+        photos: showPhotos,
+        businessHours: showBusinessHours,
       },
       allowOnlineBooking: settings?.allowOnlineBooking ?? true,
       policy: {
@@ -91,7 +100,8 @@ export class PublicPageService {
         noShowBlockCount: settings?.bloquearFaltasQtd ?? 3,
       },
       rating,
-      businessHours: tenant.businessHours,
+      businessHours: showBusinessHours ? tenant.businessHours : [],
+      photos,
       services,
       barbers,
       plans,
@@ -205,6 +215,14 @@ export class PublicPageService {
         })),
         savingsCents: Math.max(0, retailCents - plan.priceCents),
       };
+    });
+  }
+
+  private async listPhotos(tenantId: string): Promise<PublicPhoto[]> {
+    return this.prisma.tenantPhoto.findMany({
+      where: { tenantId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, url: true },
     });
   }
 

@@ -45,6 +45,15 @@ export interface AdminTenantListItem {
   barberCount: number;
   appointmentsThisMonth: number;
   createdAt: string;
+  /**
+   * Exclusão de conta AGENDADA (`Tenant.purgeAt`), em ISO. O tenant continua
+   * na lista porque `deletedAt` ainda é nulo — é justamente esse o ponto: sem
+   * este campo não havia como o super admin sequer VER que a barbearia está
+   * na fila da faxina, muito menos desfazer.
+   */
+  purgeAt: string | null;
+  /** Há impersonação em curso? Acende o botão de encerrar à força. */
+  impersonationActive: boolean;
 }
 
 export interface AdminTenantListQuery extends PaginationQuery {
@@ -80,6 +89,13 @@ export interface AdminTenantDetail {
     revenueThisMonthCents: number;
   };
   memberships: AdminTenantMembership[];
+  /**
+   * Exclusão de conta AGENDADA (`Tenant.purgeAt`), em ISO — `deletedAt` ainda
+   * é nulo, então o tenant segue na lista. Acende o bloco de desfazer.
+   */
+  purgeAt: string | null;
+  /** Há impersonação em curso? Acende o botão de encerrar à força. */
+  impersonationActive: boolean;
 }
 
 export interface ChangeTenantPlanDto {

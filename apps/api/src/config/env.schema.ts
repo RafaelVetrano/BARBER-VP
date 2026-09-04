@@ -86,8 +86,29 @@ export const envSchema = z.object({
   /** Provedor de LLM do Assistente IA ("Navalha") — só `mock` nesta fase (SPEC → fora de escopo). */
   AI_ASSISTANT_DRIVER: z.enum(['mock']).default('mock'),
 
+  /**
+   * Storage de arquivo (logo, capa e galeria de "Minha Página"). `local` grava
+   * no disco do container e serve como estático; o dia do S3/R2 é um `case` a
+   * mais aqui e na factory de `AdaptersModule`.
+   */
+  STORAGE_DRIVER: z.enum(['local']).default('local'),
+  /** Raiz do driver `local`. Relativa ao cwd da API quando não for absoluta. */
+  STORAGE_LOCAL_DIR: z.string().default('./uploads'),
+  /**
+   * Base ABSOLUTA das URLs de imagem. Sem valor, monta-se
+   * `http://localhost:{API_PORT}` — em produção é o host público da API (ou o
+   * CDN, quando o driver virar bucket).
+   */
+  STORAGE_PUBLIC_BASE_URL: z.string().url().optional(),
+
   /** Cobranças recusadas SEGUIDAS até o super admin suspender o tenant automaticamente (fase 08). */
   BILLING_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  /**
+   * Prazo da fatura do SaaS, em dias. Passado ele, uma fatura ainda `PENDING`
+   * é apresentada como "Atrasado" na aba Plano e cobrança (agente 26). Não é
+   * um status novo no banco — é `PENDING` mais tempo.
+   */
+  BILLING_DUE_DAYS: z.coerce.number().int().positive().default(5),
 
   // Filas BullMQ (fase 09).
   /**
@@ -109,6 +130,14 @@ export const envSchema = z.object({
   QUEUE_SAAS_BILLING_HOUR: z.coerce.number().int().min(0).max(23).default(4),
   /** Hora local (0–23) da faxina de OTP/sessões expiradas. */
   QUEUE_MAINTENANCE_HOUR: z.coerce.number().int().min(0).max(23).default(5),
+  /**
+   * Hora do disparo diário das automações de calendário do WhatsApp.
+   *
+   * 9h por padrão, e não de madrugada como a faxina: são mensagens que uma
+   * PESSOA recebe. "Feliz aniversário" às 5h da manhã acorda o cliente da
+   * barbearia — o padrão do `BIRTHDAY` no protótipo é justamente 09:00.
+   */
+  QUEUE_AUTOMATIONS_HOUR: z.coerce.number().int().min(0).max(23).default(9),
   /** Fuso usado pelos cron dos jobs diários. */
   QUEUE_TIMEZONE: z.string().default('America/Sao_Paulo'),
 });

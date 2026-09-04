@@ -1,12 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { RaffleStatus, SubscriptionStatus } from '@prisma/client';
+import { Injectable } from '@nestjs/common';
+import { PaymentStatus, SubscriptionStatus } from '@prisma/client';
 import type {
   ClientPlanAdminItem,
-  CreateRaffleDto as CreateRaffleContract,
-  LoyaltyClientBalance,
   LoyaltyProgramConfig,
-  RaffleItem,
   SubscriberItem,
+  SubscriptionPaymentStatus,
   UpdateLoyaltyProgramDto as UpdateLoyaltyProgramContract,
   UpsertClientPlanDto as UpsertClientPlanContract,
 } from '@barbervp/types';
@@ -14,22 +12,25 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/errors/api.exception';
 import { AuditAction, AuditService } from '../audit/audit.service';
 import type { RequestContext } from '../common/types/request-context';
-import {
-  NOTIFICATION_ADAPTER,
-  type NotificationAdapter,
-} from '../adapters/notification/notification.adapter';
+import { ClientSubscriptionService } from '../client-account/client-subscription.service';
 
-const MAX_RAFFLE_NOTIFICATIONS = 100;
+/** Assinaturas que ainda geram receita — `PAUSED` não fatura, `CANCELED` saiu. */
+const BILLING_STATUSES = [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] as const;
 
 @Injectable()
 export class LoyaltyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    @Inject(NOTIFICATION_ADAPTER) private readonly notifications: NotificationAdapter,
+    private readonly subscriptions: ClientSubscriptionService,
   ) {}
 
   // ── Programa de pontos ───────────────────────────────────────────────────
+  //
+  // Sem tela desde a revisão do protótipo (a sub-aba "Pontos" saiu do desenho),
+  // mas o recurso continua vivo: a comanda resgata pontos e a aba Clientes
+  // mostra o saldo. O endpoint permanece porque é o único interruptor do
+  // programa — realojá-lo em Configurações é dívida registrada no CONTEXT.
 
   async programConfig(tenantId: string): Promise<LoyaltyProgramConfig> {
     const program = await this.prisma.loyaltyProgram.findUnique({ where: { tenantId } });
@@ -68,7 +69,13 @@ export class LoyaltyService {
     });
 
     await this.audit.record(
-      { action: AuditAction.LOYALTY_PROGRAM_UPDATED, entity: 'LoyaltyProgram', entityId: program.id, tenantId, actorUserId },
+      {
+        action: AuditAction.LOYALTY_PROGRAM_UPDATED,
+        entity: 'LoyaltyProgram',
+        entityId: program.id,
+        tenantId,
+        actorUserId,
+      },
       request,
     );
 
@@ -81,208 +88,47 @@ export class LoyaltyService {
     };
   }
 
-  async clientBalances(tenantId: string): Promise<LoyaltyClientBalance[]> {
-    const grouped = await this.prisma.loyaltyPoints.groupBy({
-      by: ['clientId'],
-      where: { tenantId },
-      _sum: { points: true },
-      orderBy: { _sum: { points: 'desc' } },
-      take: 200,
-    });
-
-    const clientIds = grouped.map((row) => row.clientId);
-    if (clientIds.length === 0) {
-      return [];
-    }
-
-    const [clients, lastEarned, lastRedeemed] = await Promise.all([
-      this.prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true } }),
-      this.prisma.loyaltyPoints.groupBy({
-        by: ['clientId'],
-        where: { tenantId, clientId: { in: clientIds }, kind: 'EARN' },
-        _max: { createdAt: true },
-      }),
-      this.prisma.loyaltyPoints.groupBy({
-        by: ['clientId'],
-        where: { tenantId, clientId: { in: clientIds }, kind: 'REDEEM' },
-        _max: { createdAt: true },
-      }),
-    ]);
-
-    const nameOf = new Map(clients.map((client) => [client.id, client.name]));
-    const earnedMap = new Map(lastEarned.map((row) => [row.clientId, row._max.createdAt]));
-    const redeemedMap = new Map(lastRedeemed.map((row) => [row.clientId, row._max.createdAt]));
-
-    return grouped.map((row) => ({
-      clientId: row.clientId,
-      name: nameOf.get(row.clientId) ?? 'Cliente',
-      balance: row._sum.points ?? 0,
-      lastEarnedAt: earnedMap.get(row.clientId)?.toISOString() ?? null,
-      lastRedeemedAt: redeemedMap.get(row.clientId)?.toISOString() ?? null,
-    }));
-  }
-
-  // ── Sorteios ─────────────────────────────────────────────────────────────
-
-  async listRaffles(tenantId: string): Promise<RaffleItem[]> {
-    const raffles = await this.prisma.loyaltyRaffle.findMany({
-      where: { tenantId },
-      include: { entries: true, winner: { select: { name: true } } },
-      orderBy: { startsAt: 'desc' },
-    });
-
-    return raffles.map((raffle) => ({
-      id: raffle.id,
-      name: raffle.name,
-      description: raffle.description,
-      prize: raffle.prize,
-      status: raffle.status,
-      pointsPerEntry: raffle.pointsPerEntry,
-      startsAt: raffle.startsAt.toISOString(),
-      endsAt: raffle.endsAt.toISOString(),
-      participants: raffle.entries.length,
-      winnerClientId: raffle.winnerClientId,
-      winnerName: raffle.winner?.name ?? null,
-      drawnAt: raffle.drawnAt?.toISOString() ?? null,
-    }));
-  }
-
-  async createRaffle(
-    tenantId: string,
-    dto: CreateRaffleContract,
-    actorUserId: string,
-    request: RequestContext,
-  ): Promise<RaffleItem> {
-    const raffle = await this.prisma.loyaltyRaffle.create({
-      data: {
-        tenantId,
-        name: dto.name,
-        description: dto.description ?? null,
-        prize: dto.prize,
-        status: RaffleStatus.ACTIVE,
-        pointsPerEntry: dto.pointsPerEntry ?? 10,
-        startsAt: new Date(),
-        endsAt: new Date(dto.endsAt),
-      },
-    });
-
-    await this.audit.record(
-      { action: AuditAction.RAFFLE_CREATED, entity: 'LoyaltyRaffle', entityId: raffle.id, tenantId, actorUserId },
-      request,
-    );
-
-    if (dto.notifyWhatsapp ?? true) {
-      await this.announceRaffle(tenantId, raffle.name, raffle.prize);
-    }
-
-    return {
-      id: raffle.id,
-      name: raffle.name,
-      description: raffle.description,
-      prize: raffle.prize,
-      status: raffle.status,
-      pointsPerEntry: raffle.pointsPerEntry,
-      startsAt: raffle.startsAt.toISOString(),
-      endsAt: raffle.endsAt.toISOString(),
-      participants: 0,
-      winnerClientId: null,
-      winnerName: null,
-      drawnAt: null,
-    };
-  }
-
-  /** Aviso de novo sorteio via WhatsApp — para clientes com histórico de pontos (participantes prováveis). */
-  private async announceRaffle(tenantId: string, raffleName: string, prize: string): Promise<void> {
-    const participants = await this.prisma.loyaltyPoints.groupBy({
-      by: ['clientId'],
-      where: { tenantId },
-      orderBy: { clientId: 'asc' },
-      take: MAX_RAFFLE_NOTIFICATIONS,
-    });
-    if (participants.length === 0) {
-      return;
-    }
-    const clients = await this.prisma.client.findMany({
-      where: { id: { in: participants.map((p) => p.clientId) }, notifyWhatsapp: true },
-      select: { name: true, phone: true },
-    });
-
-    await Promise.all(
-      clients.map((client) =>
-        this.notifications.send({
-          tenantId,
-          recipient: client.phone,
-          templateKey: 'raffle_announcement',
-          body: `🎉 ${client.name.split(' ')[0]}, participe do sorteio "${raffleName}"! Prêmio: ${prize}. A cada visita você ganha cupons.`,
-        }),
-      ),
-    );
-  }
-
-  async drawRaffle(tenantId: string, id: string, actorUserId: string, request: RequestContext): Promise<RaffleItem> {
-    const raffle = await this.prisma.loyaltyRaffle.findFirst({
-      where: { id, tenantId },
-      include: { entries: true },
-    });
-    if (!raffle) {
-      throw ApiException.notFound('Sorteio não encontrado.');
-    }
-    if (raffle.status !== RaffleStatus.ACTIVE) {
-      throw ApiException.conflict('Este sorteio já foi encerrado.', 'RAFFLE_NOT_ACTIVE');
-    }
-    if (raffle.entries.length === 0) {
-      throw ApiException.badRequest('Não há participantes para sortear.');
-    }
-
-    // Sorteio ponderado — cada cupom (`entries`) é uma chance.
-    const pool = raffle.entries.flatMap((entry) => Array<string>(entry.entries).fill(entry.clientId));
-    const winnerClientId = pool[Math.floor(Math.random() * pool.length)]!;
-
-    const updated = await this.prisma.loyaltyRaffle.update({
-      where: { id },
-      data: { status: RaffleStatus.FINISHED, winnerClientId, drawnAt: new Date() },
-      include: { entries: true, winner: { select: { name: true } } },
-    });
-
-    await this.audit.record(
-      {
-        action: AuditAction.RAFFLE_DRAWN,
-        entity: 'LoyaltyRaffle',
-        entityId: id,
-        tenantId,
-        actorUserId,
-        metadata: { winnerClientId },
-      },
-      request,
-    );
-
-    return {
-      id: updated.id,
-      name: updated.name,
-      description: updated.description,
-      prize: updated.prize,
-      status: updated.status,
-      pointsPerEntry: updated.pointsPerEntry,
-      startsAt: updated.startsAt.toISOString(),
-      endsAt: updated.endsAt.toISOString(),
-      participants: updated.entries.length,
-      winnerClientId: updated.winnerClientId,
-      winnerName: updated.winner?.name ?? null,
-      drawnAt: updated.drawnAt?.toISOString() ?? null,
-    };
-  }
-
   // ── Planos de assinatura (lado da barbearia) ────────────────────────────
 
+  /**
+   * Os cards do protótipo (l.1526–1547), arquivados inclusos — o desenho tem
+   * um card esmaecido com selo "Arquivado" e botão "Reativar", então a lista
+   * NÃO pode filtrar por `active`. Arquivados vão para o fim: o dono trabalha
+   * nos planos que vende.
+   */
   async listPlans(tenantId: string): Promise<ClientPlanAdminItem[]> {
     const plans = await this.prisma.clientPlan.findMany({
       where: { tenantId, deletedAt: null },
       include: {
         items: { include: { service: { select: { name: true } } } },
-        _count: { select: { subscriptions: { where: { status: { not: SubscriptionStatus.CANCELED } } } } },
+        _count: {
+          select: {
+            subscriptions: { where: { status: { not: SubscriptionStatus.CANCELED } } },
+          },
+        },
       },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ active: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
+
+    const planIds = plans.map((plan) => plan.id);
+    // MRR e "pode excluir" pedem recortes diferentes do mesmo vínculo: o
+    // primeiro conta só quem fatura, o segundo conta QUALQUER assinatura —
+    // inclusive as canceladas, que seguram a chave estrangeira.
+    const [billing, everSubscribed] = await Promise.all([
+      this.prisma.clientSubscription.groupBy({
+        by: ['planId'],
+        where: { tenantId, planId: { in: planIds }, status: { in: [...BILLING_STATUSES] } },
+        _count: { _all: true },
+      }),
+      this.prisma.clientSubscription.groupBy({
+        by: ['planId'],
+        where: { tenantId, planId: { in: planIds } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const billingOf = new Map(billing.map((row) => [row.planId, row._count._all]));
+    const anySubOf = new Map(everSubscribed.map((row) => [row.planId, row._count._all]));
 
     return plans.map((plan) => ({
       id: plan.id,
@@ -298,6 +144,8 @@ export class LoyaltyService {
         quota: item.quota,
       })),
       subscriberCount: plan._count.subscriptions,
+      mrrCents: plan.priceCents * (billingOf.get(plan.id) ?? 0),
+      canDelete: (anySubOf.get(plan.id) ?? 0) === 0,
     }));
   }
 
@@ -309,16 +157,32 @@ export class LoyaltyService {
     request: RequestContext,
   ): Promise<ClientPlanAdminItem> {
     if (id) {
-      const existing = await this.prisma.clientPlan.findFirst({ where: { id, tenantId }, select: { id: true } });
+      const existing = await this.prisma.clientPlan.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        select: { id: true },
+      });
       if (!existing) {
         throw ApiException.notFound('Plano não encontrado.');
       }
     }
 
     const serviceIds = dto.items.map((item) => item.serviceId);
+    if (new Set(serviceIds).size !== serviceIds.length) {
+      throw ApiException.badRequest('O mesmo serviço aparece duas vezes no plano.');
+    }
     const count = await this.prisma.service.count({ where: { id: { in: serviceIds }, tenantId } });
-    if (count !== new Set(serviceIds).size) {
+    if (count !== serviceIds.length) {
       throw ApiException.badRequest('Um ou mais serviços não pertencem a esta barbearia.');
+    }
+
+    // `@@unique([tenantId, name])` — sem esta checagem o dono levaria um 500 de
+    // violação de chave em vez de saber que já existe um plano com o nome.
+    const duplicate = await this.prisma.clientPlan.findFirst({
+      where: { tenantId, name: dto.name, deletedAt: null, ...(id ? { NOT: { id } } : {}) },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw ApiException.conflict('Já existe um plano com esse nome.', 'CLIENT_PLAN_NAME_TAKEN');
     }
 
     const saved = await this.prisma.$transaction(async (tx) => {
@@ -358,26 +222,106 @@ export class LoyaltyService {
     });
 
     await this.audit.record(
-      { action: AuditAction.CLIENT_PLAN_UPSERTED, entity: 'ClientPlan', entityId: saved.id, tenantId, actorUserId },
+      {
+        action: AuditAction.CLIENT_PLAN_UPSERTED,
+        entity: 'ClientPlan',
+        entityId: saved.id,
+        tenantId,
+        actorUserId,
+      },
       request,
     );
 
-    const [full] = await this.listPlans(tenantId).then((plans) => plans.filter((plan) => plan.id === saved.id));
-    return full!;
+    return this.planById(tenantId, saved.id);
   }
 
-  async archivePlan(tenantId: string, id: string, actorUserId: string, request: RequestContext): Promise<void> {
-    const existing = await this.prisma.clientPlan.findFirst({ where: { id, tenantId }, select: { id: true } });
-    if (!existing) {
-      throw ApiException.notFound('Plano não encontrado.');
-    }
+  /** "Arquivar plano" — some da vitrine do cliente, quem já assina continua. */
+  async archivePlan(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<ClientPlanAdminItem> {
+    await this.loadPlan(tenantId, id);
     await this.prisma.clientPlan.update({ where: { id }, data: { active: false } });
 
     await this.audit.record(
-      { action: AuditAction.CLIENT_PLAN_ARCHIVED, entity: 'ClientPlan', entityId: id, tenantId, actorUserId },
+      {
+        action: AuditAction.CLIENT_PLAN_ARCHIVED,
+        entity: 'ClientPlan',
+        entityId: id,
+        tenantId,
+        actorUserId,
+      },
+      request,
+    );
+
+    return this.planById(tenantId, id);
+  }
+
+  /** Botão "Reativar" do card arquivado (protótipo l.1543). */
+  async reactivatePlan(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<ClientPlanAdminItem> {
+    await this.loadPlan(tenantId, id);
+    await this.prisma.clientPlan.update({ where: { id }, data: { active: true } });
+
+    await this.audit.record(
+      {
+        action: AuditAction.CLIENT_PLAN_REACTIVATED,
+        entity: 'ClientPlan',
+        entityId: id,
+        tenantId,
+        actorUserId,
+      },
+      request,
+    );
+
+    return this.planById(tenantId, id);
+  }
+
+  /**
+   * "Excluir plano" — só quando NENHUMA assinatura aponta para ele, nem
+   * cancelada. Com histórico o diálogo do protótipo (l.3384) já oferece
+   * arquivar no lugar; o 409 daqui é a mesma regra do lado do servidor, para
+   * quem chamar a rota direto.
+   */
+  async deletePlan(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<void> {
+    await this.loadPlan(tenantId, id);
+
+    const subscriptions = await this.prisma.clientSubscription.count({ where: { tenantId, planId: id } });
+    if (subscriptions > 0) {
+      throw ApiException.conflict(
+        'Este plano já teve assinantes. Arquive-o para tirá-lo da vitrine sem afetar o histórico.',
+        'CLIENT_PLAN_HAS_SUBSCRIBERS',
+      );
+    }
+
+    // Sem assinatura nenhuma o vínculo é só com `ClientPlanItem` (cascata), então
+    // some de vez — e o nome volta a ficar livre para um plano novo.
+    await this.prisma.clientPlan.delete({ where: { id } });
+
+    await this.audit.record(
+      {
+        action: AuditAction.CLIENT_PLAN_DELETED,
+        entity: 'ClientPlan',
+        entityId: id,
+        tenantId,
+        actorUserId,
+      },
       request,
     );
   }
+
+  // ── Assinantes ───────────────────────────────────────────────────────────
 
   async subscribers(tenantId: string): Promise<SubscriberItem[]> {
     const subs = await this.prisma.clientSubscription.findMany({
@@ -387,21 +331,176 @@ export class LoyaltyService {
         plan: { select: { name: true } },
         usages: { include: { service: { select: { name: true } } } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    });
+    if (subs.length === 0) {
+      return [];
+    }
+
+    // Um pagamento QUITADO dentro do ciclo corrente é o que separa "Pago" de
+    // "Pendente" — a data de referência é o início do período de cada
+    // assinatura, não um mês de calendário comum a todas.
+    const paid = await this.prisma.payment.findMany({
+      where: {
+        tenantId,
+        clientSubscriptionId: { in: subs.map((sub) => sub.id) },
+        status: PaymentStatus.PAID,
+        deletedAt: null,
+      },
+      select: { clientSubscriptionId: true, paidAt: true },
     });
 
-    return subs.map((sub) => ({
-      subscriptionId: sub.id,
-      clientId: sub.clientId,
-      clientName: sub.client.name,
-      planName: sub.plan.name,
-      status: sub.status,
-      usages: sub.usages.map((usage) => ({
+    const lastPaidAt = new Map<string, Date>();
+    for (const payment of paid) {
+      const when = payment.paidAt;
+      const key = payment.clientSubscriptionId;
+      if (!when || !key) continue;
+      const current = lastPaidAt.get(key);
+      if (!current || when > current) lastPaidAt.set(key, when);
+    }
+
+    const now = new Date();
+
+    return subs.map((sub) => {
+      const usages = sub.usages.map((usage) => ({
         serviceName: usage.service.name,
         used: usage.used,
         quota: usage.quota,
-      })),
-      nextChargeAt: sub.nextChargeAt?.toISOString() ?? null,
-    }));
+      }));
+
+      return {
+        subscriptionId: sub.id,
+        clientId: sub.clientId,
+        clientName: sub.client.name,
+        planId: sub.planId,
+        planName: sub.plan.name,
+        status: sub.status,
+        paymentStatus: paymentStatusOf({
+          status: sub.status,
+          currentPeriodStart: sub.currentPeriodStart,
+          nextChargeAt: sub.nextChargeAt,
+          lastPaidAt: lastPaidAt.get(sub.id) ?? null,
+          now,
+        }),
+        usages,
+        usedTotal: usages.reduce((total, usage) => total + usage.used, 0),
+        quotaTotal: usages.reduce((total, usage) => total + usage.quota, 0),
+        nextChargeAt: sub.nextChargeAt?.toISOString() ?? null,
+      };
+    });
   }
+
+  /**
+   * "Pausar"/"Cancelar"/"Retomar" do menu da tabela (protótipo l.1583–1585).
+   *
+   * Delegam para o MESMO `ClientSubscriptionService` da área do cliente: a
+   * regra de retomada (ciclo vencido reinicia, ciclo vivo só destrava) e a de
+   * cancelamento (sem estorno, perde os usos) não podem divergir só porque
+   * quem clicou foi o dono.
+   */
+  async pauseSubscriber(
+    tenantId: string,
+    subscriptionId: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<SubscriberItem> {
+    const clientId = await this.subscriberClientId(tenantId, subscriptionId);
+    await this.subscriptions.pause(tenantId, clientId, request, actorUserId);
+    return this.subscriberById(tenantId, subscriptionId);
+  }
+
+  async resumeSubscriber(
+    tenantId: string,
+    subscriptionId: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<SubscriberItem> {
+    const clientId = await this.subscriberClientId(tenantId, subscriptionId);
+    await this.subscriptions.resume(tenantId, clientId, request, actorUserId);
+    return this.subscriberById(tenantId, subscriptionId);
+  }
+
+  async cancelSubscriber(
+    tenantId: string,
+    subscriptionId: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<void> {
+    const clientId = await this.subscriberClientId(tenantId, subscriptionId);
+    await this.subscriptions.cancel(tenantId, clientId, request, actorUserId);
+  }
+
+  // ── Apoio ────────────────────────────────────────────────────────────────
+
+  private async loadPlan(tenantId: string, id: string): Promise<{ id: string }> {
+    const plan = await this.prisma.clientPlan.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!plan) {
+      throw ApiException.notFound('Plano não encontrado.');
+    }
+    return plan;
+  }
+
+  private async planById(tenantId: string, id: string): Promise<ClientPlanAdminItem> {
+    const plans = await this.listPlans(tenantId);
+    const plan = plans.find((item) => item.id === id);
+    if (!plan) {
+      throw ApiException.notFound('Plano não encontrado.');
+    }
+    return plan;
+  }
+
+  private async subscriberClientId(tenantId: string, subscriptionId: string): Promise<string> {
+    const subscription = await this.prisma.clientSubscription.findFirst({
+      where: { id: subscriptionId, tenantId },
+      select: { clientId: true },
+    });
+    if (!subscription) {
+      throw ApiException.notFound('Assinatura não encontrada.');
+    }
+    return subscription.clientId;
+  }
+
+  private async subscriberById(tenantId: string, subscriptionId: string): Promise<SubscriberItem> {
+    const rows = await this.subscribers(tenantId);
+    const row = rows.find((item) => item.subscriptionId === subscriptionId);
+    if (!row) {
+      throw ApiException.notFound('Assinatura não encontrada.');
+    }
+    return row;
+  }
+}
+
+/**
+ * A coluna "Pagamento" não existe no banco — é a leitura do ciclo corrente:
+ *
+ * - pausada ⇒ `PAUSED` (não fatura enquanto estiver assim);
+ * - pago dentro do ciclo ⇒ `PAID`;
+ * - `PAST_DUE`, ou cobrança já vencida sem quitação ⇒ `OVERDUE`;
+ * - resto ⇒ `PENDING` (cobrança ainda por vir).
+ *
+ * Exportada para o teste unitário — é a única regra derivada da aba.
+ */
+export function paymentStatusOf(input: {
+  status: SubscriptionStatus;
+  currentPeriodStart: Date;
+  nextChargeAt: Date | null;
+  lastPaidAt: Date | null;
+  now: Date;
+}): SubscriptionPaymentStatus {
+  if (input.status === SubscriptionStatus.PAUSED) {
+    return 'PAUSED';
+  }
+  if (input.lastPaidAt && input.lastPaidAt >= input.currentPeriodStart) {
+    return 'PAID';
+  }
+  if (input.status === SubscriptionStatus.PAST_DUE) {
+    return 'OVERDUE';
+  }
+  if (input.nextChargeAt && input.nextChargeAt < input.now) {
+    return 'OVERDUE';
+  }
+  return 'PENDING';
 }

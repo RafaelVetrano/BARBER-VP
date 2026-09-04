@@ -20,11 +20,19 @@ import {
   CloseCashRegisterDto,
   CreateAccountPayableDto,
   CreateAccountReceivableDto,
+  CreateCashMovementDto,
   OpenCashRegisterDto,
   UpsertBankAccountDto,
 } from './dto/finance.dto';
 
-/** Financeiro — Caixa é liberado em todo plano; o resto atrás de `contasPagarReceber` (Profissional+). */
+/**
+ * Financeiro.
+ *
+ * O gate de plano cobre EXATAMENTE as 3 sub-abas que o protótipo tranca
+ * (`LOCKED_FIN_TABS` = contas a pagar, contas a receber, vales). Caixa, Contas
+ * bancárias e Fluxo de caixa são de todo plano — trancar as duas últimas, como
+ * estava, escondia do Essencial uma tela que o protótipo lhe entrega.
+ */
 @ApiTags('finance')
 @ApiBearerAuth('access-token')
 @Controller('finance')
@@ -49,6 +57,17 @@ export class FinanceController {
     @Req() request: RequestContext,
   ): Promise<CashRegisterStatusResponse> {
     return this.finance.openCash(tenantId, dto, principal.id, request);
+  }
+
+  @Post('cash-register/movements')
+  @ApiOperation({ summary: 'Lança entrada avulsa ou saída/sangria no caixa aberto' })
+  async createMovement(
+    @Body() dto: CreateCashMovementDto,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<CashRegisterStatusResponse> {
+    return this.finance.createMovement(tenantId, dto, principal.id, request);
   }
 
   @Post('cash-register/close')
@@ -137,14 +156,12 @@ export class FinanceController {
   // ── Contas bancárias ─────────────────────────────────────────────────────
 
   @Get('bank-accounts')
-  @RequireFeature('contasPagarReceber')
   @ApiOperation({ summary: 'Lista contas bancárias' })
   async listBankAccounts(@CurrentTenant('id') tenantId: string): Promise<BankAccountItem[]> {
     return this.finance.listBankAccounts(tenantId);
   }
 
   @Post('bank-accounts')
-  @RequireFeature('contasPagarReceber')
   @ApiOperation({ summary: 'Cria conta bancária' })
   async createBankAccount(
     @Body() dto: UpsertBankAccountDto,
@@ -156,7 +173,6 @@ export class FinanceController {
   }
 
   @Patch('bank-accounts/:id')
-  @RequireFeature('contasPagarReceber')
   @ApiOperation({ summary: 'Atualiza conta bancária' })
   async updateBankAccount(
     @Param('id') id: string,
@@ -171,7 +187,6 @@ export class FinanceController {
   // ── Fluxo de caixa ───────────────────────────────────────────────────────
 
   @Get('cash-flow')
-  @RequireFeature('contasPagarReceber')
   @ApiOperation({ summary: 'Fluxo de caixa mensal (entradas vs. saídas)' })
   async cashFlow(
     @Query() query: CashFlowQueryDto,

@@ -9,6 +9,8 @@ import { PAYMENT_ADAPTER } from './payment/payment.adapter';
 import { MockPaymentDriver } from './payment/mock-payment.driver';
 import { AI_ASSISTANT_ADAPTER } from '../assistant/ai-assistant.adapter';
 import { MockAiAssistantDriver } from '../assistant/mock-ai-assistant.driver';
+import { STORAGE_ADAPTER } from './storage/storage.adapter';
+import { LocalStorageDriver } from './storage/local-storage.driver';
 
 /**
  * Único lugar do projeto que conhece drivers concretos.
@@ -24,6 +26,7 @@ import { MockAiAssistantDriver } from '../assistant/mock-ai-assistant.driver';
     MockMailDriver,
     MockPaymentDriver,
     MockAiAssistantDriver,
+    LocalStorageDriver,
     {
       provide: NOTIFICATION_ADAPTER,
       inject: [CONFIG, MockNotificationDriver],
@@ -64,12 +67,31 @@ import { MockAiAssistantDriver } from '../assistant/mock-ai-assistant.driver';
         }
       },
     },
+    {
+      provide: STORAGE_ADAPTER,
+      inject: [CONFIG, LocalStorageDriver],
+      useFactory: (config: AppConfig, local: LocalStorageDriver) => {
+        switch (config.storage.driver) {
+          case 'local':
+            return local;
+        }
+      },
+    },
   ],
-  exports: [NOTIFICATION_ADAPTER, MAIL_ADAPTER, PAYMENT_ADAPTER, AI_ASSISTANT_ADAPTER],
+  exports: [
+    NOTIFICATION_ADAPTER,
+    MAIL_ADAPTER,
+    PAYMENT_ADAPTER,
+    AI_ASSISTANT_ADAPTER,
+    STORAGE_ADAPTER,
+  ],
 })
 export class AdaptersModule {
   constructor(@Inject(CONFIG) config: AppConfig, logger: PinoLogger) {
     logger.setContext(AdaptersModule.name);
-    logger.info({ drivers: config.drivers }, 'adapters registrados');
+    logger.info(
+      { drivers: { ...config.drivers, storage: config.storage.driver } },
+      'adapters registrados',
+    );
   }
 }

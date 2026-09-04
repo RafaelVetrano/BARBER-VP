@@ -79,9 +79,28 @@ export function EstablishmentAuthProvider({ children }: { children: ReactNode })
     setState(ANONYMOUS);
   }, []);
 
+  /**
+   * Renovação de sessão em VOO ÚNICO.
+   *
+   * Dois caminhos independentes pedem refresh: este provider ao montar, e o
+   * interceptor do axios quando uma requisição toma 401. O interceptor tem o
+   * próprio single-flight, mas ele não cobre a chamada do provider — e duas
+   * POSTs simultâneas em `/auth/refresh` rotacionam o cookie e fazem a segunda
+   * cair na detecção de reuso, que revoga a FAMÍLIA inteira. O sintoma é a
+   * tela montar e toda chamada seguinte tomar 401 até recarregar: foi assim
+   * que a auditoria da aba Comandas encontrou isto.
+   */
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const refresh = useCallback(async () => {
-    const session = await establishmentApi.refresh(client);
-    applySession(session);
+    refreshInFlight.current ??= establishmentApi
+      .refresh(client)
+      .then((session) => {
+        applySession(session);
+      })
+      .finally(() => {
+        refreshInFlight.current = null;
+      });
+    return refreshInFlight.current;
   }, [client, applySession]);
 
   // Liga os ganchos antes do primeiro efeito que faz requisição.
@@ -96,24 +115,17 @@ export function EstablishmentAuthProvider({ children }: { children: ReactNode })
   useEffect(() => {
     let cancelled = false;
 
-    void (async () => {
-      try {
-        const session = await establishmentApi.refresh(client);
-        if (!cancelled) {
-          applySession(session);
-        }
-      } catch {
-        // Sem cookie válido é o caso normal de quem nunca entrou — não é erro.
-        if (!cancelled) {
-          clearSession();
-        }
+    void refresh().catch(() => {
+      // Sem cookie válido é o caso normal de quem nunca entrou — não é erro.
+      if (!cancelled) {
+        clearSession();
       }
-    })();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [client, applySession, clearSession]);
+  }, [refresh, clearSession]);
 
   const logout = useCallback(async () => {
     try {

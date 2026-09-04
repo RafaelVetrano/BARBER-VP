@@ -119,6 +119,13 @@ export const CashRegisterStatus = {
 } as const;
 export type CashRegisterStatus = (typeof CashRegisterStatus)[keyof typeof CashRegisterStatus];
 
+export const AccountRecurrence = {
+  WEEKLY: 'WEEKLY',
+  MONTHLY: 'MONTHLY',
+  YEARLY: 'YEARLY',
+} as const;
+export type AccountRecurrence = (typeof AccountRecurrence)[keyof typeof AccountRecurrence];
+
 export const AccountStatus = {
   PENDING: 'PENDING',
   PAID: 'PAID',
@@ -127,13 +134,6 @@ export const AccountStatus = {
   CANCELED: 'CANCELED',
 } as const;
 export type AccountStatus = (typeof AccountStatus)[keyof typeof AccountStatus];
-
-export const RaffleStatus = {
-  ACTIVE: 'ACTIVE',
-  FINISHED: 'FINISHED',
-  CANCELED: 'CANCELED',
-} as const;
-export type RaffleStatus = (typeof RaffleStatus)[keyof typeof RaffleStatus];
 
 export const OutboxStatus = {
   PENDING: 'PENDING',

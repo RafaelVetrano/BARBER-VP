@@ -6,9 +6,8 @@ import type {
   BarbershopSettings,
   ChangePlanDto,
   CurrentPlanResponse,
+  PlanChangePreview,
   PreferencesSettings,
-  PriceCalculatorDto,
-  PriceCalculatorResult,
   UnitItem,
   UpdateBarbershopSettingsDto,
   UpdatePreferencesDto,
@@ -64,13 +63,61 @@ export function useSaveUnitMutation() {
   });
 }
 
-export function useCurrentPlanQuery() {
+export function useCurrentPlanQuery(enabled = true) {
   const { client } = useEstablishmentAuth();
   return useQuery({
     queryKey: ['settings-plan'],
     queryFn: async () => {
       const { data } = await client.get<CurrentPlanResponse>('/settings/plan');
       return data;
+    },
+    enabled,
+    retry: false,
+  });
+}
+
+/**
+ * Ganhos e perdas da troca (`modalTrocarPlano`). Só busca quando um plano foi
+ * escolhido: é a abertura do modal que dispara a chamada, e o modal só mostra
+ * os botões depois que a resposta chega — confirmar uma troca cujo impacto
+ * ainda não foi calculado seria assinar em branco.
+ */
+export function usePlanChangePreviewQuery(planId: string | null) {
+  const { client } = useEstablishmentAuth();
+  return useQuery({
+    queryKey: ['settings-plan-preview', planId],
+    queryFn: async () => {
+      const { data } = await client.get<PlanChangePreview>(`/settings/plan/preview/${planId}`);
+      return data;
+    },
+    enabled: planId !== null,
+    retry: false,
+  });
+}
+
+/**
+ * O link "PDF" do histórico de faturas. Mesmo caminho do relatório de
+ * comissões: a rota exige Bearer, então um `<a href>` cru baixaria um 401.
+ */
+export function useInvoicePdfMutation() {
+  const { client } = useEstablishmentAuth();
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const response = await client.get<Blob>(`/settings/plan/invoices/${invoiceId}.pdf`, {
+        responseType: 'blob',
+      });
+      const disposition = String(response.headers['content-disposition'] ?? '');
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'fatura.pdf';
+
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      return filename;
     },
   });
 }
@@ -83,7 +130,18 @@ export function useChangePlanMutation() {
       const { data } = await client.post<CurrentPlanResponse>('/settings/plan/change', dto);
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings-plan'] }),
+    // A troca mexe em muito mais do que a aba Plano: o `shell` carrega as
+    // features (cadeados de TODA a casca), a Equipe ganha/perde barbeiros
+    // "Inativo pelo plano" e as unidades passam a existir ou não. Invalidar só
+    // `settings-plan` deixava a topbar anunciando o plano antigo.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['settings-plan'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-shell'] }),
+        queryClient.invalidateQueries({ queryKey: ['settings-units'] }),
+        queryClient.invalidateQueries({ queryKey: ['barbers'] }),
+        queryClient.invalidateQueries({ queryKey: ['team-plan-usage'] }),
+      ]),
   });
 }
 
@@ -110,12 +168,5 @@ export function useUpdatePreferencesMutation() {
   });
 }
 
-export function usePriceCalculatorMutation() {
-  const { client } = useEstablishmentAuth();
-  return useMutation({
-    mutationFn: async (dto: PriceCalculatorDto) => {
-      const { data } = await client.post<PriceCalculatorResult>('/settings/price-calculator', dto);
-      return data;
-    },
-  });
-}
+// A calculadora de preço saiu de Configurações — vive no catálogo
+// (`api/catalog.ts`, `usePriceCalculatorQuery`), onde o protótipo a desenha.

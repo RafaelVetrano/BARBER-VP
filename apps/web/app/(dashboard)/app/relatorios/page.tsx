@@ -1,139 +1,316 @@
 'use client';
 
-import { useState } from 'react';
-import { Card, CardHeader, EmptyState, Skeleton, StatCard } from '@barbervp/ui';
+import { useMemo, useState } from 'react';
+import { useEstablishmentAuth, useToast } from '@barbervp/ui';
 import { formatBRL } from '@barbervp/types';
+import type { ReportPeriodQuery } from '@barbervp/types';
 import { DashboardChrome } from '@/components/dashboard/dashboard-chrome';
-import { FeatureLocked } from '@/components/dashboard/feature-locked';
+import { UpgradeModal } from '@/components/dashboard/upgrade-modal';
+import { FinanceStat, StatGrid } from '@/components/dashboard/blocks';
+import { ReportCard } from '@/components/dashboard/reports/report-card';
+import { ReportToolbar, type ReportFilters } from '@/components/dashboard/reports/report-toolbar';
+import { RevenueChart } from '@/components/dashboard/reports/revenue-chart';
+import { BarList } from '@/components/dashboard/reports/bar-list';
+import { PaymentDonut } from '@/components/dashboard/reports/payment-donut';
+import { ReturnRateCard } from '@/components/dashboard/reports/return-rate-card';
+import { PeakHeatmap } from '@/components/dashboard/reports/peak-heatmap';
+import { NoShowChart } from '@/components/dashboard/reports/no-show-chart';
+import { TicketTable } from '@/components/dashboard/reports/ticket-table';
+import {
+  EXPORT_BULLETS,
+  LOCKED_BULLETS,
+  LOCKED_MIN_PLAN,
+  daysAgoInput,
+  periodRangeLabel,
+  todayInput,
+} from '@/components/dashboard/reports/reports-shared';
 import { isFeatureGateError } from '@/lib/dashboard/feature-error';
-import { useReportsAdvancedQuery, useReportsSummaryQuery } from '@/lib/dashboard/api/reports';
+import {
+  useReportExportMutation,
+  useReportsAdvancedQuery,
+  useReportsSummaryQuery,
+} from '@/lib/dashboard/api/reports';
+import { useDashboardShellQuery } from '@/lib/dashboard/api/dashboard';
+import { useBarbersQuery } from '@/lib/dashboard/api/team';
 
-function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-}
-
-const METHOD_LABEL: Record<string, string> = { PIX: 'Pix', CASH: 'Dinheiro', DEBIT: 'Débito', CREDIT: 'Crédito' };
-
-function Bar({ label, value, max, tone = 'gold' }: { label: string; value: number; max: number; tone?: 'gold' | 'info' }) {
-  const pct = max > 0 ? Math.max(4, (value / max) * 100) : 0;
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-fg-muted">{label}</span>
-        <span className="font-semibold text-fg">{formatBRL(value)}</span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-        <div className={`h-full rounded-full ${tone === 'gold' ? 'bg-gold' : 'bg-info'}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
+/**
+ * Aba **Relatórios** (`Dashboard.dc.html` l.1229–1496) e, para o papel
+ * `BARBER`, a versão restrita do `DashboardFuncionario.dc.html` (l.667–775).
+ *
+ * O cadeado é POR BLOCO: cinco dos oito blocos ficam embaçados fora do plano
+ * Profissional, os outros três continuam servindo. Quem decide é o servidor —
+ * `/reports/advanced` responde 403 e a página trata esse 403 como "trancado",
+ * não como erro.
+ */
 export default function RelatoriosPage() {
-  const [from] = useState(daysAgo(30));
-  const [to] = useState(daysAgo(0));
+  const { toast } = useToast();
+  const { activeMembership } = useEstablishmentAuth();
+  const isBarberRole = activeMembership?.role === 'BARBER';
 
-  const summaryQuery = useReportsSummaryQuery({ from, to });
-  const advancedQuery = useReportsAdvancedQuery({ from, to });
+  const [filters, setFilters] = useState<ReportFilters>({
+    period: '30d',
+    from: daysAgoInput(29),
+    to: todayInput(),
+    barberIds: [],
+    unitId: null,
+  });
+  const [upsell, setUpsell] = useState<'blocks' | 'export' | null>(null);
+
+  const query: ReportPeriodQuery = useMemo(
+    () => ({
+      period: filters.period,
+      ...(filters.period === 'custom' ? { from: filters.from, to: filters.to } : {}),
+      ...(filters.barberIds.length > 0 ? { barberIds: filters.barberIds } : {}),
+      ...(filters.unitId ? { unitId: filters.unitId } : {}),
+    }),
+    [filters],
+  );
+
+  const shellQuery = useDashboardShellQuery();
+  // `BARBER` não escolhe barbeiro (o servidor força o recorte) — pedir a
+  // equipe só renderia um 403 no console.
+  const barbersQuery = useBarbersQuery({ enabled: !isBarberRole });
+  const summaryQuery = useReportsSummaryQuery(query);
+  const advancedQuery = useReportsAdvancedQuery(query);
+  const exportMutation = useReportExportMutation();
 
   const summary = summaryQuery.data;
   const advanced = advancedQuery.data;
-  const maxBarberRevenue = Math.max(...(advanced?.revenueByBarber.map((b) => b.revenueCents) ?? [0]), 1);
-  const maxServiceRevenue = Math.max(...(advanced?.revenueByService.map((s) => s.revenueCents) ?? [0]), 1);
-  const maxReturnClients = Math.max(...(advanced?.returnRate.map((r) => r.clients) ?? [0]), 1);
+  const locked = isFeatureGateError(advancedQuery.error);
+  const advancedFailed = advancedQuery.isError && !locked;
+
+  const period = summary?.period;
+  const rangeLabel = period ? periodRangeLabel(period.from, period.to) : '—';
+
+  const onLockedClick = () => setUpsell('blocks');
+  const handleExport = (format: 'pdf' | 'csv') => {
+    if (locked) {
+      setUpsell('export');
+      return;
+    }
+    exportMutation.mutate(
+      { format, query },
+      {
+        onSuccess: (filename) => toast({ message: `Relatório exportado: ${filename}`, tone: 'success' }),
+        onError: () =>
+          toast({ message: 'Não foi possível exportar o relatório.', tone: 'danger' }),
+      },
+    );
+  };
+
+  const summaryLoading = summaryQuery.isPending;
+  const advancedLoading = advancedQuery.isPending && !locked;
+  /** Bloco travado desenha o conteúdo de exemplo por trás do véu — sem dado, uma grade vazia. */
+  const advancedReady = !locked && !advancedFailed && advanced !== undefined;
 
   return (
     <DashboardChrome activeKey="relatorios">
       <div className="flex flex-col gap-5">
         <div>
           <h1 className="font-display text-xl font-bold text-fg">Relatórios</h1>
-          <p className="text-sm text-fg-muted">Últimos 30 dias ({new Date(from).toLocaleDateString('pt-BR')} – {new Date(to).toLocaleDateString('pt-BR')})</p>
+          <p className="text-sm text-fg-muted">
+            {rangeLabel}
+            {summary?.scoped ? ' · seus atendimentos' : ''}
+          </p>
         </div>
 
-        {summaryQuery.isLoading ? (
-          <Skeleton className="h-32 w-full rounded-2xl" />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StatCard label="Faturamento" value={formatBRL(summary?.revenueCents ?? 0)} hint={`${summary?.orders ?? 0} comandas fechadas`} />
-            <StatCard label="Ticket médio" value={formatBRL(summary?.averageTicketCents ?? 0)} />
-            <StatCard
-              label="Forma de pagamento principal"
-              value={summary?.paymentDistribution[0] ? METHOD_LABEL[summary.paymentDistribution[0].method] ?? summary.paymentDistribution[0].method : '—'}
-              hint={summary?.paymentDistribution[0] ? formatBRL(summary.paymentDistribution[0].amountCents) : undefined}
+        <ReportToolbar
+          filters={filters}
+          onChange={setFilters}
+          barbers={isBarberRole ? [] : (barbersQuery.data ?? [])}
+          units={shellQuery.data?.units ?? []}
+          exportLocked={locked}
+          exporting={exportMutation.isPending ? (exportMutation.variables?.format ?? null) : null}
+          onExport={handleExport}
+        />
+
+        {/* Os 3 KPIs do `DashboardFuncionario` — o painel do dono não os tem. */}
+        {isBarberRole && (
+          <StatGrid min={200}>
+            <FinanceStat
+              label="Minha produção no período"
+              value={formatBRL(summary?.revenueCents ?? 0)}
             />
-          </div>
+            <FinanceStat label="Atendimentos" value={String(summary?.orders ?? 0)} />
+            <FinanceStat
+              label="Ticket médio"
+              value={formatBRL(summary?.averageTicketCents ?? 0)}
+            />
+          </StatGrid>
         )}
 
-        {summary && summary.paymentDistribution.length > 0 && (
-          <Card>
-            <CardHeader title="Distribuição por forma de pagamento" />
-            <div className="mt-3 flex flex-col gap-2">
-              {summary.paymentDistribution.map((entry) => (
-                <Bar key={entry.method} label={METHOD_LABEL[entry.method] ?? entry.method} value={entry.amountCents} max={summary.revenueCents} tone="info" />
-              ))}
-            </div>
-          </Card>
-        )}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+          <ReportCard
+            title={isBarberRole ? 'Minha produção por período' : 'Faturamento por período'}
+            span={2}
+            loading={summaryLoading}
+            error={summaryQuery.isError}
+            onRetry={() => void summaryQuery.refetch()}
+            isEmpty={(summary?.revenueSeries.length ?? 0) < 2}
+            empty="Sem faturamento no período."
+            skeletonHeight={224}
+            aside={
+              summary && (
+                <div className="text-right">
+                  <p className="font-display text-[26px] font-bold leading-none text-fg">
+                    {formatBRL(summary.revenueCents)}
+                  </p>
+                  <p
+                    className={`mt-1.5 text-xs font-semibold ${
+                      summary.deltaPct === null
+                        ? 'text-fg-muted'
+                        : summary.deltaPct >= 0
+                          ? 'text-success'
+                          : 'text-danger'
+                    }`}
+                  >
+                    {summary.deltaPct === null
+                      ? 'sem período anterior para comparar'
+                      : `${summary.deltaPct >= 0 ? '+' : ''}${summary.deltaPct}% vs. período anterior`}
+                  </p>
+                </div>
+              )
+            }
+          >
+            {summary && <RevenueChart points={summary.revenueSeries} />}
+          </ReportCard>
 
-        {isFeatureGateError(advancedQuery.error) ? (
-          <FeatureLocked
-            title="Relatórios avançados"
-            description="Faturamento por barbeiro e serviço, ocupação da agenda, no-show e taxa de retorno de clientes — disponível a partir do plano Profissional."
-            benefits={['Compare o desempenho de cada barbeiro', 'Veja quais serviços mais faturam', 'Identifique clientes que estão sumindo']}
-            minPlanLabel="Profissional"
-          />
-        ) : advancedQuery.isLoading ? (
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        ) : advanced ? (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <StatCard label="Ocupação" value={`${Math.round(advanced.occupancyRate * 100)}%`} />
-              <StatCard label="Taxa de no-show" value={`${Math.round(advanced.noShowRate * 100)}%`} />
-            </div>
+          {!isBarberRole && (
+            <ReportCard
+              title="Faturamento por barbeiro"
+              loading={summaryLoading}
+              error={summaryQuery.isError}
+              onRetry={() => void summaryQuery.refetch()}
+              isEmpty={(summary?.revenueByBarber.length ?? 0) === 0}
+              skeletonHeight={168}
+            >
+              {summary && (
+                <BarList
+                  rows={summary.revenueByBarber.map((row) => ({
+                    id: row.barberId,
+                    name: row.barberName,
+                    valueCents: row.revenueCents,
+                  }))}
+                />
+              )}
+            </ReportCard>
+          )}
 
-            <Card>
-              <CardHeader title="Faturamento por barbeiro" />
-              <div className="mt-3 flex flex-col gap-2">
-                {advanced.revenueByBarber.length === 0 ? (
-                  <EmptyState message="Sem dados no período." />
-                ) : (
-                  advanced.revenueByBarber.map((row) => (
-                    <Bar key={row.barberId} label={row.barberName} value={row.revenueCents} max={maxBarberRevenue} />
-                  ))
-                )}
-              </div>
-            </Card>
+          <ReportCard
+            title={isBarberRole ? 'Meus serviços realizados' : 'Faturamento por serviço'}
+            locked={locked}
+            onLockedClick={onLockedClick}
+            loading={advancedLoading}
+            error={advancedFailed}
+            onRetry={() => void advancedQuery.refetch()}
+            isEmpty={advancedReady && advanced.revenueByService.length === 0}
+            skeletonHeight={220}
+          >
+            {advancedReady && (
+              <BarList
+                rows={advanced.revenueByService.map((row) => ({
+                  id: row.serviceId,
+                  name: row.serviceName,
+                  valueCents: row.revenueCents,
+                }))}
+              />
+            )}
+          </ReportCard>
 
-            <Card>
-              <CardHeader title="Faturamento por serviço" />
-              <div className="mt-3 flex flex-col gap-2">
-                {advanced.revenueByService.length === 0 ? (
-                  <EmptyState message="Sem dados no período." />
-                ) : (
-                  advanced.revenueByService.map((row) => (
-                    <Bar key={row.serviceId} label={row.serviceName} value={row.revenueCents} max={maxServiceRevenue} tone="info" />
-                  ))
-                )}
-              </div>
-            </Card>
+          <ReportCard
+            title={
+              isBarberRole
+                ? 'Forma de pagamento dos meus atendimentos'
+                : 'Faturamento por forma de pagamento'
+            }
+            loading={summaryLoading}
+            error={summaryQuery.isError}
+            onRetry={() => void summaryQuery.refetch()}
+            isEmpty={(summary?.paymentDistribution.length ?? 0) === 0}
+            empty="Nenhum pagamento registrado no período."
+            skeletonHeight={148}
+          >
+            {summary && <PaymentDonut entries={summary.paymentDistribution} />}
+          </ReportCard>
 
-            <Card>
-              <CardHeader title="Taxa de retorno — dias sem visita" />
-              <div className="mt-3 flex flex-col gap-2">
-                {advanced.returnRate.map((bucket) => (
-                  <div key={bucket.label} className="flex items-center justify-between text-sm">
-                    <span className="text-fg-muted">{bucket.label}</span>
-                    <div className="mx-3 h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
-                      <div className="h-full rounded-full bg-gold" style={{ width: `${Math.max(4, (bucket.clients / maxReturnClients) * 100)}%` }} />
-                    </div>
-                    <span className="font-semibold text-fg">{bucket.clients}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </>
-        ) : null}
+          {!isBarberRole && (
+            <>
+              <ReportCard
+                title="Taxa de retorno"
+                locked={locked}
+                onLockedClick={onLockedClick}
+                loading={advancedLoading}
+                error={advancedFailed}
+                onRetry={() => void advancedQuery.refetch()}
+                isEmpty={advancedReady && advanced.returnRate.clients === 0}
+                empty="Nenhum cliente com visita registrada ainda."
+                skeletonHeight={216}
+              >
+                {advancedReady && <ReturnRateCard returnRate={advanced.returnRate} />}
+              </ReportCard>
+
+              <ReportCard
+                title="Heatmap de horários de pico"
+                hint={advancedReady && advanced.heatmap.peakLabel ? `Pico: ${advanced.heatmap.peakLabel}` : undefined}
+                span={3}
+                locked={locked}
+                onLockedClick={onLockedClick}
+                loading={advancedLoading}
+                error={advancedFailed}
+                onRetry={() => void advancedQuery.refetch()}
+                isEmpty={advancedReady && advanced.heatmap.peakLabel === null}
+                empty="Nenhum atendimento no período para desenhar o mapa."
+                skeletonHeight={220}
+              >
+                {advancedReady && <PeakHeatmap heatmap={advanced.heatmap} />}
+              </ReportCard>
+
+              <ReportCard
+                title="Taxa de faltas por mês"
+                span={2}
+                locked={locked}
+                onLockedClick={onLockedClick}
+                loading={advancedLoading}
+                error={advancedFailed}
+                onRetry={() => void advancedQuery.refetch()}
+                isEmpty={
+                  advancedReady &&
+                  advanced.noShowTrend.points.every((point) => point.appointments === 0)
+                }
+                empty="Sem atendimentos nos últimos 8 meses."
+                skeletonHeight={192}
+              >
+                {advancedReady && <NoShowChart trend={advanced.noShowTrend} />}
+              </ReportCard>
+
+              <ReportCard
+                title="Ticket médio por barbeiro"
+                locked={locked}
+                onLockedClick={onLockedClick}
+                loading={advancedLoading}
+                error={advancedFailed}
+                onRetry={() => void advancedQuery.refetch()}
+                isEmpty={advancedReady && advanced.ticketByBarber.length === 0}
+                skeletonHeight={192}
+              >
+                {advancedReady && <TicketTable rows={advanced.ticketByBarber} />}
+              </ReportCard>
+            </>
+          )}
+        </div>
       </div>
+
+      <UpgradeModal
+        open={upsell !== null}
+        onClose={() => setUpsell(null)}
+        minPlanLabel={LOCKED_MIN_PLAN}
+        description={
+          upsell === 'export'
+            ? 'Exportar o relatório em PDF ou CSV faz parte dos relatórios avançados.'
+            : 'Os relatórios avançados abrem os blocos que estão embaçados nesta tela.'
+        }
+        benefits={upsell === 'export' ? EXPORT_BULLETS : LOCKED_BULLETS}
+      />
     </DashboardChrome>
   );
 }

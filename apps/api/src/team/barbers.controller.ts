@@ -1,16 +1,46 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { BarberListItem, ScheduleExceptionItem, WorkScheduleDay } from '@barbervp/types';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type {
+  BarberListItem,
+  ScheduleExceptionItem,
+  TeamPlanUsage,
+} from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
 import type { RequestContext } from '../common/types/request-context';
-import { BarbersService } from './barbers.service';
+import { MAX_IMAGE_BYTES } from '../adapters/storage/storage.adapter';
+import { BarbersService, type UploadedImageFile } from './barbers.service';
 import {
   CreateBarberDto,
   CreateScheduleExceptionDto,
   UpdateBarberDto,
-  UpdateWorkScheduleDto,
 } from './dto/team.dto';
+
+/** Mesmo upload em memória de Minha Página e Meu perfil — 5 MB, um arquivo. */
+const IMAGE_UPLOAD = FileInterceptor('file', {
+  limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+});
+
+const IMAGE_BODY = {
+  schema: {
+    type: 'object',
+    properties: { file: { type: 'string', format: 'binary' } },
+    required: ['file'],
+  },
+};
 
 /**
  * Equipe — `Barber`, escala semanal e exceções (folga/férias/feriado).
@@ -40,6 +70,12 @@ export class BarbersController {
     @Req() request: RequestContext,
   ): Promise<BarberListItem> {
     return this.barbers.create(tenantId, dto, actorUserId, request);
+  }
+
+  @Get('plan-usage')
+  @ApiOperation({ summary: 'Uso do teto de barbeiros do plano (barra + banner de downgrade)' })
+  planUsage(@CurrentTenant('id') tenantId: string): Promise<TeamPlanUsage> {
+    return this.barbers.planUsage(tenantId);
   }
 
   @Get('exceptions')
@@ -73,25 +109,45 @@ export class BarbersController {
     return this.barbers.deleteScheduleException(tenantId, id, actorUserId, request);
   }
 
-  @Get(':id/work-schedule')
-  @ApiOperation({ summary: 'Escala semanal do barbeiro' })
-  getWorkSchedule(
-    @Param('id') id: string,
-    @CurrentTenant('id') tenantId: string,
-  ): Promise<WorkScheduleDay[]> {
-    return this.barbers.getWorkSchedule(tenantId, id);
-  }
+  /*
+   * `GET|PUT /barbers/:id/work-schedule` SAÍRAM aqui (agente 29).
+   *
+   * As duas rotas nasceram na fase 06 e nunca ganharam consumidor: o modal da
+   * aba Equipe grava a escala junto com o resto do barbeiro num `PATCH :id`,
+   * em transação única, e `GET :id` já devolve a semana em `workSchedule`.
+   * Manter um segundo caminho de escrita para o MESMO dado é convidar as duas
+   * versões a divergirem — e rota que ninguém chama não tem quem perceba
+   * quando quebra.
+   *
+   * A capacidade não se perdeu: `BarbersService.getWorkSchedule` continua
+   * servindo o detalhe do barbeiro, e a escrita continua em `writeWeek`, dentro
+   * da transação do `PATCH`.
+   */
 
-  @Put(':id/work-schedule')
-  @ApiOperation({ summary: 'Atualiza a escala semanal (com intervalo de almoço)' })
-  updateWorkSchedule(
+  @Post(':id/avatar')
+  @UseInterceptors(IMAGE_UPLOAD)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(IMAGE_BODY)
+  @ApiOperation({ summary: 'Envia a foto do barbeiro (JPG/PNG/WebP, até 5 MB)' })
+  uploadAvatar(
     @Param('id') id: string,
-    @Body() dto: UpdateWorkScheduleDto,
+    @UploadedFile() file: UploadedImageFile | undefined,
     @CurrentTenant('id') tenantId: string,
     @CurrentUser('id') actorUserId: string,
     @Req() request: RequestContext,
-  ): Promise<WorkScheduleDay[]> {
-    return this.barbers.updateWorkSchedule(tenantId, id, dto, actorUserId, request);
+  ): Promise<BarberListItem> {
+    return this.barbers.uploadAvatar(tenantId, id, file, actorUserId, request);
+  }
+
+  @Delete(':id/avatar')
+  @ApiOperation({ summary: 'Remove a foto do barbeiro' })
+  removeAvatar(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser('id') actorUserId: string,
+    @Req() request: RequestContext,
+  ): Promise<BarberListItem> {
+    return this.barbers.removeAvatar(tenantId, id, actorUserId, request);
   }
 
   @Patch(':id')

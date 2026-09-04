@@ -34,6 +34,11 @@ export const ErrorCode = {
   OTP_EXPIRED: 'OTP_EXPIRED',
   OTP_MAX_ATTEMPTS: 'OTP_MAX_ATTEMPTS',
   OTP_COOLDOWN: 'OTP_COOLDOWN',
+  // 415 / 413 — upload de imagem (fase 25, `StorageAdapter`)
+  /// Arquivo que não é JPG/PNG/WebP.
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
+  /// Imagem acima do teto do storage (5 MB), recusada ANTES de tocar o disco.
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
   // 413
   /// Corpo acima do teto do `main.ts`. O body-parser recusa antes de qualquer
   /// controller, então nenhum módulo de negócio precisa se defender disso.

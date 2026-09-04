@@ -15,6 +15,8 @@ export * from './management';
 export * from './money';
 export * from './onboarding';
 export * from './pos';
+export * from './price-calculator';
+export * from './profile';
 export * from './reports';
 export * from './settings';
 export * from './whatsapp-config';

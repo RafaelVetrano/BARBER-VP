@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AppointmentStatus, CommissionRuleType, Prisma } from '@prisma/client';
 import type { ServiceListItem, ServiceListResponse } from '@barbervp/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/errors/api.exception';
@@ -30,6 +30,7 @@ export class ServicesAdminService {
 
   async list(tenantId: string, query: ServiceListQueryDto): Promise<ServiceListResponse> {
     const window = pageWindow(query.page, query.perPage);
+    const defaultCommissionBps = await this.defaultCommissionBps(tenantId);
     const where: Prisma.ServiceWhereInput = { tenantId, deletedAt: null };
 
     if (query.category) {
@@ -53,7 +54,39 @@ export class ServicesAdminService {
       this.prisma.service.count({ where }),
     ]);
 
-    return toPaginated(rows.map(toListItem), total, window);
+    return {
+      ...toPaginated(
+        rows.map((row) => toListItem(row, defaultCommissionBps)),
+        total,
+        window,
+      ),
+      defaultCommissionBps,
+    };
+  }
+
+  /**
+   * A comissão que um serviço herda quando não tem override: o `percentBps` da
+   * regra FIXED padrão da barbearia.
+   *
+   * Regra por FAIXAS não tem um percentual único — ele depende do faturamento
+   * acumulado do barbeiro no mês, que a tela do catálogo não conhece. Nesse
+   * caso a herança é 0 aqui e o cálculo real segue com a faixa no fechamento
+   * da comanda; a coluna mostra a faixa mais baixa como piso honesto.
+   */
+  private async defaultCommissionBps(tenantId: string): Promise<number> {
+    const rule = await this.prisma.commissionRule.findFirst({
+      where: { tenantId, active: true },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        type: true,
+        percentBps: true,
+        tiers: { select: { percentBps: true }, orderBy: { sortOrder: 'asc' }, take: 1 },
+      },
+    });
+    if (!rule) return 0;
+    return rule.type === CommissionRuleType.FIXED
+      ? (rule.percentBps ?? 0)
+      : (rule.tiers[0]?.percentBps ?? 0);
   }
 
   async create(
@@ -75,6 +108,8 @@ export class ServicesAdminService {
           durationMin: dto.durationMin,
           priceCents: dto.priceCents,
           category: dto.category ?? null,
+          color: dto.color ?? null,
+          commissionBps: dto.commissionBps ?? null,
           active: dto.active ?? true,
           sortOrder: count,
           barberServices: dto.barberIds
@@ -97,7 +132,7 @@ export class ServicesAdminService {
       request,
     );
 
-    return toListItem(created);
+    return toListItem(created, await this.defaultCommissionBps(tenantId));
   }
 
   async update(
@@ -130,6 +165,8 @@ export class ServicesAdminService {
             durationMin: dto.durationMin,
             priceCents: dto.priceCents,
             category: dto.category ?? null,
+            color: dto.color ?? null,
+            commissionBps: dto.commissionBps ?? null,
             active: dto.active ?? true,
           },
           include: SERVICE_INCLUDE,
@@ -148,7 +185,7 @@ export class ServicesAdminService {
       request,
     );
 
-    return toListItem(updated);
+    return toListItem(updated, await this.defaultCommissionBps(tenantId));
   }
 
   async setActive(
@@ -178,7 +215,72 @@ export class ServicesAdminService {
       request,
     );
 
-    return toListItem(updated);
+    return toListItem(updated, await this.defaultCommissionBps(tenantId));
+  }
+
+  /**
+   * "Excluir" do kebab (protótipo l.1770) — **soft-delete**.
+   *
+   * Nunca `DELETE` de verdade: `Appointment`, `OrderItem` e `ClientPlanItem`
+   * apontam para o serviço, e um histórico com o nome do serviço apagado é um
+   * relatório mentiroso. O `deletedAt` tira o serviço do catálogo, do booking
+   * e da agenda; o passado continua legível.
+   *
+   * O nome sai junto do índice `@@unique([tenantId, name])` — senão o dono não
+   * conseguiria recadastrar "Corte Masculino" depois de excluí-lo. O nome
+   * antigo fica preservado no `AuditLog` e nas comandas fechadas.
+   */
+  async remove(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<void> {
+    const service = await this.prisma.service.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!service) {
+      throw ApiException.notFound('Serviço não encontrado.');
+    }
+
+    const upcoming = await this.prisma.appointment.count({
+      where: {
+        tenantId,
+        serviceId: id,
+        startsAt: { gte: new Date() },
+        status: { in: [AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED] },
+      },
+    });
+    if (upcoming > 0) {
+      throw ApiException.conflict(
+        `Este serviço tem ${upcoming} agendamento(s) futuro(s). Cancele ou remarque antes de excluir — ou desative o serviço para tirá-lo do site sem mexer na agenda.`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.barberService.deleteMany({ where: { tenantId, serviceId: id } });
+      await tx.service.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          active: false,
+          name: `${service.name} (excluído ${Date.now()})`,
+        },
+      });
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.SERVICE_DELETED,
+        entity: 'Service',
+        entityId: id,
+        tenantId,
+        actorUserId,
+        metadata: { name: service.name },
+      },
+      request,
+    );
   }
 
   private async loadOwned(tenantId: string, id: string): Promise<void> {
@@ -215,7 +317,7 @@ export class ServicesAdminService {
   }
 }
 
-function toListItem(row: ServiceRow): ServiceListItem {
+function toListItem(row: ServiceRow, defaultCommissionBps: number): ServiceListItem {
   return {
     id: row.id,
     name: row.name,
@@ -223,6 +325,9 @@ function toListItem(row: ServiceRow): ServiceListItem {
     durationMin: row.durationMin,
     priceCents: row.priceCents,
     category: row.category,
+    color: row.color,
+    commissionBps: row.commissionBps,
+    effectiveCommissionBps: row.commissionBps ?? defaultCommissionBps,
     isCombo: row.isCombo,
     active: row.active,
     sortOrder: row.sortOrder,

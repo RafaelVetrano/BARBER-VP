@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { CommissionEntryStatus, Prisma } from '@prisma/client';
+import { CommissionEntryKind, CommissionEntryStatus, Prisma } from '@prisma/client';
 import type {
   ClosePeriodDto as ClosePeriodContract,
   CommissionBarberSummary,
+  CommissionExtractEntry,
+  CommissionPeriodQuery,
   CommissionPeriodResponse,
+  CommissionPeriodType,
   CommissionRuleItem,
   CreateValeDto as CreateValeContract,
   UpsertCommissionRuleDto as UpsertCommissionRuleContract,
@@ -15,6 +18,16 @@ import { AuditAction, AuditService } from '../audit/audit.service';
 import type { RequestContext } from '../common/types/request-context';
 import type { StaffScope } from '../staff-agenda/staff-scope.service';
 import { pickTierPercent } from './commission-calc.service';
+
+/** Recorte resolvido de `type` + `anchor` — `end` é EXCLUSIVO. */
+interface PeriodRange {
+  type: CommissionPeriodType;
+  start: Date;
+  end: Date;
+  /** Competência (`YYYY-MM`) que "Fechar período" trava. */
+  month: string;
+  referenceMonth: Date;
+}
 
 @Injectable()
 export class CommissionsService {
@@ -56,29 +69,31 @@ export class CommissionsService {
       }
     }
 
+    const tiers = dto.type === 'TIERED' ? normalizeTiers(dto.tiers ?? []) : [];
+    const percentProdutosBps = dto.percentProdutosBps ?? 0;
+    if (percentProdutosBps < 0 || percentProdutosBps > 10_000) {
+      throw ApiException.badRequest('O percentual de produtos precisa ficar entre 0% e 100%.');
+    }
+
     const rule = await this.prisma.$transaction(async (tx) => {
+      const data = {
+        name: dto.name,
+        type: dto.type,
+        percentBps: dto.type === 'FIXED' ? (dto.percentBps ?? 0) : null,
+        percentProdutosBps,
+        deductVales: dto.deductVales ?? true,
+      };
+
       const saved = id
         ? await tx.commissionRule.update({
             where: { id },
-            data: {
-              name: dto.name,
-              type: dto.type,
-              percentBps: dto.type === 'FIXED' ? (dto.percentBps ?? 0) : null,
-              tiers: { deleteMany: {} },
-            },
+            data: { ...data, tiers: { deleteMany: {} } },
           })
-        : await tx.commissionRule.create({
-            data: {
-              tenantId,
-              name: dto.name,
-              type: dto.type,
-              percentBps: dto.type === 'FIXED' ? (dto.percentBps ?? 0) : null,
-            },
-          });
+        : await tx.commissionRule.create({ data: { tenantId, ...data } });
 
-      if (dto.type === 'TIERED' && dto.tiers && dto.tiers.length > 0) {
+      if (tiers.length > 0) {
         await tx.commissionTier.createMany({
-          data: dto.tiers.map((tier, index) => ({
+          data: tiers.map((tier, index) => ({
             tenantId,
             ruleId: saved.id,
             upToCents: tier.upToCents,
@@ -122,8 +137,21 @@ export class CommissionsService {
 
   // ── Extrato do período ──────────────────────────────────────────────────
 
-  async period(tenantId: string, month: string, scope: StaffScope): Promise<CommissionPeriodResponse> {
-    const referenceMonth = parseMonth(month);
+  /**
+   * Extrato do recorte pedido — "Semanal" ou "Mensal" do protótipo
+   * (`Dashboard.dc.html` l.1096).
+   *
+   * O recorte é só de LEITURA. A competência continua sendo o mês: é sobre o
+   * faturamento mensal que a faixa da regra é escolhida (SPEC: até R$5.000 →
+   * 40%…) e é o mês que `closePeriod` trava. Uma semana isolada escolheria uma
+   * faixa mais baixa e pagaria a menos.
+   */
+  async period(
+    tenantId: string,
+    query: CommissionPeriodQuery,
+    scope: StaffScope,
+  ): Promise<CommissionPeriodResponse> {
+    const range = resolveRange(query);
 
     const barbers = await this.prisma.barber.findMany({
       where: {
@@ -134,7 +162,17 @@ export class CommissionsService {
       select: {
         id: true,
         name: true,
-        commissionRule: { select: { name: true } },
+        commissionRule: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            percentBps: true,
+            percentProdutosBps: true,
+            deductVales: true,
+            tiers: { select: { upToCents: true, percentBps: true, sortOrder: true } },
+          },
+        },
       },
       orderBy: { name: 'asc' },
     });
@@ -149,7 +187,14 @@ export class CommissionsService {
 
     for (const barber of barbers) {
       const entries = await this.prisma.commissionEntry.findMany({
-        where: { tenantId, barberId: barber.id, referenceMonth },
+        where: {
+          tenantId,
+          barberId: barber.id,
+          // Pelo fechamento da COMANDA, e não por `createdAt`: é a data que a
+          // tela mostra na coluna "Data" e a única que sobrevive a um seed com
+          // histórico retroativo.
+          order: { closedAt: { gte: range.start, lt: range.end } },
+        },
         include: {
           order: { select: { closedAt: true, client: { select: { name: true } }, guestName: true } },
           orderItem: { select: { description: true } },
@@ -157,24 +202,39 @@ export class CommissionsService {
         orderBy: { createdAt: 'asc' },
       });
 
-      const produtos = await this.prisma.orderItem.aggregate({
+      // Faturamento bruto do barbeiro no recorte — a base das duas primeiras
+      // colunas da tabela. Vem do `OrderItem` e não dos lançamentos: item sem
+      // comissão (barbeiro sem regra, produto a 0%) continua sendo faturamento.
+      const faturado = await this.prisma.orderItem.groupBy({
+        by: ['kind'],
         where: {
           tenantId,
           barberId: barber.id,
-          kind: 'PRODUCT',
-          order: { status: 'CLOSED', closedAt: { gte: referenceMonth, lt: nextMonth(referenceMonth) } },
+          order: { status: 'CLOSED', closedAt: { gte: range.start, lt: range.end } },
         },
         _sum: { totalCents: true },
       });
+      const faturadoDe = (kind: 'SERVICE' | 'PRODUCT') =>
+        faturado.find((row) => row.kind === kind)?._sum.totalCents ?? 0;
 
+      // Vale filtrado pelo DIA do adiantamento (`Vale.date`), que é o que
+      // fecha tanto no mês quanto na semana. Vale já quitado continua na
+      // conta: some-lo depois do fechamento faria o período fechado exibir um
+      // total MAIOR do que o que foi efetivamente pago.
       const vales = await this.prisma.vale.aggregate({
-        where: { tenantId, barberId: barber.id, referenceMonth, settledAt: null },
+        where: { tenantId, barberId: barber.id, date: { gte: range.start, lt: range.end } },
         _sum: { amountCents: true },
       });
 
-      const faturadoServicosCents = entries.reduce((sum, entry) => sum + entry.baseCents, 0);
-      const comissaoCents = entries.reduce((sum, entry) => sum + entry.amountCents, 0);
+      const servicos = entries.filter((entry) => entry.kind === CommissionEntryKind.SERVICE);
+      const produtos = entries.filter((entry) => entry.kind === CommissionEntryKind.PRODUCT);
+      const comissaoServicosCents = sumBy(servicos, (entry) => entry.amountCents);
+      const comissaoProdutosCents = sumBy(produtos, (entry) => entry.amountCents);
+      const comissaoCents = comissaoServicosCents + comissaoProdutosCents;
+
+      const deductVales = barber.commissionRule?.deductVales ?? true;
       const valeCents = vales._sum.amountCents ?? 0;
+
       const closed = entries.length > 0 && entries.every((entry) => entry.status === CommissionEntryStatus.PAID);
       if (entries.length > 0) {
         anyEntry = true;
@@ -184,26 +244,36 @@ export class CommissionsService {
       summaries.push({
         barberId: barber.id,
         barberName: barber.name,
+        ruleId: barber.commissionRule?.id ?? null,
         ruleName: barber.commissionRule?.name ?? null,
-        faturadoServicosCents,
-        faturadoProdutosCents: produtos._sum.totalCents ?? 0,
-        valeCents,
+        ruleType: barber.commissionRule?.type ?? null,
+        // A taxa que a tela mostra no chip é a que os lançamentos de SERVIÇO
+        // realmente usaram — não a nominal da regra. Num mês que cruzou a
+        // faixa antes de fechar, as duas divergem, e quem paga é a primeira.
+        appliedPercentBps: servicos.at(-1)?.percentBps ?? barber.commissionRule?.percentBps ?? null,
+        ruleProdutosPercentBps: barber.commissionRule?.percentProdutosBps ?? 0,
+        deductVales,
+        faturadoServicosCents: faturadoDe('SERVICE'),
+        faturadoProdutosCents: faturadoDe('PRODUCT'),
+        comissaoServicosCents,
+        comissaoProdutosCents,
         comissaoCents,
-        totalCents: Math.max(0, comissaoCents - valeCents),
-        atendimentos: entries.length,
+        valeCents,
+        totalCents: deductVales ? Math.max(0, comissaoCents - valeCents) : comissaoCents,
+        atendimentos: servicos.length,
         status: closed ? 'PAID' : 'PENDING',
-        extrato: entries.map((entry) => ({
-          date: entry.createdAt.toISOString(),
-          clientName: entry.order?.client?.name ?? entry.order?.guestName ?? 'Cliente avulso',
-          serviceName: entry.orderItem?.description ?? '—',
-          amountCents: entry.baseCents,
-        })),
+        extrato: entries.map(toExtractEntry),
       });
     }
 
     return {
-      month,
+      type: range.type,
+      month: range.month,
+      start: isoDay(range.start),
+      end: isoDay(new Date(range.end.getTime() - 86_400_000)),
       closed: anyEntry ? allClosed : false,
+      totalAPagarCents: sumBy(summaries, (summary) => summary.totalCents),
+      scoped: scope.forcedBarberId !== null,
       barbers: summaries,
     };
   }
@@ -225,6 +295,7 @@ export class CommissionsService {
           select: {
             type: true,
             percentBps: true,
+            deductVales: true,
             tiers: { select: { upToCents: true, percentBps: true, sortOrder: true } },
           },
         },
@@ -240,12 +311,15 @@ export class CommissionsService {
           continue;
         }
 
-        const totalBaseCents = entries.reduce((sum, entry) => sum + entry.baseCents, 0);
+        // Só o faturamento de SERVIÇO escolhe a faixa — produto tem percentual
+        // único e já nasceu definitivo, então sua taxa não é recalculada.
+        const servicos = entries.filter((entry) => entry.kind === CommissionEntryKind.SERVICE);
+        const totalBaseCents = sumBy(servicos, (entry) => entry.baseCents);
         const finalPercentBps = barber.commissionRule
           ? pickTierPercent(barber.commissionRule, totalBaseCents)
           : 0;
 
-        for (const entry of entries) {
+        for (const entry of servicos) {
           await tx.commissionEntry.update({
             where: { id: entry.id },
             data: {
@@ -257,10 +331,20 @@ export class CommissionsService {
           });
         }
 
-        await tx.vale.updateMany({
-          where: { tenantId, barberId: barber.id, referenceMonth, settledAt: null },
-          data: { settledAt: new Date() },
+        await tx.commissionEntry.updateMany({
+          where: { id: { in: entries.filter((e) => e.kind === CommissionEntryKind.PRODUCT).map((e) => e.id) } },
+          data: { status: CommissionEntryStatus.PAID, paidAt: new Date() },
         });
+
+        // Vale só é quitado quando a regra desconta. Com o toggle desligado o
+        // adiantamento não entrou no total pago — dar baixa nele aqui apagaria
+        // uma dívida que ninguém cobrou.
+        if (barber.commissionRule?.deductVales ?? true) {
+          await tx.vale.updateMany({
+            where: { tenantId, barberId: barber.id, referenceMonth, settledAt: null },
+            data: { settledAt: new Date() },
+          });
+        }
       }
     });
 
@@ -275,7 +359,7 @@ export class CommissionsService {
       request,
     );
 
-    return this.period(tenantId, dto.month, { forcedBarberId: null });
+    return this.period(tenantId, { type: 'MONTHLY', month: dto.month }, { forcedBarberId: null });
   }
 
   // ── Vales ────────────────────────────────────────────────────────────────
@@ -286,15 +370,7 @@ export class CommissionsService {
       include: { barber: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    return vales.map((vale) => ({
-      id: vale.id,
-      barberId: vale.barberId,
-      barberName: vale.barber.name,
-      amountCents: vale.amountCents,
-      referenceMonth: vale.referenceMonth.toISOString().slice(0, 7),
-      description: vale.description,
-      settled: vale.settledAt !== null,
-    }));
+    return vales.map(toValeItem);
   }
 
   async createVale(
@@ -319,9 +395,11 @@ export class CommissionsService {
         tenantId,
         barberId: dto.barberId,
         amountCents: dto.amountCents,
+        date,
         referenceMonth,
         description: dto.description ?? null,
       },
+      include: { barber: { select: { name: true } } },
     });
 
     await this.audit.record(
@@ -336,16 +414,18 @@ export class CommissionsService {
       request,
     );
 
-    return {
-      id: vale.id,
-      barberId: vale.barberId,
-      barberName: barber.name,
-      amountCents: vale.amountCents,
-      referenceMonth: vale.referenceMonth.toISOString().slice(0, 7),
-      description: vale.description,
-      settled: false,
-    };
+    return toValeItem(vale);
   }
+}
+
+// ── Período ────────────────────────────────────────────────────────────────
+
+function sumBy<T>(rows: T[], pick: (row: T) => number): number {
+  return rows.reduce((sum, row) => sum + pick(row), 0);
+}
+
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function parseMonth(month: string): Date {
@@ -356,8 +436,87 @@ function parseMonth(month: string): Date {
   return new Date(Date.UTC(year, mm - 1, 1));
 }
 
-function nextMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+function parseDay(day: string): Date {
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw ApiException.badRequest('Data inválida — use o formato YYYY-MM-DD.');
+  }
+  return parsed;
+}
+
+/** Segunda-feira da semana do dia informado (UTC) — a semana brasileira. */
+function weekStart(day: Date): Date {
+  const start = new Date(day);
+  const weekday = (start.getUTCDay() + 6) % 7;
+  start.setUTCDate(start.getUTCDate() - weekday);
+  return start;
+}
+
+function resolveRange(query: CommissionPeriodQuery): PeriodRange {
+  const type: CommissionPeriodType = query.type ?? 'MONTHLY';
+
+  if (type === 'WEEKLY') {
+    const anchor = query.anchor ? parseDay(query.anchor) : parseDay(isoDay(new Date()));
+    const start = weekStart(anchor);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 7);
+    // A competência é a do DIA ÂNCORA, não a do começo da semana: numa semana
+    // que atravessa a virada do mês, é o dia escolhido no stepper que diz de
+    // qual fechamento aquela leitura faz parte.
+    const referenceMonth = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+    return { type, start, end, month: isoDay(referenceMonth).slice(0, 7), referenceMonth };
+  }
+
+  const referenceMonth = query.month
+    ? parseMonth(query.month)
+    : (() => {
+        const anchor = query.anchor ? parseDay(query.anchor) : new Date();
+        return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+      })();
+  const end = new Date(Date.UTC(referenceMonth.getUTCFullYear(), referenceMonth.getUTCMonth() + 1, 1));
+  return { type, start: referenceMonth, end, month: isoDay(referenceMonth).slice(0, 7), referenceMonth };
+}
+
+/**
+ * Faixas em ordem crescente, com a ÚLTIMA sempre aberta (`upToCents: null`).
+ * O editor do protótipo desenha a última linha como "Acima de R$ …" e trava o
+ * campo; garantir isso aqui evita uma regra sem teto que deixaria o
+ * faturamento acima da maior faixa sem percentual nenhum.
+ */
+function normalizeTiers(
+  tiers: Array<{ upToCents: number | null; percentBps: number }>,
+): Array<{ upToCents: number | null; percentBps: number }> {
+  const bounded = tiers
+    .filter((tier) => tier.upToCents !== null)
+    .sort((a, b) => (a.upToCents ?? 0) - (b.upToCents ?? 0));
+  const open = tiers.find((tier) => tier.upToCents === null) ?? tiers.at(-1);
+  if (!open) {
+    return [];
+  }
+  const last = bounded.at(-1);
+  const openTier = { upToCents: null, percentBps: open.percentBps };
+  return last && last === open ? [...bounded.slice(0, -1), openTier] : [...bounded, openTier];
+}
+
+// ── Serialização ───────────────────────────────────────────────────────────
+
+type EntryRow = Prisma.CommissionEntryGetPayload<{
+  include: {
+    order: { select: { closedAt: true; client: { select: { name: true } }; guestName: true } };
+    orderItem: { select: { description: true } };
+  };
+}>;
+
+function toExtractEntry(entry: EntryRow): CommissionExtractEntry {
+  return {
+    date: (entry.order?.closedAt ?? entry.createdAt).toISOString(),
+    clientName: entry.order?.client?.name ?? entry.order?.guestName ?? 'Cliente avulso',
+    itemName: entry.orderItem?.description ?? '—',
+    kind: entry.kind,
+    baseCents: entry.baseCents,
+    percentBps: entry.percentBps,
+    commissionCents: entry.amountCents,
+  };
 }
 
 type RuleRow = Prisma.CommissionRuleGetPayload<{
@@ -373,7 +532,31 @@ function toRuleItem(rule: RuleRow): CommissionRuleItem {
     tiers: rule.tiers
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((tier) => ({ upToCents: tier.upToCents, percentBps: tier.percentBps })),
+    percentProdutosBps: rule.percentProdutosBps,
+    deductVales: rule.deductVales,
     active: rule.active,
     barberIds: rule.barbers.map((barber) => barber.id),
+  };
+}
+
+function toValeItem(vale: {
+  id: string;
+  barberId: string;
+  amountCents: number;
+  date: Date;
+  referenceMonth: Date;
+  description: string | null;
+  settledAt: Date | null;
+  barber: { name: string };
+}): ValeItem {
+  return {
+    id: vale.id,
+    barberId: vale.barberId,
+    barberName: vale.barber.name,
+    amountCents: vale.amountCents,
+    date: vale.date.toISOString().slice(0, 10),
+    referenceMonth: vale.referenceMonth.toISOString().slice(0, 7),
+    description: vale.description,
+    settled: vale.settledAt !== null,
   };
 }

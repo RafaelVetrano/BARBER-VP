@@ -3,6 +3,7 @@ import { StaffAgendaModule } from '../staff-agenda/staff-agenda.module';
 import { CommissionsController } from './commissions.controller';
 import { CommissionsService } from './commissions.service';
 import { CommissionCalcService } from './commission-calc.service';
+import { CommissionReportService } from './commission-report.service';
 
 /**
  * `CommissionCalcService` é exportado porque o fechamento de comanda (fase
@@ -13,7 +14,7 @@ import { CommissionCalcService } from './commission-calc.service';
 @Module({
   imports: [StaffAgendaModule],
   controllers: [CommissionsController],
-  providers: [CommissionsService, CommissionCalcService],
+  providers: [CommissionsService, CommissionCalcService, CommissionReportService],
   exports: [CommissionCalcService],
 })
 export class CommissionsModule {}
