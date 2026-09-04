@@ -9,10 +9,12 @@ import type {
   EmailCheckResult,
   EstablishmentSession,
   ExportedClientData,
+  IbgeCity,
   OnboardingState,
   OtpChallenge,
   OtpVerifyResult,
   SlugAvailability,
+  UfOption,
   UpdateClientProfileInput,
 } from '@barbervp/types';
 
@@ -195,6 +197,12 @@ export const onboardingApi = {
   lookupCep: async (client: AxiosInstance, cep: string): Promise<CepLookupResult> =>
     (await client.get<CepLookupResult>(`/onboarding/cep/${cep.replace(/\D/g, '')}`)).data,
 
+  listUfs: async (client: AxiosInstance): Promise<UfOption[]> =>
+    (await client.get<UfOption[]>('/onboarding/ufs')).data,
+
+  listCities: async (client: AxiosInstance, uf: string): Promise<IbgeCity[]> =>
+    (await client.get<IbgeCity[]>(`/onboarding/cities/${uf.toUpperCase()}`)).data,
+
   saveProfile: async (
     client: AxiosInstance,
     input: OnboardingState['profile'],
@@ -207,11 +215,42 @@ export const onboardingApi = {
   ): Promise<OnboardingState> =>
     (await client.put<OnboardingState>('/onboarding/location', input)).data,
 
-  saveIdentity: async (
+  /** Passo 3 — só o slug: logo e capa sobem por `uploadImage`. */
+  saveIdentity: async (client: AxiosInstance, slug: string): Promise<OnboardingState> =>
+    (await client.put<OnboardingState>('/onboarding/identity', { slug })).data,
+
+  /**
+   * Logo e capa do passo 3, pela MESMA rota da aba Minha Página — o campo de
+   * destino (`TenantSettings.logoUrl`/`coverUrl`) é o mesmo, e uma rota própria
+   * do onboarding seria um segundo caminho de escrita para o mesmo dado.
+   *
+   * Devolve só as duas URLs porque é o que o passo precisa; o corpo completo é
+   * o `MyPageSettings`, que só a aba Minha Página consome.
+   */
+  uploadImage: async (
     client: AxiosInstance,
-    input: OnboardingState['identity'],
-  ): Promise<OnboardingState> =>
-    (await client.put<OnboardingState>('/onboarding/identity', input)).data,
+    slot: 'logo' | 'cover',
+    file: File,
+  ): Promise<{ logoUrl: string | null; coverUrl: string | null }> => {
+    const body = new FormData();
+    body.append('file', file);
+    const { data } = await client.post<{ logoUrl: string | null; coverUrl: string | null }>(
+      `/my-page/images/${slot}`,
+      body,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return { logoUrl: data.logoUrl, coverUrl: data.coverUrl };
+  },
+
+  removeImage: async (
+    client: AxiosInstance,
+    slot: 'logo' | 'cover',
+  ): Promise<{ logoUrl: string | null; coverUrl: string | null }> => {
+    const { data } = await client.delete<{ logoUrl: string | null; coverUrl: string | null }>(
+      `/my-page/images/${slot}`,
+    );
+    return { logoUrl: data.logoUrl, coverUrl: data.coverUrl };
+  },
 
   saveServices: async (
     client: AxiosInstance,

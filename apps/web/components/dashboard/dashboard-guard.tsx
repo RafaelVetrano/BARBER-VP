@@ -60,6 +60,11 @@ export function DashboardGuard({ children, isOnboardingRoute = false }: Dashboar
     <RequireEstablishmentAuth
       loginUrl={LOGIN_URL}
       onboardingPath="/app/configurar"
+      // Fecha o outro lado da regra do agente 30: o wizard não reabre depois de
+      // concluído. Quem digita `/app/configurar` com tudo pronto volta ao
+      // painel — e quem acaba de concluir continua vendo a tela final, porque
+      // o guard olha o estado de ENTRADA, não o de agora.
+      dashboardPath="/app"
       isOnboardingRoute={isOnboardingRoute}
       navigate={navigate}
     >

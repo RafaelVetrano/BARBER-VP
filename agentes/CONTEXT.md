@@ -1,10 +1,63 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-09-03 — **agente 29 (reparos transversais)**
-concluído, e com ele a **linha 15 (aba Agenda) finalmente fechada**. Esta fase
-não auditou aba nova: varreu o que quatorze agentes empurraram para frente.
+Atualizado por último: 2026-09-04 — **agente 30 (configuração inicial
+obrigatória)** concluído.
 
-O achado que mais dói é o que estava na PORTA do produto. **Um visitante
+A fase começa por uma **regra de produto**, não por um defeito: **concluir a
+configuração inicial é obrigatório para acessar o painel.** Não existe
+"explorar antes", não existe "continuar depois" — o dono entra no wizard depois
+do cadastro e só sai dele pela última etapa. Tudo o mais decorre disso.
+
+O achado que mais dói é o que a regra expôs: **a obrigatoriedade era só do
+navegador.** `POST /onboarding/complete` marcava `onboardingDoneAt` sem
+conferir nada, então uma chamada avulsa à rota destravava o painel inteiro de
+uma barbearia sem endereço e sem um serviço sequer — e uma barbearia nesse
+estado não monta grade de agendamento nenhuma. Agora a rota recusa com 409
+`ONBOARDING_INCOMPLETE`, listando os passos que faltam, e confere o **dado
+gravado**, não o contador `onboardingStep` (que "Pular etapa" faz subir sem
+salvar — confiar nele deixaria passar exatamente o caso que a verificação
+existe para pegar).
+
+Dois botões contradiziam a regra e saíram: o **"Pular e explorar o painel"** das
+boas-vindas, que navegava para `/app` e era devolvido para o wizard pelo guard —
+girava em falso —, e o **"×" (continuar depois)** do cabeçalho dos 6 passos.
+Nenhum atalho os substituiu. O outro lado da regra também estava aberto: o
+wizard **reabria depois de concluído**, e quem digitasse `/app/configurar` com
+tudo pronto voltava à tela de conclusão em vez do painel.
+
+E um aviso que mentia há duas fases: o passo 3 pedia **"URL do logo"** e **"URL
+da foto de capa"** dizendo que "o upload direto chega na fase de integrações" —
+mas o `StorageAdapter` existe desde o agente 25, `POST /my-page/images/:slot`
+recebe multipart e grava na MESMA `TenantSettings` que o passo escreve. Faltava
+só o consumidor. Agora são dois `ImageSlot` reusados da Minha Página, com
+prévia de como a barbearia vai aparecer na página pública. Junto, a dívida da
+fase 11: o link do fim do wizard era `{base}/agendar/{slug}` e a página é
+`{base}/{slug}` — o produto entregava ao dono um **404 para mandar aos
+clientes**.
+
+No passo 2, Cidade e UF deixaram de ser texto livre e viraram seletores com
+busca (`Combobox` novo em `packages/ui`): 27 UFs de lista estática, municípios
+do IBGE com cache no Redis por 30 dias — o mesmo arranjo da ViaCEP, pelas
+mesmas razões. O CEP passa a **selecionar** os dois casando pelo código IBGE,
+não pelo nome.
+
+A lição de método da fase é a do #9 da fase 13, repetida: **verde de varredura
+não prova que a tela certa foi medida.** `/app/configurar` nunca tinha entrado
+na varredura responsiva — o dono do seed já concluiu o onboarding, então abrir
+a rota com ele media o dashboard. Ao medir os 6 passos de verdade
+(`?passo=N`, com uma fixture de barbearia pendente), apareceram **7 pendências
+que nunca ninguém tinha visto**: `flex-1` no eixo vertical espremendo campos de
+48px para 19px em três passos, cinco seletores de 40px onde a régua pede 44, e
+um botão de 365px empurrando a página inteira a 360.
+
+Suíte: **97 unit · 364 e2e · 183 isolamento**, mais **25 unit de frontend**
+(+15 e2e, +3 isolamento, +11 de frontend). `make responsive --delay=6000` sem
+pendência nas 35 rotas **e nos 6 passos do wizard**, nos 5 tamanhos.
+
+Antes disso, o **agente 29 (reparos transversais)**, e com ele a **linha 15
+(aba Agenda) finalmente fechada**. Esta fase não auditou aba nova: varreu o que
+quatorze agentes empurraram para frente. O achado que mais doeu lá foi o que
+estava na PORTA do produto. **Um visitante
 anônimo que abrisse `/app` ou `/admin` ficava preso para sempre no skeleton
 "Carregando sua sessão…"** — não ia para o login, não dava erro, não fazia
 nada. O mecanismo é um deadlock de uma linha em `packages/ui/src/lib/api-client.ts`:
@@ -41,10 +94,8 @@ nove correções previstas já estavam feitas, e ninguém sabia porque o registr
 nunca foi escrito. É o argumento mais concreto deste arquivo para escrevê-lo
 antes de fechar a sessão.
 
-Suíte: **97 unit · 349 e2e · 180 isolamento**, mais **14 unit de frontend** —
-suíte nova, criada por duas defesas que nada reprovava no CI: o deadlock acima
-e a guarda de host do super admin. `make responsive` sem pendência em nenhuma
-das 35 rotas, nos 5 tamanhos.
+A suíte de frontend nasceu ali, criada por duas defesas que nada reprovava no
+CI: o deadlock acima e a guarda de host do super admin.
 
 Antes disso, o **agente 27 (auditoria 1:1 da tela Meu perfil)**: a `/app/meu-perfil` foi reconstruída contra
 `Dashboard.dc.html` l.2737–2817 (dono/gerente), `DashboardFuncionario.dc.html`
@@ -241,6 +292,7 @@ achados"). Antes disso, o agente 16 reconstruiu a `/app/clientes`, o 14 separou
 | 27 | Auditoria 1:1 — tela Meu perfil | ✅ |
 | 28 | Auditoria 1:1 — aba Assistente IA (`auditoria/`) | ✅ |
 | 29 | Reparos transversais — fecha o 15 e as dívidas em aberto | ✅ |
+| 30 | Configuração inicial obrigatória — wizard `/app/configurar` (`auditoria/`) | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
@@ -295,23 +347,28 @@ Todas `@TenantOptional()`: o tenant destas rotas nasce do login, nunca de header
 | POST | `/client-auth/refresh` · `/logout` | cookie | 60/min | Cookie e audience próprios. |
 | GET | `/client-auth/me` | Bearer | — | `@Roles('CLIENT')`. |
 
-### Onboarding (`/api/v1/onboarding`) — fase 03
+### Onboarding (`/api/v1/onboarding`) — fase 03, revisto pelo agente 30
 
 `@Roles('OWNER','MANAGER')`; tenant SEMPRE do `@CurrentTenant()` (JWT).
 Todo `PUT` devolve o `OnboardingState` completo.
 
+**Concluir o wizard é obrigatório para acessar o painel** (regra de produto do
+agente 30), e a obrigatoriedade é do SERVIDOR: ver `complete`.
+
 | Método | Rota | Observações |
 |---|---|---|
-| GET | `/onboarding` | Estado do wizard — permite retomar de onde parou. |
-| GET | `/onboarding/slug?slug=` | Disponibilidade do link público, com sugestão. |
-| GET | `/onboarding/cep/:cep` | Proxy da ViaCEP com cache no Redis (30 dias). 30/min. |
+| GET | `/onboarding` | Estado do wizard — permite retomar de onde parou. Devolve `publicUrl` (`{base}/{slug}`), `publicBaseUrl` (o MESMO de `GET /my-page`) e `ownerGreetingName`. |
+| GET | `/onboarding/slug?slug=` | Disponibilidade do link público, com sugestão. Devolve `reserved: true` quando o nome é de uma ROTA do produto — recusa que nunca vai virar disponível, e a tela diz isso (🆕 ag.30). |
+| GET | `/onboarding/cep/:cep` | Proxy da ViaCEP com cache no Redis (30 dias). 30/min. Passou a devolver `ibgeCode` — é por ele que o passo 2 seleciona a cidade no combo (chave de cache versionada para `v2`). |
+| GET | `/onboarding/ufs` | 🆕 ag.30. As 27 UFs, lista ESTÁTICA de `@barbervp/types`. Sem chamada externa: 27 itens que não mudam desde 1988. |
+| GET | `/onboarding/cities/:uf` | 🆕 ag.30. Proxy da API de localidades do IBGE, cache no Redis por 30 dias, mesmo throttle do CEP (30/min). `{ id, name }`, `id` = código IBGE. IBGE fora do ar devolve lista VAZIA (e não grava cache): a tela degrada para cidade digitada. |
 | PUT | `/onboarding/profile` | Passo 1 — nome, telefone, Instagram, descrição (200 chars). |
-| PUT | `/onboarding/location` | Passo 2 — endereço estruturado + linha única renderizada. |
-| PUT | `/onboarding/identity` | Passo 3 — logo, capa, slug (pulável). |
+| PUT | `/onboarding/location` | Passo 2 — endereço estruturado + linha única renderizada. Aceita `cityIbgeCode` (7 dígitos) além de `city`/`state`, e grava os três; `state` validado contra as 27 UFs. |
+| PUT | `/onboarding/identity` | Passo 3 — **só o slug** (pulável). `logoUrl`/`coverUrl` saíram do DTO: `forbidNonWhitelisted` devolve 400 se vierem. Logo e capa sobem por `POST /my-page/images/:slot`. 409 `SLUG_RESERVED` (novo) separado de `SLUG_IN_USE`. |
 | PUT | `/onboarding/services` | Passo 4 — `Service` em lote (sumiu = soft delete). |
 | PUT | `/onboarding/team` | Passo 5 — `Barber` em lote (pulável); o dono é preservado. |
 | PUT | `/onboarding/business-hours` | Passo 6 — `TenantBusinessHour` + propaga para `WorkSchedule`. |
-| POST | `/onboarding/complete` | Marca `onboardingDoneAt`. |
+| POST | `/onboarding/complete` | Marca `onboardingDoneAt` — **e só se os passos OBRIGATÓRIOS (1, 2, 4 e 6) tiverem dado gravado**. Senão, 409 `ONBOARDING_INCOMPLETE` com `details.missingSteps`. Confere o DADO, não o contador: "Pular etapa" faz `onboardingStep` subir sem salvar. Os passos 3 e 5 seguem puláveis (decisão da fase 03). |
 
 ### Planos públicos (`/api/v1/public/saas-plans`) — fase 10
 
@@ -1192,6 +1249,255 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
 
+## O que o agente 30 (configuração inicial obrigatória) entregou
+
+Alvo: o wizard `/app/configurar`, nascido na fase 03 e nunca auditado desde
+então. A fase parte de uma regra de produto — **concluir a configuração inicial
+é obrigatória para acessar o painel** — e de quatro problemas que o dono trouxe
+do navegador em 2026-09-03.
+
+### Bloco A — Obrigatoriedade: nos DOIS lados ✅
+
+1. **Cliente — já estava certo, e foi conferido.** Toda rota de
+   `(dashboard)/app/*` monta `DashboardChrome`, que monta o `DashboardGuard`:
+   `/app/agenda`, `/app/clientes` e `/app/configuracoes` digitadas na barra
+   caem no wizard, conferido no navegador. As únicas rotas que passam com
+   onboarding pendente são as que não pertencem ao painel — `/app/configurar`,
+   `/app/selecionar-barbearia`, `/app/aceitar-convite`, `/app/impersonar` — mais
+   o `/app/playground`, que é a galeria de componentes da fase 02, não tela de
+   produto.
+
+   O que estava errado era **o que acontecia durante o redirect**: o guard
+   decidia num `useEffect` e devolvia `children` no MESMO passo, então a tela do
+   painel chegava a montar e a disparar requisições antes de a navegação
+   acontecer. Agora o guard não renderiza o filho enquanto o destino não é
+   "ficar".
+
+2. **Servidor — a barreira que não existia.** `POST /onboarding/complete`
+   marcava `onboardingDoneAt` sem conferir nada. Agora recusa com 409
+   `ONBOARDING_INCOMPLETE` (`details.missingSteps`) enquanto faltar passo
+   obrigatório, e a verificação olha o **dado gravado**, não o contador
+   `onboardingStep` — "Pular etapa" o faz subir sem salvar, e confiar nele
+   deixaria passar o caso exato que a verificação existe para pegar.
+
+   Os obrigatórios são 1 (nome + telefone), 2 (rua, número, cidade, UF), 4 (ao
+   menos um serviço ativo) e 6 (ao menos um dia de expediente) — o complemento
+   de `SKIPPABLE_STEPS`, que segue `[3, 5]`. Na prática o cadastro já satisfaz o
+   1 e o 6 (o registro grava nome, telefone e `DEFAULT_BUSINESS_HOURS`), então a
+   recusa real é sobre 2 e 4 — que é justamente o que falta a quem tentaria
+   pular o wizard.
+
+3. **`BARBER` num tenant pendente — tela de espera honesta.** O guard manda
+   TODO membro de um tenant pendente para `/app/configurar`, e o wizard é
+   `@Roles('OWNER','MANAGER')`: um barbeiro convidado antes de o dono terminar
+   caía numa tela que fazia `GET /onboarding`, tomava 403 e mostrava "Não foi
+   possível carregar o wizard" — um erro técnico para uma situação que não tem
+   nada de errado. `OnboardingEntry` bifurca ANTES de qualquer requisição:
+   `TenantSetupPending` diz que a barbearia ainda está sendo configurada pelo
+   responsável e oferece a única ação possível, "Sair".
+
+4. **O wizard não reabre depois de concluído.** Reabria: quem digitasse
+   `/app/configurar` com tudo pronto voltava à tela de conclusão. O guard agora
+   devolve ao painel — mas **olhando o estado de ENTRADA**, não o de agora.
+   Sem essa distinção, o `refresh()` do fim do passo 6 arrancaria o dono da
+   tela onde está o link público que ele veio buscar.
+
+   A decisão do guard virou `resolveGuardAction`, função PURA em
+   `packages/ui/src/auth/require-auth.tsx` — a suíte de frontend roda em `node`,
+   sem DOM, e regra de produto sem teste é regra que volta a quebrar.
+
+### Bloco B — Passo 0: fora o "Pular e explorar o painel" ✅
+
+O link navegava para `/app`, que o guard devolvia para `/app/configurar`:
+girava em falso. Removido, com o `Link` que só ele usava.
+
+O subtítulo dizia **"Você pode pausar a qualquer momento"**, que deixou de ser
+verdade. O que continua verdade — e é o que tira a ansiedade de quem está
+começando — é que o progresso mora no banco por passo (fase 03): *"Se fechar o
+navegador, você retoma de onde parou."*
+
+**O vocativo.** O título mostrava `rafael`, minúsculo, e o enunciado supunha que
+viesse do e-mail. **Não vinha:** `User.name` é sempre o que a pessoa digitou no
+cadastro (`RegisterEstablishmentDto.name`, mínimo 3 caracteres), e a conta em
+questão tem `name = "rafael vetrano"` — conferido no banco. O que existia era
+`.split(' ')[0]` cru. Agora `greetingName` (em `onboarding.service.ts`) devolve
+o primeiro nome com a inicial em maiúscula e **vazio** — sem vocativo — quando o
+nome não é de gente: contém `@`, é igual ao pedaço local do e-mail, ou não tem
+letra nenhuma. O contrato renomeou `ownerFirstName` → `ownerGreetingName`, para
+o nome do campo dizer o que ele é.
+
+### Bloco C — Passos 1 a 6: fora o "×" ✅
+
+O botão "continuar depois" do topo direito não existe mais, com o handler e a
+rota de saída (`router.push('/app')`) que ele usava. **Nenhum atalho o
+substituiu.** O cabeçalho ficou com o logo, "Configurar barbearia · N de 6" e a
+barra de progresso — mais um espaçador `aria-hidden` do lado direito, sem o
+qual o título centrado no espaço restante sairia do eixo da barra de progresso.
+
+### Bloco D — Passo 2: Cidade e UF viraram seletores com busca ✅
+
+- **UF**: `GET /onboarding/ufs`, lista estática de `BRAZIL_UFS`
+  (`@barbervp/types`). 27 itens que não mudam desde 1988 — uma chamada externa
+  para servi-los seria latência sem ganho.
+- **Cidade**: `GET /onboarding/cities/:uf`, proxy do IBGE
+  (`/localidades/estados/{UF}/municipios`) com cache no Redis por 30 dias e o
+  mesmo throttle do CEP. **Mesmo arranjo da ViaCEP, pelas mesmas três razões**
+  (fase 03): o CSP das apps não libera host externo, o cache serve toda a base,
+  e trocar de fonte não toca frontend. Os 5.570 municípios NÃO entram no
+  bundle: seriam ~150 kB carregados por todo dono para escolher um item.
+- **Degradação**: IBGE fora do ar → lista vazia (sem gravar cache, senão um
+  minuto ruim viraria 30 dias de lista vazia para todo mundo) → a cidade volta
+  a ser campo de texto, com aviso. Um provedor externo fora do ar não pode
+  travar um passo que agora é obrigatório.
+- **O CEP seleciona os dois combos casando pelo CÓDIGO IBGE**, não pelo nome —
+  "Ribeirão Preto" com e sem acento é o mesmo município, e comparar texto seria
+  uma armadilha silenciosa. A ViaCEP devolve o código no campo `ibge`; quando
+  não devolve, cai no nome normalizado (sem acento, sem caixa), que é o melhor
+  esforço possível. Conferido no navegador com 14015-000: os dois combos abrem
+  em "São Paulo" e "Ribeirão Preto".
+- **Trocar a UF limpa a cidade** — São Paulo/SP e São Paulo/MG não são a mesma
+  coisa.
+- **Dois ramos de render, não `disabled`**: sem UF escolhida não existe lista de
+  cidade para oferecer, e um controle apagado não diz o que falta.
+- **Contrato**: `PUT /onboarding/location` recebe `cityIbgeCode` e grava
+  `TenantSettings.addressCityIbge` (migration
+  `20260904120000_onboarding_obrigatorio`). A linha única `address` não mudou de
+  forma.
+
+**`Combobox` nasceu aqui** (`packages/ui/src/components/combobox.tsx`), e o
+registro é este. Não havia seletor pesquisável no design system: o `Select` é o
+`<select>` nativo, de propósito (abre a roda do sistema no celular), e resolve
+dezenas de opções — não 5.570 municípios, onde a única navegação viável é
+digitar. Herda inteiras as convenções de overlay da fase 02: portal (para não
+ser recortado por `overflow-hidden` de card ou diálogo), trava de scroll, ESC
+fecha e devolve o foco ao gatilho, clique fora fecha, bottom-sheet abaixo de
+768px. Teclado com ↑/↓, Enter e `aria-activedescendant`; abre posicionado no
+item já escolhido. **A aba Configurações e a Minha Página também têm endereço e
+vão querer o mesmo controle.**
+
+### Bloco E — Passo 3: upload de verdade e o link certo ✅
+
+- **Os dois campos de URL saíram.** Eram "URL do logo" e "URL da foto de capa",
+  com o aviso "O upload direto chega na fase de integrações" — que **mentia
+  desde o agente 25**. Agora são dois `ImageSlot` **reusados** de
+  `components/dashboard/my-page/image-slot.tsx` (não copiados), subindo por
+  `POST /my-page/images/:slot`. Nenhuma rota nova: o campo de destino é o mesmo
+  `TenantSettings.logoUrl`/`coverUrl`, e uma rota própria do onboarding seria um
+  segundo caminho de escrita para o mesmo dado. Pelo mesmo motivo,
+  `PUT /onboarding/identity` **recusa** `logoUrl`/`coverUrl` — com dois donos
+  para o campo, uma URL digitada apagaria o arquivo que o dono acabou de subir.
+- **O `ImageSlot` ganhou `error`** (prop opcional, os três usos existentes
+  seguem iguais): a recusa do SERVIDOR aparece embaixo do próprio quadro, não em
+  toast. A validação local (formato, 5 MB) continua em toast — ela acontece
+  antes de qualquer requisição e some sozinha.
+- **As restrições estão escritas onde o dono vê antes de tentar**: formato,
+  5 MB, e o tamanho mínimo em português de gente ("imagem quadrada, a partir de
+  400 por 400 pontos"; "foto deitada, a partir de 1200 por 400 pontos — é a
+  faixa larga do topo da sua página", medida do `ShopHero` real).
+- **Prévia** abaixo dos slots: capa, logo sobreposto, nome do passo 1 e endereço
+  do passo 2, montados com o `OnboardingState` que a API já devolveu. É o que
+  transforma "capriche" em algo que o dono consegue julgar.
+- **O link público deixou de levar a 404** — dívida da fase 11, fechada.
+  `onboarding.service.ts` interpolava `{base}/agendar/{slug}` e o wizard fazia o
+  caminho inverso (`replace(/\/agendar\/.*$/, '')`); a página da barbearia é
+  `{base}/{slug}`. Os dois lados mudaram juntos, e a base agora vem do contrato
+  (`publicBaseUrl`), o MESMO valor que `GET /my-page` devolve. Conferido no
+  navegador: `/{slug}` responde 200 e `/agendar/{slug}`, 404.
+- **Slug sugerido** a partir do nome da barbearia na primeira visita ao passo,
+  usando `GET /onboarding/slug` (a sugestão da fase 03). O dono edita se quiser.
+- **Disponibilidade com debounce de 500 ms** e três estados visíveis
+  (verificando / disponível / indisponível), com a sugestão da API a um clique.
+- **Slug reservado tem mensagem própria.** `SlugService` já bloqueava, mas a
+  tela dizia "já está em uso" para `entrar`, `cadastro`, `admin` — e o dono
+  ficava esperando o dia em que a outra barbearia soltasse o nome. Agora
+  `SlugAvailability.reserved` separa os dois, e a API responde
+  409 `SLUG_RESERVED`.
+- **O link completo fica visível e clicável para copiar**, abaixo do campo.
+- **"Pular etapa" continua** (o passo é pulável desde a fase 03), agora com o
+  custo escrito: "Você pode adicionar logo e capa depois em Minha Página".
+
+### As 7 pendências responsivas que a medição encontrou
+
+`/app/configurar` **nunca tinha sido medido**. Duas razões somadas: o dono do
+seed já concluiu o onboarding (e desde esta fase o guard o devolve ao painel),
+e o passo é estado do CLIENTE — abrir a rota cinco vezes mediria cinco vezes o
+passo 1. Ao medir de verdade:
+
+| Passo | O que apareceu |
+|---|---|
+| 3 | Campo do slug de 48px renderizado com **19px** de altura a 360/390 |
+| 4 | Nome do serviço idem; `Select` de duração com 40px; campo de preço com 20px |
+| 6 | Dois `Select` de horário por linha com 40px; botão "Aplicar estes horários…" com **365px** numa tela de 360, empurrando a página inteira |
+
+A causa dos campos espremidos é uma só, e é uma armadilha que a Minha Página já
+documentava no campo gêmeo dela: **`flex-1` num contêiner `flex-col`** cresce e
+encolhe no eixo VERTICAL — abaixo de `sm` os três campos tinham `flex-1` sem
+prefixo de breakpoint, e o `h-12` virava 19px. Corrigido para `sm:flex-1` +
+`w-full`. Os seletores foram para 44px no dedo (`sm:` volta a 40 onde há
+ponteiro), e o botão longo passa a quebrar em duas linhas abaixo de `sm`.
+
+> O "culpado" que a varredura apontava para o botão de 365px era o **rodapé**,
+> porque ele é `inset-x-0` e se estica junto com a página. Vale a nota para a
+> próxima leitura de saída da varredura: o primeiro culpado da lista é o que
+> importa.
+
+### Como a varredura passou a medir os 6 passos
+
+- **`?passo=N`** em `/app/configurar` abre direto num passo (1..6), em vez de
+  retomar do último gravado. Não pula validação nenhuma — cada passo continua
+  salvando pelo seu endpoint e `complete` recusa o que falta — e serve também ao
+  dono que quer voltar a um passo por link, o que o wizard já permitia por
+  "Voltar"/"Continuar". Foi necessário porque **trocar a viewport RECARREGA a
+  página** (o Chrome refaz a emulação ao ligar/desligar `isMobile`): um passo
+  alcançado por clique não sobrevive, e a medida de 360 mostraria o passo 3
+  enquanto a de 768 mostraria as boas-vindas.
+- **Fixture `barbearia-configuracao`** no `make seed`
+  (`dono@barbeariaconfiguracao.com.br` / `BarberVP@2026`): barbearia no passo 0,
+  sem endereço e sem serviço, com nome de dona em minúscula de propósito (é o
+  caso que o vocativo tem de tratar). Registrar uma conta a cada varredura não
+  serviria: `POST /auth/register` é limitado a **5 por hora**, e a varredura
+  passaria a depender de quantas vezes rodou.
+- `responsive-sweep.mjs` ganhou a superfície `wizard`
+  (`node scripts/responsive-sweep.mjs --app=wizard`) e teve o miolo de medição
+  extraído para `MEASURE`/`measureViewports`, reusado pelas duas varreduras.
+
+### Testes (+29)
+
+| Suíte | Antes | Depois |
+|---|---|---|
+| Unitários (`apps/api`) | 97 | 97 |
+| Unitários (`apps/web`) | 14 | **25** |
+| E2E | 349 | **364** |
+| Isolamento | 180 | **183** |
+
+- **`test/onboarding.e2e-spec.ts` (15 casos, novo)** — o wizard não tinha
+  cobertura e2e nenhuma. Cobre, em ordem de importância: `complete` recusando
+  com todos os passos faltando e com o último faltando; "Pular etapa" não
+  enganando a verificação (o dado é apagado e o 409 volta); `publicUrl` sem
+  `/agendar/` e igual ao de `GET /my-page`; slug reservado com código próprio;
+  `identity` recusando `logoUrl` digitada; o upload gravando o MESMO campo que a
+  Minha Página lê; as 27 UFs; `cities/:uf` servindo do cache na segunda chamada
+  (com o cache marcado por um município impossível — se ele volta, veio do
+  Redis); o código IBGE gravado; o vocativo; e o `BARBER` recusado em três
+  rotas.
+- **`test/isolation/auth-tenancy.isolation-spec.ts` (+3)** — as duas rotas novas
+  são dados de referência sem superfície de tenant, e o caso REGISTRA isso: no
+  dia em que alguém recortar cidades por barbearia, ele reprova e cobra o
+  escopo. Mais o endereço com código IBGE de A não chegando a B, e as duas rotas
+  exigindo sessão.
+- **`apps/web/test/dashboard-guard.spec.ts` (11 casos, novo)** — a regra de
+  produto do lado do navegador, sobre `resolveGuardAction`.
+
+### O que esta fase decidiu NÃO fazer
+
+- **Trocar o `LocalStorageDriver` por S3/R2** — decisão de deploy (fase 12).
+- **Redimensionar/otimizar imagem no servidor** — dívida conhecida, segue.
+- **Redesenhar os passos 1, 4, 5 e 6.** Só entraram as correções que a régua
+  responsiva cobrou (alvos de 44px e o `flex-1` no eixo errado), porque o
+  critério de aceite pede a varredura verde nos 6 passos.
+- **Mexer no `disabled` do "Continuar"** — ele reflete campo obrigatório vazio,
+  não regra de negócio, e é o padrão do wizard desde a fase 03.
+
 ## O que o agente 29 (reparos transversais) entregou
 
 Fase concluída — as seis camadas fechadas, na ordem do enunciado.
@@ -1396,10 +1702,11 @@ classe (ver Camada 5, "o que ficou decidido").
    alguém reprovar quando nascesse rota nova: o teste novo **lê o diretório de
    rotas de verdade** e falha se alguma escapar da lista. Conferido reprovando.
 
-5. **Link do fim do onboarding** (`{base}/agendar/{slug}` → 404): **NÃO
-   tocado, é escopo do agente 30**, que refaz o passo 3 do wizard. Segue de pé
-   em `onboarding.service.ts:443` e no `onboarding-wizard.tsx:195` (que faz o
-   caminho inverso). Os dois lados precisam mudar juntos.
+5. ~~**Link do fim do onboarding** (`{base}/agendar/{slug}` → 404)~~ —
+   **RESOLVIDA pelo agente 30**: os dois lados mudaram juntos, e a base passou a
+   vir do contrato (`publicBaseUrl`). Era: não tocado aqui por ser escopo do
+   agente 30; ficava de pé em `onboarding.service.ts:443` e no
+   `onboarding-wizard.tsx:195` (que fazia o caminho inverso).
 
 ### Camada 4 — dado, schema e testes ✅
 
@@ -1524,7 +1831,7 @@ Em uma tela, porque é isto que quem abrir a próxima sessão precisa ver:
 | O que | Estado |
 |---|---|
 | **Fase 12 — Deploy** | ⬜ A ÚNICA fase pendente. Vercel (`apps/web`) + Railway (`apps/api` + Postgres + Redis); `make build-web`/`make build-api` já rodam o contrato de cada uma, e o CI os verifica em passos dedicados. |
-| **Agente 30 — passo 3 do onboarding** | ⬜ Refaz o wizard: o link público quebrado (`{base}/agendar/{slug}`) e o upload de logo/capa, com o mesmo `ImageSlot` e o mesmo `StorageAdapter` que a aba Equipe passou a usar nesta fase. |
+| ~~**Agente 30 — passo 3 do onboarding**~~ | ✅ **Feito** (2026-09-04), e com escopo maior do que a linha previa: além do link público e do upload, a fase estabeleceu que **concluir a configuração inicial é obrigatório** e fez isso valer na API. |
 | **Provedores reais** (WhatsApp oficial, Asaas, Google OAuth, LLM do Assistente) | Fora do v1 por decisão de escopo. Os mocks fazem o que prometem, e `docs/INTEGRACOES.md` tem os 3 passos de troca — validados seguindo os próprios passos na fase 09. |
 | **Multi-unidade de fato** | Fora do v1. O `unitId` agora É GRAVADO na escrita (agente 29), então o filtro dos Relatórios funciona; falta o `AvailabilityService` respeitar unidade e escopar `Client`/`Product`. |
 | **Tabela `Notification`, paginação de volume, performance** | Fora do v1. Nada quebrado; é otimização para volume que ainda não existe. |
@@ -2271,9 +2578,11 @@ Alvo: `Dashboard.dc.html` l.2240–2465, rota `/app/minha-pagina`.
   domínio. Com o domínio conhecido (bucket/CDN), o `<img>` cru sai.
 - **Galeria sem reordenação** — `TenantPhoto.sortOrder` existe e é respeitado,
   mas não há arrastar-e-soltar; a ordem é a de envio.
-- **`onboarding.service.ts` continua gravando `logoUrl`/`coverUrl` por URL
-  digitada** (passo 3 do wizard). O `StorageAdapter` já existe; trocar o campo
-  pelo seletor de arquivo é trabalho da aba de onboarding.
+- ~~**`onboarding.service.ts` continua gravando `logoUrl`/`coverUrl` por URL
+  digitada** (passo 3 do wizard)~~ — **RESOLVIDA pelo agente 30**: o passo 3
+  usa o `ImageSlot` desta aba e `POST /my-page/images/:slot`, e
+  `PUT /onboarding/identity` passou a RECUSAR `logoUrl`/`coverUrl`, para não
+  haver segundo caminho de escrita no mesmo campo.
 
 ## O que o agente 24 (auditoria da aba Equipe) entregou
 
@@ -4342,6 +4651,52 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 
 ## Decisões tomadas
 
+- 2026-09-04 (agente 30) — **Concluir a configuração inicial é OBRIGATÓRIO para
+  acessar o painel.** Regra de produto do dono, não inferência: não existe
+  "explorar antes" nem "continuar depois". Consequências, todas nesta fase: os
+  dois botões que a contradiziam saíram (o "Pular e explorar o painel" e o
+  "×"), o wizard deixou de reabrir depois de concluído, e a obrigatoriedade
+  passou a valer no SERVIDOR — o guard do navegador é conveniência, não
+  barreira. **O que a torna barata de manter é a lista de passos obrigatórios
+  em `@barbervp/types` (`REQUIRED_STEPS`)**: a API recusa e a tela avisa pelo
+  MESMO conjunto.
+- 2026-09-04 (agente 30) — **`complete` confere o DADO gravado, não o contador
+  `onboardingStep`.** O contador sobe com "Pular etapa" sem nada ser salvo
+  (decisão da fase 03, que continua valendo), então validá-lo deixaria passar
+  exatamente o caso que a verificação existe para pegar. Custo: quatro
+  consultas em paralelo por chamada de `complete`, uma vez na vida da
+  barbearia.
+- 2026-09-04 (agente 30) — **Municípios via IBGE, consultados pela API e
+  cacheados no Redis por 30 dias — pelo MESMO motivo da ViaCEP** (fase 03): o
+  CSP das apps não precisa liberar host externo, o cache serve toda a base, e
+  trocar de provedor não toca frontend. As 27 UFs, essas, são lista estática em
+  `@barbervp/types` — chamada externa para servir 27 itens imutáveis seria
+  latência sem ganho. E os 5.570 municípios não entram no bundle: seriam
+  ~150 kB carregados por todo dono para escolher um item.
+- 2026-09-04 (agente 30) — **A cidade é identificada pelo CÓDIGO IBGE, não pelo
+  nome.** É o que permite ao CEP selecionar o município no combo sem depender de
+  grafia: "Ribeirão Preto" com e sem acento é o mesmo lugar, e comparar texto
+  seria uma armadilha silenciosa — o endereço pareceria certo na tela e o
+  município ficaria não identificado. Coluna nova
+  `TenantSettings.addressCityIbge`; a linha única `address` não mudou de forma.
+- 2026-09-04 (agente 30) — **Logo e capa têm UM caminho de escrita.**
+  `PUT /onboarding/identity` recusa `logoUrl`/`coverUrl`: com dois donos para o
+  mesmo campo de `TenantSettings`, uma URL digitada apagaria o arquivo que o
+  dono acabou de subir, sem aviso. O upload é o de `POST /my-page/images/:slot`,
+  não uma rota nova.
+- 2026-09-04 (agente 30) — **O vocativo do wizard não é um pedaço de e-mail.**
+  `greetingName` devolve vazio — e a tela cumprimenta sem nome — quando o nome
+  do cadastro contém `@`, é igual ao pedaço local do e-mail ou não tem letra
+  nenhuma. Sem vocativo é melhor que com o vocativo errado. Desvio consciente do
+  enunciado: ele supunha que o `rafael` minúsculo viesse do e-mail, e **não
+  vinha** (foi conferido no banco: a pessoa digitou assim). Como o que incomoda
+  é a leitura, o primeiro nome vai com a inicial em maiúscula — nome próprio em
+  título de 30px lê como dado de máquina quando vem todo minúsculo.
+- 2026-09-04 (agente 30) — **`?passo=N` em `/app/configurar`.** Nasceu para a
+  varredura responsiva conseguir endereçar cada passo (trocar a viewport
+  recarrega a página, e o passo é estado do cliente), e fica porque é alcance
+  que o wizard já dava por "Voltar"/"Continuar". Não pula validação: cada passo
+  salva pelo seu endpoint e `complete` recusa o que falta.
 - 2026-09-03 (agente 29) — **Cor do bloco da Agenda: STATUS, com o serviço
   como acento.** O protótipo colore por status nas três visões
   (`STATUS_COLORS`, l.5055/5071/5091) — a suposição registrada de que
@@ -5237,10 +5592,45 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 - **A foto do barbeiro vai para a pasta do tenant**, como a do usuário
   (dívida gêmea do agente 27). Correto hoje; se o storage ganhar ciclo de
   vida por tenant, revisar.
-- **O link público do fim do onboarding segue quebrado**
-  (`{base}/agendar/{slug}` → 404, `onboarding.service.ts:443` +
-  `onboarding-wizard.tsx:195`). **Deliberadamente não tocado: é do agente 30**,
-  que refaz o passo 3 do wizard. Os dois lados precisam mudar juntos.
+- ~~**O link público do fim do onboarding segue quebrado**
+  (`{base}/agendar/{slug}` → 404)~~ — **RESOLVIDA pelo agente 30**, com os dois
+  lados mudando juntos e a base saindo do contrato (`publicBaseUrl`, o mesmo de
+  `GET /my-page`). Era: `onboarding.service.ts:443` + `onboarding-wizard.tsx:195`.
+
+### Dívidas novas do agente 30 (configuração inicial)
+
+- **A foto do BARBEIRO na aba Equipe continua por URL?** Não — foi fechada pelo
+  agente 29 (`POST /barbers/:id/avatar`). Depois do agente 30 **não sobra
+  nenhum campo de URL de imagem em `apps/web`**: `grep -rn "URL do logo\|URL da
+  foto" apps/web` só encontra comentários que contam essa história.
+- **O `StorageAdapter` valida o mimetype DECLARADO, não os bytes.** Um arquivo
+  de texto renomeado para `.png` é aceito e gravado — conferido no navegador
+  nesta fase. Vem do agente 25 e vale para os quatro consumidores (Minha
+  Página, perfil, barbeiro, onboarding). O conserto é ler os primeiros bytes
+  (assinatura de JPG/PNG/WebP) em `local-storage.driver.ts`, num lugar só.
+  Consequência hoje: um `<img>` que não renderiza, não uma execução — mas com
+  um bucket público e um `Content-Type` servido pelo storage, merece fechar
+  antes do deploy.
+- **O erro de servidor do `ImageSlot` é caminho quase inalcançável.** A
+  validação do cliente (formato e 5 MB) espelha exatamente a do servidor, então
+  na prática só uma falha de rede ou um 500 chegam ao `error` do slot. Está
+  certo que exista; só não dá para exercitá-lo pela interface — foi verificado
+  por leitura, não no navegador.
+- **Conferir no navegador queima `POST /auth/register` (5 por hora, por IP) — e
+  isso derruba `critical-flows.e2e-spec.ts` depois.** Aconteceu nesta fase: o
+  fluxo 1 começa cadastrando um estabelecimento, e cinco registros manuais na
+  hora anterior o fazem tomar 429. Passa sozinho quando a janela vira. Registre
+  antes de suspeitar do código: 5 casos falhando SÓ em `critical-flows`, com a
+  suíte inteira verde ao rodá-la isolada, é este sintoma.
+- **A varredura do wizard consome a fixture.** Percorrer os 6 passos por
+  `?passo=N` não grava nada, mas a fixture `barbearia-configuracao` é um estado
+  frágil: qualquer verificação manual que avance o wizard a tira do passo 0, e
+  a varredura seguinte mediria outra coisa. `make seed` devolve.
+- **`PUT /onboarding/services` recria serviço com nome de um soft-deleted e
+  bate na `@@unique([tenantId, name])`.** Achado de passagem, montando o e2e:
+  o wizard não passa por aí (ele reenvia o serviço COM `id`, e o serviço o
+  reativa), então é caminho de API, não de tela. Fica registrado porque a
+  mensagem que sai é o 409 genérico do banco.
 
 ### Dívidas novas do agente 28 (aba Assistente IA)
 
@@ -5516,14 +5906,12 @@ as viu. A primeira é a mais séria.
   painel é preciso completar o wizard, ou:
   `UPDATE "TenantSettings" s SET "onboardingDoneAt"=now(), "onboardingStep"=6
   FROM "Tenant" t WHERE t.id=s."tenantId" AND t.slug='barbearia-central';`
-- **`onboarding.service.ts:443` monta o link público como
-  `{base}/agendar/{slug}`, que não existe** — a página da barbearia é
-  `{base}/{slug}`, como `my-page.service.ts:35` faz certo. O link mostrado no
-  fim do wizard de configuração leva a um 404. É bug de `apps/api`, anterior a
-  esta fase e fora do escopo do refactor; a correção é remover `/agendar/` da
-  interpolação (uma linha) e ajustar
-  `components/dashboard/onboarding/onboarding-wizard.tsx:195`, que faz o
-  caminho inverso (`replace(/\/agendar\/.*$/, '')`).
+- ~~**`onboarding.service.ts:443` monta o link público como
+  `{base}/agendar/{slug}`, que não existe**~~ — **RESOLVIDA pelo agente 30**
+  (`{base}/{slug}` nos dois lados, com a base vindo de `publicBaseUrl`;
+  conferido no navegador: `/{slug}` 200, `/agendar/{slug}` 404). Era: a página
+  da barbearia é `{base}/{slug}`, como `my-page.service.ts:35` sempre fez, e o
+  link mostrado no fim do wizard levava a um 404.
 - ~~**Título da landing duplica a marca**~~ — **RESOLVIDA pelo agente 29**
   (`title: { absolute }`). Era: sai
   "BarberVP — Sistema de gestão para barbearias · BarberVP", porque o `title`
@@ -5615,11 +6003,13 @@ as viu. A primeira é a mais séria.
   finge autenticar. Implementar como adapter próprio (mesmo padrão de
   `NotificationAdapter`), provavelmente na fase 09. É a única funcionalidade
   desenhada no protótipo desta fase que não ficou funcional.
-- **Upload de logo e capa é campo de URL, não upload.** O passo 3 grava
-  `TenantSettings.logoUrl`/`coverUrl` a partir de uma URL digitada. **O storage
-  deixou de faltar**: o agente 25 criou `StorageAdapter` e
-  `POST /my-page/images/:slot`, e a MESMA `TenantSettings` já recebe upload por
-  ali. Falta só o wizard trocar o input pelo seletor — o schema não muda.
+- ~~**Upload de logo e capa é campo de URL, não upload.**~~ — **RESOLVIDA pelo
+  agente 30**: o passo 3 usa dois `ImageSlot` e `POST /my-page/images/:slot`, e
+  o DTO de `identity` recusa URL digitada. O schema não mudou, como previsto.
+  Era: o passo gravava `TenantSettings.logoUrl`/`coverUrl` a partir de uma URL
+  digitada, com um aviso que prometia o upload "na fase de integrações" —
+  promessa que ficou desatualizada no agente 25, quando o `StorageAdapter`
+  nasceu.
 - **`ClientProfile.phone` continua desnormalizado e agora TEM serviço de
   escrita.** A dívida da fase 01 previa isto: `ClientAuthService` altera
   `Client.phone` e `Client.name`, mas nenhum `ClientProfile` existe ainda nesta
@@ -6093,8 +6483,7 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 | **Asaas** | `MockPaymentDriver` simula o ciclo inteiro (criar, confirmar, receber, estornar) com aprovação/recusa manual pelo super admin | `docs/INTEGRACOES.md` — mesmos 3 passos, **mais** um controller de webhook (`POST /webhooks/asaas`) que chame os MESMOS serviços que a tela de billing chama. `simulateTransition` deve responder 501 no driver real. Acréscimo, não refatoração. |
 | **Google OAuth do cliente** | Botão existe em `ClienteAuth` e responde "Em breve" — não finge autenticar | Mesmo padrão de adapter. É a única funcionalidade desenhada no protótipo que não ficou funcional. |
 | **Provedor real do Assistente IA** | `MockAiAssistantDriver` responde por regras; histórico persiste em `AiChatMessage` | `AI_ASSISTANT_ADAPTER`, mesma factory de `adapters.module.ts`. |
-| **Upload de imagem** | ✅ **Feito no agente 25** para Minha Página e no **agente 27** para a foto de perfil (`POST /me/avatar`): `StorageAdapter` + `LocalStorageDriver`, multipart, JPG/PNG/WebP até 5 MB. **Foto do BARBEIRO fechada no agente 29** (`POST /barbers/:id/avatar`). Só o
-onboarding (passo 3) ainda usa campo de URL — é do agente 30. | Trocar o driver local por S3/R2 é um `case` em `adapters.module.ts` + `STORAGE_DRIVER`; o `local` não serve para mais de uma réplica de API. Com o domínio das imagens conhecido, o `next/image` entra e o `<img>` cru sai. Falta ainda redimensionar/otimizar o que o dono envia. |
+| **Upload de imagem** | ✅ **Completo desde o agente 30.** Feito no agente 25 para Minha Página, no 27 para a foto de perfil (`POST /me/avatar`), no 29 para a foto do barbeiro (`POST /barbers/:id/avatar`) e no **30 para o passo 3 do onboarding**, que era o último campo de URL do produto — hoje reusa `POST /my-page/images/:slot`. `StorageAdapter` + `LocalStorageDriver`, multipart, JPG/PNG/WebP até 5 MB. | Trocar o driver local por S3/R2 é um `case` em `adapters.module.ts` + `STORAGE_DRIVER`; o `local` não serve para mais de uma réplica de API. Com o domínio das imagens conhecido, o `next/image` entra e o `<img>` cru sai. Falta ainda redimensionar/otimizar o que o dono envia. |
 | **Multi-unidade de fato** | O modelo `Unit` existe, tem CRUD e isolamento testado; o motor de grade ainda ignora `unitId` | Filtro por unidade em `AvailabilityService` — o campo já existe em `Appointment` e `Barber`. |
 
 ### Números finais
@@ -6102,10 +6491,18 @@ onboarding (passo 3) ainda usa campo de URL — é do agente 30. | Trocar o driv
 | Suíte | Casos |
 |---|---|
 | Unitários (`apps/api`) | 97 |
-| **Unitários (`apps/web`) — NOVA** | **14** |
-| E2E | 349 |
-| Isolamento de tenant (gate) | 180 |
-| **Total** | **640** |
+| Unitários (`apps/web`) | **25** |
+| E2E | **364** |
+| Isolamento de tenant (gate) | **183** |
+| **Total** | **669** |
+
+> Contagem do agente 30 (2026-09-04), medida rodando as QUATRO suítes, uma de
+> cada vez, com o container `web` parado — pelo mesmo motivo de RAM registrado
+> abaixo. O agente 30 somou **+15 e2e** (`onboarding.e2e-spec.ts`, que não
+> existia: o wizard não tinha cobertura de ponta a ponta nenhuma), **+3
+> isolamento** (as duas rotas de referência do passo 2 e o endereço com código
+> IBGE) e **+11 de frontend** (`dashboard-guard.spec.ts`, sobre
+> `resolveGuardAction`).
 
 > Contagem do agente 29 (2026-09-03), medida rodando as QUATRO suítes, uma de
 > cada vez. Rodar as três da API no mesmo comando estoura a RAM da máquina de
@@ -6152,6 +6549,11 @@ onboarding (passo 3) ainda usa campo de URL — é do agente 30. | Trocar o driv
 > no agente 29**: `make responsive --delay=6000` fecha sem reprovação em
 > nenhuma das 35 rotas, nos 5 tamanhos, com dado carregado (que é a condição
 > em que a fase 09 não mediu e por isso passou em falso).
+>
+> **Desde o agente 30 ela cobre também os 6 passos do wizard** (superfície
+> `wizard`, por `?passo=N`, com a fixture `barbearia-configuracao`). Foi ao
+> medi-los pela primeira vez que apareceram 7 pendências — a mesma lição do #9
+> da fase 13: verde de varredura não prova que a tela CERTA foi medida.
 
 ## Como retomar
 
@@ -6167,6 +6569,40 @@ Para subir o ambiente: `make env && make install && make up && make seed`
 restrição de RAM da máquina (7.5 GB), `docker compose up -d db redis api` +
 `docker compose up -d web` já é a stack inteira — não existe mais a escolha de
 "qual das 4 apps subir".
+
+### Como conferir o agente 30 (configuração obrigatória) rodando
+
+`make reset && make seed`, depois login
+`dono@barbeariaconfiguracao.com.br` / `BarberVP@2026` — a barbearia que o seed
+deixa no passo 0.
+
+1. **Boas-vindas** — "Bem-vindo ao BarberVP, Joana" (o cadastro tem
+   `joana ribeiro`, minúsculo). Só um botão: "Começar configuração →". **Não
+   existe** "Pular e explorar o painel", e o subtítulo diz "Se fechar o
+   navegador, você retoma de onde parou".
+2. **Nenhum passo tem "×"** no topo direito. Cabeçalho: logo, "Configurar
+   barbearia · N de 6" e a barra de progresso.
+3. **Passo 2** — digite `14015000` e clique "Buscar CEP": o selo "Endereço
+   encontrado" aparece e os combos abrem já em **São Paulo** e **Ribeirão
+   Preto** (casados pelo código IBGE, não pelo nome). Abra o combo de cidade: a
+   lista abre posicionada no item escolhido; digite `ribeirao` sem acento e ele
+   aparece. Troque a UF e veja a cidade limpar.
+4. **Passo 3** — arraste (ou clique para escolher) um JPG/PNG/WebP em cada
+   quadro: a prévia aparece nos dois e o card "Como sua barbearia vai aparecer"
+   se preenche. O prefixo do link é `http://localhost:3000/`, **sem
+   `/agendar/`**. Tente o slug `cadastro`: "Este nome é reservado pelo sistema".
+5. **Fim** — o link mostrado abre a página da barbearia (200). O mesmo link com
+   `/agendar/` no meio dá 404 — era o que o produto entregava antes.
+6. **A regra, nos dois lados.** Durante o wizard, digite `/app/agenda` na barra:
+   volta ao wizard. Depois de concluir, digite `/app/configurar`: vai para
+   `/app` — o wizard não reabre. E, com um passo obrigatório faltando:
+
+       curl -X POST localhost:3333/api/v1/onboarding/complete -H "authorization: Bearer $TOKEN"
+       # 409 {"code":"ONBOARDING_INCOMPLETE","details":{"missingSteps":[2,4]}}
+
+7. **Barbeiro num tenant pendente** — entra e vê "A barbearia ainda está sendo
+   configurada", com "Sair". Não vê o wizard (não poderia completá-lo) nem o
+   painel (a regra proíbe).
 
 ### Como conferir o agente 18 (Financeiro) rodando
 

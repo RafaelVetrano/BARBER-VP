@@ -12,8 +12,13 @@ export interface WizardChromeProps {
   children: ReactNode;
   onBack?: () => void;
   onSkip?: () => void;
+  /**
+   * O que se perde ao pular — dito ANTES do clique, não depois. "Pular etapa"
+   * sem custo visível parece a escolha barata; com o custo à vista, o dono
+   * decide sabendo o que está adiando.
+   */
+  skipHint?: string;
   onNext: () => void;
-  onExit: () => void;
   nextLabel: string;
   nextDisabled?: boolean;
   saving?: boolean;
@@ -22,6 +27,11 @@ export interface WizardChromeProps {
 /**
  * Moldura do wizard: cabeçalho fixo com progresso e rodapé fixo de navegação —
  * a estrutura do `BarberVP Configurar Barbearia.dc.html`.
+ *
+ * **Sem o "×" (continuar depois)** desde o agente 30: concluir a configuração
+ * inicial é obrigatório, então não existe saída lateral — e nenhum atalho a
+ * substituiu. Quem já concluiu não volta para cá (o guard manda para o painel),
+ * que é o caso que o "×" fingia atender.
  *
  * Responsividade (regra 1): o protótipo é desktop-fixo com `max-width:720px`.
  * Aqui o miolo respira de 360px para cima, o rodapé fixo respeita a área segura
@@ -36,8 +46,8 @@ export function WizardChrome({
   children,
   onBack,
   onSkip,
+  skipHint,
   onNext,
-  onExit,
   nextLabel,
   nextDisabled = false,
   saving = false,
@@ -59,16 +69,11 @@ export function WizardChrome({
             <span className="hidden sm:inline">Configurar barbearia · </span>
             {step} de {totalSteps}
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onExit}
-            title="Continuar depois — seu progresso é salvo"
-            className="size-9 shrink-0 rounded-lg p-0"
-            aria-label="Continuar depois"
-          >
-            ✕
-          </Button>
+          {/* Contrapeso do bloco da marca à esquerda: sem o "×" que ficava
+              aqui, o título centrado no espaço restante sairia do eixo da
+              barra de progresso logo abaixo. Larguras espelham logo (28px) +
+              `gap-3` e, a partir de `sm`, o "BarberVP". */}
+          <span aria-hidden="true" className="w-7 shrink-0 sm:w-[5.5rem]" />
         </div>
 
         <div
@@ -98,19 +103,35 @@ export function WizardChrome({
       </main>
 
       <footer className="fixed inset-x-0 bottom-0 border-t border-border bg-bg/85 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3.5 sm:px-6">
+        {onSkip && skipHint && (
+          <p className="mx-auto w-full max-w-3xl px-4 pt-2.5 text-right text-[11.5px] text-fg-subtle sm:px-6">
+            {skipHint}
+          </p>
+        )}
+        {/* Abaixo de `sm` o botão principal OCUPA a sobra em vez de ser
+            empurrado por um espaçador: com "Voltar" + "Abrir meu painel →" a
+            largura natural dos dois estourava 360px em 21px, e o rodapé fixo
+            empurrava a página inteira para o lado. Do `sm` para cima volta o
+            arranjo do protótipo — Voltar à esquerda, o resto à direita. */}
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3.5 sm:gap-3 sm:px-6">
           {onBack && (
-            <Button variant="outline" onClick={onBack} disabled={saving}>
+            <Button variant="outline" onClick={onBack} disabled={saving} className="shrink-0">
               Voltar
             </Button>
           )}
-          <span className="flex-1" />
+          <span className="hidden flex-1 sm:block" />
           {onSkip && (
-            <Button variant="ghost" onClick={onSkip} disabled={saving}>
+            <Button variant="ghost" onClick={onSkip} disabled={saving} className="shrink-0">
               Pular etapa
             </Button>
           )}
-          <Button onClick={onNext} disabled={nextDisabled} loading={saving} loadingText="Salvando…">
+          <Button
+            onClick={onNext}
+            disabled={nextDisabled}
+            loading={saving}
+            loadingText="Salvando…"
+            className="min-w-0 flex-1 sm:flex-none"
+          >
             {nextLabel}
           </Button>
         </div>

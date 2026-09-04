@@ -49,6 +49,7 @@ import {
   EXCLUSIVE_SERVICES,
   ISOLATION_TENANT,
   LOYALTY_PROGRAM,
+  ONBOARDING_TENANT,
   MIN,
   PRODUCTS,
   REVIEWS,
@@ -130,14 +131,14 @@ export const argon = (plain: string) => hash(plain, { memoryCost: 19_456, timeCo
 export async function reset(): Promise<void> {
   // Tenants caem em cascata; `Client` é global e precisa de limpeza própria.
   await prisma.tenant.deleteMany({
-    where: { slug: { in: [DEMO_TENANT.slug, ISOLATION_TENANT.slug] } },
+    where: { slug: { in: [DEMO_TENANT.slug, ISOLATION_TENANT.slug, ONBOARDING_TENANT.slug] } },
   });
   // Por PREFIXO, e não pela lista de `CLIENTS`: o seed demo (`make seed-demo`)
   // planta dezenas de clientes a mais na mesma faixa de telefone, e sem isto a
   // segunda execução esbarraria no `@unique` de `Client.phone`.
   await prisma.client.deleteMany({ where: { phone: { startsWith: SEED_CLIENT_PHONE_PREFIX } } });
   await prisma.user.deleteMany({
-    where: { email: { in: Object.values(USERS).map((u) => u.email) } },
+    where: { email: { in: [...Object.values(USERS).map((u) => u.email), ONBOARDING_TENANT.owner.email] } },
   });
   await prisma.saasPlan.deleteMany({ where: { code: { in: SAAS_PLANS.map((p) => p.code) } } });
 
@@ -1210,6 +1211,53 @@ async function seedIsolationTenant(planIds: Map<string, string>): Promise<void> 
   });
 }
 
+// ──────────────────────────────────────── Tenant com onboarding pendente ────
+
+/**
+ * A fixture do wizard (agente 30): barbearia no passo 0, com dono próprio.
+ *
+ * Diferente do tenant demo em tudo que importa aqui — sem endereço, sem
+ * serviço, sem `onboardingDoneAt` — porque é esse o estado de quem acabou de
+ * se cadastrar, e é sobre ele que a obrigatoriedade do wizard vale. É por esta
+ * conta que `scripts/responsive-sweep.mjs` mede os 6 passos.
+ *
+ * O horário de funcionamento vem preenchido porque o REGISTRO o preenche
+ * (`DEFAULT_BUSINESS_HOURS`, fase 03): a fixture imita o cadastro real, não um
+ * estado que o produto nunca produz.
+ */
+async function seedOnboardingTenant(planIds: Map<string, string>): Promise<void> {
+  const tenant = await prisma.tenant.create({
+    data: {
+      slug: ONBOARDING_TENANT.slug,
+      name: ONBOARDING_TENANT.name,
+      timezone: ONBOARDING_TENANT.timezone,
+      phone: ONBOARDING_TENANT.phone,
+      status: TenantStatus.TRIAL,
+      planId: planIds.get('essencial')!,
+      // `settings` no padrão: `onboardingStep` 0 e `onboardingDoneAt` nulo.
+      settings: { create: {} },
+      businessHours: { create: BUSINESS_HOURS.map((hour) => ({ ...hour })) },
+    },
+    select: { id: true },
+  });
+
+  const owner = await prisma.user.create({
+    data: {
+      email: ONBOARDING_TENANT.owner.email,
+      // Minúsculo de propósito — ver `ONBOARDING_TENANT` em `seed-data.ts`.
+      name: ONBOARDING_TENANT.owner.name,
+      passwordHash: await argon(ONBOARDING_TENANT.owner.password),
+      memberships: { create: { tenantId: tenant.id, role: MembershipRole.OWNER } },
+    },
+    select: { id: true },
+  });
+
+  // O dono já é barbeiro desde o registro — é a linha fixa "Você" do passo 5.
+  await prisma.barber.create({
+    data: { tenantId: tenant.id, userId: owner.id, name: ONBOARDING_TENANT.owner.name, sortOrder: 0 },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────── Main ───────
 
 /**
@@ -1229,6 +1277,9 @@ export async function main(): Promise<void> {
   console.info(`› tenant de isolamento (${ISOLATION_TENANT.slug})…`);
   await seedIsolationTenant(planIds);
 
+  console.info(`› tenant com onboarding pendente (${ONBOARDING_TENANT.slug})…`);
+  await seedOnboardingTenant(planIds);
+
   const [barbers, services, appointments, orders, clients] = await Promise.all([
     prisma.barber.count(),
     prisma.service.count(),
@@ -1242,6 +1293,9 @@ export async function main(): Promise<void> {
   console.info(`  clientes: ${clients} · agendamentos: ${appointments} · comandas: ${orders}`);
   console.info(`  funcionamento: Seg–Sex ${hhmm(MIN['09:00'])}–${hhmm(MIN['20:00'])} · Sáb ${hhmm(MIN['09:00'])}–${hhmm(MIN['18:00'])} · Dom fechado`);
   console.info(`\n  login owner:  ${USERS.owner.email} / ${USERS.owner.password}`);
+  console.info(
+    `  login wizard: ${ONBOARDING_TENANT.owner.email} / ${ONBOARDING_TENANT.owner.password} — barbearia com o onboarding PENDENTE (fixture do agente 30)`,
+  );
   console.info(`  login admin:  ${USERS.superAdmin.email} / ${USERS.superAdmin.password}`);
   console.info(`  login cliente: ${CLIENTS[0].phone} (ou ${CLIENTS[0].email}) / ${CLIENTS[0].password} — já é assinante do Corte + Barba Quinzenal`);
   console.info('  (senhas de desenvolvimento — nunca use estas em produção)\n');

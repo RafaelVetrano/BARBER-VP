@@ -28,6 +28,7 @@ export { Field, controlClasses, describedBy, useFieldIds, type FieldOwnProps, ty
 export { Input, type InputProps } from './components/input';
 export { Textarea, type TextareaProps } from './components/textarea';
 export { Select, type SelectOption, type SelectProps } from './components/select';
+export { Combobox, type ComboboxOption, type ComboboxProps } from './components/combobox';
 export { OtpInput, type OtpInputProps } from './components/otp-input';
 export {
   PasswordInput,
@@ -120,6 +121,9 @@ export {
 } from './auth/client-auth';
 export {
   RequireEstablishmentAuth,
+  resolveGuardAction,
+  type GuardAction,
+  type GuardInput,
   type RequireEstablishmentAuthProps,
 } from './auth/require-auth';
 export {

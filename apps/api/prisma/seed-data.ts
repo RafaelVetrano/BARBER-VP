@@ -30,6 +30,36 @@ export const ISOLATION_TENANT = {
   timezone: 'America/Sao_Paulo',
 } as const;
 
+/**
+ * Barbearia com o onboarding PENDENTE — a fixture do wizard (agente 30).
+ *
+ * Nasce no passo 0, sem endereço e sem serviço, que é o estado real de quem
+ * acabou de se cadastrar. Existe porque o wizard virou a PORTA do produto
+ * (concluir é obrigatório) e não havia como olhar para ele: o dono do seed já
+ * concluiu o onboarding e o guard o devolve ao painel, e `POST /auth/register`
+ * é limitado a 5 por hora — registrar uma conta a cada verificação queimaria o
+ * limite e deixaria a varredura dependente de quantas vezes rodou.
+ *
+ * O nome do dono é minúsculo DE PROPÓSITO: é como muita gente digita, e é o
+ * caso que o vocativo do wizard tem de tratar sem virar "bem-vindo, rafael".
+ *
+ * Percorrer o wizard grava passos — depois de uma varredura completa esta
+ * barbearia não está mais no passo 0. Para medir de novo desde as
+ * boas-vindas: `make seed`.
+ */
+export const ONBOARDING_TENANT = {
+  slug: 'barbearia-configuracao',
+  name: 'Barbearia Configuração (fixture)',
+  timezone: 'America/Sao_Paulo',
+  /** O registro grava nome E telefone da barbearia — a fixture imita isso. */
+  phone: '551133335555',
+  owner: {
+    email: 'dono@barbeariaconfiguracao.com.br',
+    name: 'joana ribeiro',
+    password: 'BarberVP@2026',
+  },
+} as const;
+
 // ─────────────────────────────────────────────────── Planos do SaaS ─────────
 
 export const SAAS_PLANS = [

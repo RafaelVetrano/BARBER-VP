@@ -33,8 +33,12 @@ export class ApiException extends HttpException {
     return new ApiException(HttpStatus.NOT_FOUND, { code: ErrorCode.NOT_FOUND, message });
   }
 
-  static conflict(message: string, code: string = ErrorCode.CONFLICT): ApiException {
-    return new ApiException(HttpStatus.CONFLICT, { code, message });
+  static conflict(
+    message: string,
+    code: string = ErrorCode.CONFLICT,
+    details?: unknown,
+  ): ApiException {
+    return new ApiException(HttpStatus.CONFLICT, { code, message, details });
   }
 
   static tenantRequired(): ApiException {
