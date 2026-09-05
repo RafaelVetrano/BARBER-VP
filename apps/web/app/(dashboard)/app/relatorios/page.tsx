@@ -226,11 +226,31 @@ export default function RelatoriosPage() {
             loading={summaryLoading}
             error={summaryQuery.isError}
             onRetry={() => void summaryQuery.refetch()}
-            isEmpty={(summary?.paymentDistribution.length ?? 0) === 0}
+            isEmpty={
+              (summary?.paymentDistribution.length ?? 0) === 0 &&
+              (summary?.courtesies.count ?? 0) === 0
+            }
             empty="Nenhum pagamento registrado no período."
             skeletonHeight={148}
           >
-            {summary && <PaymentDonut entries={summary.paymentDistribution} />}
+            {summary && (
+              <div className="flex flex-col gap-3">
+                <PaymentDonut entries={summary.paymentDistribution} />
+                {/* Cortesias ficam FORA da rosca: ela reparte o faturamento, e
+                    cortesia é R$ 0 — uma fatia de 0% seria só ruído. Mas o
+                    número precisa aparecer, e é aqui que o dono olha as formas
+                    de recebimento (agente 31). */}
+                {summary.courtesies.count > 0 && (
+                  <p className="border-t border-border pt-3 text-[13px] text-fg-muted">
+                    <span className="font-semibold text-fg">
+                      {summary.courtesies.count} cortesia{summary.courtesies.count > 1 ? 's' : ''}
+                    </span>{' '}
+                    no período — {formatBRL(summary.courtesies.listPriceCents)} a preço de tabela,
+                    não cobrados.
+                  </p>
+                )}
+              </div>
+            )}
           </ReportCard>
 
           {!isBarberRole && (

@@ -55,7 +55,10 @@ const APPOINTMENT_INCLUDE = {
       priceCents: true,
       durationMin: true,
       subscriptionUsageId: true,
-      service: { select: { name: true, color: true } },
+      // `priceCents` do `Service` é o preço de TABELA de hoje; o da linha é a
+      // fotografia da reserva. O drawer precisa dos dois para dizer "R$ 0,00 —
+      // coberto pela assinatura" em vez de um zero sem explicação.
+      service: { select: { name: true, color: true, priceCents: true } },
     },
   },
 } satisfies Prisma.AppointmentInclude;
@@ -432,21 +435,28 @@ export class StaffAppointmentsService {
     const appointment = await this.loadOwned(tenantId, appointmentId);
     this.scopes.assertAllowed(scope, appointment.barberId);
 
-    const noShowByClient = await this.noShowCountsFor(tenantId, [appointment]);
-
-    const history = appointment.clientId
-      ? await this.prisma.appointment.findMany({
-          where: {
-            tenantId,
-            clientId: appointment.clientId,
-            status: AppointmentStatus.DONE,
-            id: { not: appointment.id },
-          },
-          include: APPOINTMENT_INCLUDE,
-          orderBy: { startsAt: 'desc' },
-          take: HISTORY_SIZE,
-        })
-      : [];
+    const [noShowByClient, order, history] = await Promise.all([
+      this.noShowCountsFor(tenantId, [appointment]),
+      // A comanda vinculada decide o rótulo do botão do drawer: "Abrir
+      // comanda" quando não há nenhuma, "Ver comanda" quando já existe.
+      this.prisma.order.findFirst({
+        where: { tenantId, appointmentId: appointment.id, deletedAt: null },
+        select: { id: true, number: true, status: true },
+      }),
+      appointment.clientId
+        ? this.prisma.appointment.findMany({
+            where: {
+              tenantId,
+              clientId: appointment.clientId,
+              status: AppointmentStatus.DONE,
+              id: { not: appointment.id },
+            },
+            include: APPOINTMENT_INCLUDE,
+            orderBy: { startsAt: 'desc' },
+            take: HISTORY_SIZE,
+          })
+        : Promise.resolve([]),
+    ]);
 
     return {
       appointment: toItem(appointment, noShowByClient),
@@ -457,7 +467,11 @@ export class StaffAppointmentsService {
           .map((line) => line.service.name)
           .join(' + '),
         totalPriceCents: visit.priceCents,
+        coveredBySubscription:
+          visit.services.length > 0 &&
+          visit.services.every((line) => line.subscriptionUsageId !== null),
       })),
+      order,
     };
   }
 
@@ -749,6 +763,72 @@ export class StaffAppointmentsService {
         entityId: updated.id,
         tenantId,
         actorUserId,
+      },
+      request,
+    );
+
+    return toItem(updated, await this.noShowCountsFor(tenantId, [updated]));
+  }
+
+  /**
+   * "Concluir" do drawer — o atendimento aconteceu.
+   *
+   * **Concluir e cobrar são ações independentes** (regra de produto, agente
+   * 31). Até aqui o ÚNICO caminho para `DONE` era fechar a comanda vinculada
+   * (fase 07), o que obrigava a abrir comanda para todo atendimento — inclusive
+   * o que não vai ser cobrado, ou o que vai ser cobrado depois. Esta rota marca
+   * `DONE` e para por aí: nenhum lançamento financeiro, nenhuma comissão,
+   * nenhum ponto de fidelidade. Isso tudo continua nascendo da comanda, quando
+   * houver uma.
+   *
+   * **A assinatura não é tocada.** O uso já foi debitado na RESERVA
+   * (`create`/booking público chamam `SubscriptionCoverageService.debit` ao
+   * gravar o agendamento) — é `cancel` que o devolve. Um atendimento que
+   * aconteceu simplesmente mantém o débito: não há nada a debitar de novo aqui,
+   * e debitar seria cobrar duas vezes a mesma quota.
+   *
+   * Idempotente sobre `DONE` — o balcão clica duas vezes, e um 409 aí seria
+   * ruído (mesmo raciocínio de `confirm`).
+   */
+  async markDone(
+    tenantId: string,
+    appointmentId: string,
+    scope: StaffScope,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<StaffAppointmentItem> {
+    const appointment = await this.loadOwned(tenantId, appointmentId);
+    this.scopes.assertAllowed(scope, appointment.barberId);
+
+    if (appointment.status === AppointmentStatus.DONE) {
+      return toItem(appointment, await this.noShowCountsFor(tenantId, [appointment]));
+    }
+    if (
+      appointment.status !== AppointmentStatus.SCHEDULED &&
+      appointment.status !== AppointmentStatus.CONFIRMED
+    ) {
+      throw ApiException.conflict(
+        'Este agendamento não pode ser concluído — ele foi cancelado ou marcado como falta.',
+        ErrorCode.APPOINTMENT_NOT_CONCLUDABLE,
+      );
+    }
+
+    const updated = await this.prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { status: AppointmentStatus.DONE },
+      include: APPOINTMENT_INCLUDE,
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.STAFF_APPOINTMENT_DONE,
+        entity: 'Appointment',
+        entityId: updated.id,
+        tenantId,
+        actorUserId,
+        // Sem comanda: é exatamente o que esta rota registra — o atendimento
+        // foi concluído sem passar pelo caixa.
+        metadata: { withOrder: false },
       },
       request,
     );
@@ -1414,8 +1494,14 @@ function toItem(
       color: line.service.color,
       durationMin: line.durationMin,
       priceCents: line.priceCents,
+      coveredBySubscription: line.subscriptionUsageId !== null,
+      listPriceCents: line.service.priceCents,
     })),
     totalPriceCents: appointment.priceCents,
+    // Só é "coberto pela assinatura" quando TODAS as linhas são. Um combo com
+    // uma linha coberta e outra cobrada tem total > 0 e não precisa do rótulo.
+    coveredBySubscription:
+      lines.length > 0 && lines.every((line) => line.subscriptionUsageId !== null),
     durationMin: lines.reduce((total, line) => total + line.durationMin, 0),
     notes: appointment.notes,
     clientNoShowCount: appointment.clientId ? (noShowByClient.get(appointment.clientId) ?? 0) : 0,

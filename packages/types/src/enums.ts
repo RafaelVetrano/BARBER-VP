@@ -86,6 +86,14 @@ export const PaymentMethod = {
   PIX: 'PIX',
   SUBSCRIPTION: 'SUBSCRIPTION',
   LOYALTY: 'LOYALTY',
+  /**
+   * Cortesia (agente 31) — a comanda aconteceu e NADA foi cobrado: refazer um
+   * corte que saiu ruim, um brinde, uma promoção. Sempre R$ 0: o valor que
+   * seria cobrado fica em `Order.courtesyCents`, e o motivo, obrigatório, em
+   * `Order.courtesyReason`. Não é forma de recebimento — não entra em conta
+   * bancária nem no caixa.
+   */
+  COURTESY: 'COURTESY',
 } as const;
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
 

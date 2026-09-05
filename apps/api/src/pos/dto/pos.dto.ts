@@ -151,12 +151,26 @@ export class RedeemOrderLoyaltyDto {
 
 class OrderPaymentSplitDto {
   @IsEnum(PaymentMethod)
-  @IsIn([PaymentMethod.CASH, PaymentMethod.DEBIT, PaymentMethod.CREDIT, PaymentMethod.PIX])
+  @IsIn([
+    PaymentMethod.CASH,
+    PaymentMethod.DEBIT,
+    PaymentMethod.CREDIT,
+    PaymentMethod.PIX,
+    // `COURTESY` (agente 31) é a forma de fechar SEM cobrar. `SUBSCRIPTION` e
+    // `LOYALTY` continuam de fora: são descontos que reduzem o total, não
+    // maneiras de quitá-lo.
+    PaymentMethod.COURTESY,
+  ])
   method!: PaymentMethod;
 
+  /**
+   * `Min(0)` e não `IsPositive`: a cortesia é o pagamento de R$ 0,00. Que só
+   * ELA possa ser zero é regra de negócio, conferida em `OrdersService.close`
+   * — aqui só se abre a porta para o valor.
+   */
   @Type(() => Number)
   @IsInt()
-  @IsPositive()
+  @Min(0)
   amountCents!: number;
 }
 
@@ -166,6 +180,18 @@ export class CloseOrderDto {
   @ValidateNested({ each: true })
   @Type(() => OrderPaymentSplitDto)
   payments!: OrderPaymentSplitDto[];
+
+  /**
+   * Obrigatório quando a comanda fecha sem cobrar — a checagem mora no serviço
+   * porque depende do TOTAL recalculado dentro da transação, que o DTO não vê.
+   * Aqui só se garante o formato.
+   */
+  @ApiPropertyOptional({ minLength: 5, maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(200)
+  courtesyReason?: string;
 }
 
 export class ReopenOrderDto {

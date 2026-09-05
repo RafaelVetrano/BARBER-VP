@@ -1,7 +1,56 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-09-04 — **agente 30 (configuração inicial
-obrigatória)** concluído.
+Atualizado por último: 2026-09-04 — **agente 31 (concluir sem comanda, e
+comanda de R$ 0 que fecha ou cancela)** concluído.
+
+A fase começa por uma **regra de produto**: **concluir um atendimento e cobrar
+por ele são ações independentes.** Até aqui o único caminho para
+`AppointmentStatus.DONE` era fechar a comanda vinculada (regra da fase 07), e o
+drawer da Agenda só oferecia "Concluir e abrir comanda" — quem não ia cobrar
+naquele instante **não tinha como encerrar o atendimento**. Agora existe
+`PATCH /staff-agenda/:id/done`: marca `DONE` e para aí, sem lançamento
+financeiro, sem comissão, sem pontos. A comanda continua existindo como fluxo,
+aberta à parte, quando o balcão quiser cobrar.
+
+Os três defeitos que a regra trouxe junto:
+
+**1. A comanda nascida de um agendamento vinha VAZIA.** "Barba + Corte
+degradê" no agendamento, "Nenhum item adicionado ainda" na comanda. Agora
+`POST /orders` com `appointmentId` cria os itens a partir de
+`AppointmentService`, ao preço fotografado na reserva. O detalhe que evita um
+bug de dinheiro: a linha coberta pela assinatura herda o preço zero mas **não**
+o `subscriptionUsageId` — a quota já foi debitada na reserva, e copiar o id
+faria o fechamento debitar uma segunda vez (quatro cortes do plano virando
+dois). Efeito colateral bom: `critical-flows.e2e-spec.ts` reprovou no passo
+1.5, porque lançar o serviço à mão passou a dobrar a comanda.
+
+**2. O "Total R$ 0,00" do drawer não era preço faltando.** Consultando o banco
+antes de mexer em código: o agendamento tem `subscriptionUsageId` nas duas
+linhas, com o catálogo em R$ 35,00 + R$ 45,00. **O zero estava certo; faltava
+dizer por quê.** O drawer passou a mostrar "Coberto pela assinatura", e as
+"Últimas visitas" também.
+
+**3. A comanda de R$ 0 não fechava nem cancelava.** "Fechar comanda" ficava
+`disabled`, sem explicação e sem saída — violação direta da regra 4. Nasceram
+`PaymentMethod.COURTESY` (sempre R$ 0, com motivo obrigatório de 5–200 chars) e
+`POST /orders/:id/cancel`. **O botão de fechar nunca mais fica `disabled`**: a
+regra virou uma função pura (`closeBlockedReason`) e o rodapé renderiza o
+motivo NO LUGAR do botão. Escolher cortesia **perdoa o total** —
+`Order.courtesyCents` guarda o que teria sido cobrado — e não gera caixa,
+comissão nem pontos, mas continua baixando estoque e concluindo o agendamento.
+
+Nos Relatórios, "Atendimentos" contava comandas fechadas e agora soma
+**comandas fechadas + agendamentos `DONE` sem comanda fechada**: o atendimento
+concluído e não cobrado precisa aparecer com faturamento zero, não sumir. As
+cortesias ganharam recorte próprio (quantidade e valor **a preço de tabela**)
+abaixo da rosca de formas de pagamento, e `COURTESY` foi excluída da rosca —
+ela reparte faturamento, e uma fatia de 0% seria ruído.
+
+Suíte: **97 unit · 382 e2e · 186 isolamento**, mais **33 unit de frontend**
+(+18 e2e, +3 isolamento, +8 de frontend). `lint`/`typecheck` 11/11, `build` 3/3,
+varredura responsiva sem pendência.
+
+Antes disso, o **agente 30 (configuração inicial obrigatória)**.
 
 A fase começa por uma **regra de produto**, não por um defeito: **concluir a
 configuração inicial é obrigatório para acessar o painel.** Não existe
@@ -293,6 +342,7 @@ achados"). Antes disso, o agente 16 reconstruiu a `/app/clientes`, o 14 separou
 | 28 | Auditoria 1:1 — aba Assistente IA (`auditoria/`) | ✅ |
 | 29 | Reparos transversais — fecha o 15 e as dívidas em aberto | ✅ |
 | 30 | Configuração inicial obrigatória — wizard `/app/configurar` (`auditoria/`) | ✅ |
+| 31 | Concluir sem comanda, e comanda de R$ 0 que fecha ou cancela (`auditoria/`) | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
@@ -512,6 +562,7 @@ de aceite "BARBER tentando acessar agenda de outro barbeiro".
 | POST | `/staff-agenda` | Cria pelo staff — cliente cadastrado OU walk-in (`guestName`/`guestPhone`). Reusa `AvailabilityService`/`CatalogService`/`SubscriptionCoverageService` da fase 04; `origin: DASHBOARD`. |
 | PATCH | `/staff-agenda/:id/move` | Remarca (novo horário e/ou barbeiro), revalida a grade. |
 | PATCH | `/staff-agenda/:id/cancel` | Cancela e devolve uso de assinatura, se houver. |
+| PATCH | `/staff-agenda/:id/done` | **Agente 31.** Conclui o atendimento — `SCHEDULED`/`CONFIRMED` → `DONE`, e NADA mais: sem comanda, sem lançamento financeiro, sem comissão, sem pontos. Idempotente sobre `DONE`; 409 `APPOINTMENT_NOT_CONCLUDABLE` em cancelado/falta. A quota de assinatura não é tocada — ela já foi debitada na reserva. |
 
 ### Comandas / POS (`/api/v1/orders`) — fase 07
 
@@ -523,13 +574,14 @@ feature — comandas são o core do produto, liberado em todo plano.
 |---|---|---|
 | GET | `/orders/catalog` | Serviços/produtos/barbeiros ativos para o balcão. **Agente 17:** + `nextNumber`, o `#N` que o modal "Nova comanda" mostra antes de a comanda existir. |
 | GET | `/orders` | Lista abertas/fechadas — `status`/`search`/`barberId`, paginado. **Agente 17:** + `closedToday` (recorte do dia no fuso do tenant), `counts` (`abertas`/`fechadasHoje`, que ignoram a aba e respeitam a busca), e cada linha traz `subtotalCents` + `lines[]` para o card. `search` aceita `#123`. |
-| GET \| POST | `/orders/:id` \| `/orders` | Detalhe; abrir (cliente cadastrado, walk-in `{name,phone}`, ou vinculado a um `appointmentId`). **Agente 17:** o detalhe passou a trazer `loyaltyEnabled`/`loyaltyPointsRequired`/`loyaltyRewardCents` — a prévia do resgate, mostrada ANTES de o toggle ser ligado. |
+| GET \| POST | `/orders/:id` \| `/orders` | Detalhe; abrir (cliente cadastrado, walk-in `{name,phone}`, ou vinculado a um `appointmentId`). **Agente 17:** o detalhe passou a trazer `loyaltyEnabled`/`loyaltyPointsRequired`/`loyaltyRewardCents` — a prévia do resgate, mostrada ANTES de o toggle ser ligado. **Agente 31:** com `appointmentId`, a comanda nasce **com os serviços do agendamento como itens**, ao preço fotografado na reserva e com a cobertura de assinatura já aplicada — e `BARBER` só abre comanda do próprio atendimento (403). |
 | PATCH | `/orders/:id` | **Agente 17.** Troca cliente e/ou barbeiro de uma comanda ABERTA — o "trocar" do cabeçalho do modal. Trocar o cliente REAVALIA a cobertura de assinatura item a item e derruba o resgate de pontos. `AuditLog`. |
 | POST \| PATCH \| DELETE | `/orders/:id/items(/:itemId)` | Adiciona/atualiza quantidade/remove item. Serviço com cliente coberto por assinatura ativa entra a R$0 automaticamente (`quantity` 1 apenas). |
 | PATCH | `/orders/:id/discount` | Desconto percentual (basis points) ou fixo (centavos). |
 | PATCH | `/orders/:id/loyalty` | Liga/desliga o resgate de pontos (aplica `valorDesconto` de uma vez, se o saldo cobrir `pontosParaDesconto`). |
-| POST | `/orders/:id/close` | **Fechamento em transação única** — ver "Decisões técnicas". |
-| POST | `/orders/:id/reopen` | Só `OWNER`/`MANAGER` (`@Roles` no método, não na classe), sempre `AuditLog`. |
+| POST | `/orders/:id/close` | **Fechamento em transação única** — ver "Decisões técnicas". **Agente 31:** aceita `courtesyReason` (5–200), obrigatório quando o total é zero OU quando o pagamento é `COURTESY`; a cortesia perdoa o total (`courtesyCents` guarda o valor) e não gera caixa, comissão nem pontos. |
+| POST | `/orders/:id/cancel` | **Agente 31.** Cancela uma comanda ABERTA — a saída que faltava para a comanda aberta por engano. `OWNER`/`MANAGER` e `BARBER` na própria. Nenhum lançamento financeiro nasce ou morre (comanda aberta não gerou nenhum), o agendamento vinculado NÃO é tocado, `AuditLog`. |
+| POST | `/orders/:id/reopen` | Só `OWNER`/`MANAGER` (`@Roles` no método, não na classe), sempre `AuditLog`. **Agente 31:** limpa a cortesia e recalcula o total — sem isso a comanda voltaria com R$ 0. |
 
 ### Financeiro (`/api/v1/finance`) — fase 07, revisto na fase 18
 
@@ -1249,6 +1301,198 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
 
+## O que o agente 31 (concluir e comanda de R$ 0) entregou
+
+Alvo: o drawer da Agenda e o modal de Comandas. A fase parte de uma **regra de
+produto** — *concluir um atendimento e cobrar por ele são ações independentes*
+— e de três defeitos vistos no navegador em 2026-09-04.
+
+O achado de fundo é o que a regra expôs: **o único caminho para `DONE` era
+fechar a comanda vinculada** (regra da fase 07), e o drawer só oferecia
+"Concluir e abrir comanda". Quem não ia cobrar naquele instante — o corte
+refeito de graça, o serviço já pago pela assinatura, a cobrança que fica para
+depois — **não tinha como encerrar o atendimento**. E a comanda de R$ 0 que
+esse caminho produzia não fechava nem cancelava: "Fechar comanda" ficava
+`disabled`, sem explicação e sem saída, com o cliente na frente do balcão.
+
+### Bloco A — "Concluir" sem comanda ✅
+
+`PATCH /staff-agenda/:id/done`: `SCHEDULED`/`CONFIRMED` → `DONE`, e nada mais.
+Idempotente sobre `DONE` (o balcão clica duas vezes, e um 409 aí seria ruído —
+mesmo raciocínio de `confirm`); 409 `APPOINTMENT_NOT_CONCLUDABLE` em cancelado
+ou falta; `BARBER` só no próprio atendimento (403, pelo `StaffScopeService` que
+já resolvia mover/cancelar). `AuditLog` `staff_agenda.appointment_done` com
+`metadata.withOrder: false` — é o que distingue esta conclusão da que o
+fechamento de comanda faz de tabela.
+
+**A assinatura não é tocada aqui, e isso é o certo.** O enunciado pedia
+"consumir o uso reservado"; lendo `SubscriptionCoverageService`, o uso **já foi
+debitado na RESERVA** — `StaffAppointmentsService.create` e o booking público
+chamam `debit` ao gravar o agendamento, e é `cancel` que devolve. Concluir
+simplesmente mantém o débito. Debitar de novo cobraria duas vezes a mesma
+quota: quatro cortes do plano viravam dois.
+
+No drawer, "Concluir e abrir comanda" virou **dois botões**: "Concluir"
+(primário) e "Abrir comanda" (secundário) — que vira "Ver comanda #N" quando já
+existe uma, informação nova que `GET /staff-agenda/:id` passou a devolver em
+`order`. Depois de concluído, o drawer **não fecha**: mostra o selo `Concluído`
+e o que restou a fazer.
+
+### Bloco B — a comanda nasce preenchida ✅
+
+`POST /orders` com `appointmentId` cria os `OrderItem` a partir de
+`AppointmentService`, ao **preço fotografado na reserva** (não o de tabela de
+hoje — é o que o cliente combinou), com barbeiro e cliente do agendamento e a
+cobertura de assinatura já aplicada.
+
+**O detalhe que evita um bug de dinheiro:** a linha coberta entra com
+`coveredBySubscription: true` e `subscriptionUsageId` **nulo**. A quota é do
+agendamento, que já a debitou; copiar o id faria `close()` debitar uma segunda
+vez. Coberto por caso e2e que confere `used` antes e depois do fechamento.
+
+Efeito colateral bom: `critical-flows.e2e-spec.ts` **reprovou** no passo 1.5 —
+lançar o serviço à mão depois de abrir a comanda passou a dobrar o total. O
+caso foi reescrito para afirmar a regra nova, que é o que ele deveria afirmar.
+
+### Bloco C — o "Total R$ 0,00" do drawer ✅
+
+**Causa raiz, achada consultando o banco antes de mexer em código:** não era
+preço faltando. O agendamento `AG-KAKZ4` ("Barba + Corte degradê") tem
+`subscriptionUsageId` preenchido nas DUAS linhas de `AppointmentService`, com
+`priceCents = 0` e o catálogo em R$ 35,00 + R$ 45,00. **O zero estava certo; o
+que faltava era dizer por quê** — a terceira hipótese do enunciado.
+
+`StaffAppointmentItem.services[]` ganhou `coveredBySubscription` e
+`listPriceCents` (o preço de tabela, que o drawer perdia), e o item ganhou um
+`coveredBySubscription` agregado — verdadeiro só quando TODAS as linhas são
+cobertas (um combo meio coberto tem total > 0 e não precisa do rótulo). O
+drawer mostra **"Coberto pela assinatura"** no lugar de "R$ 0,00", e o mesmo
+vale para "Últimas visitas", que dizia R$ 0,00 pela mesma razão.
+
+### Bloco D — cancelar comanda ✅
+
+`POST /orders/:id/cancel`, só em comanda `OPEN`. **É isso que a torna barata:**
+comanda aberta não gerou pagamento, movimentação de caixa, comissão nem ponto —
+não há nada a estornar, ao contrário de `reopen`.
+
+Duas decisões registradas:
+
+1. **`BARBER` cancela a própria comanda** (recorte do `loadOwned`). É ele quem
+   a abre por engano no meio do atendimento, não há dinheiro envolvido, e
+   mandá-lo procurar o gerente para apagar uma comanda vazia seria fricção sem
+   ganho. Reabrir uma comanda FECHADA continua `MANAGER+`.
+2. **O agendamento vinculado NÃO é tocado.** O enunciado deixava a escolha
+   entre "volta a `CONFIRMED`" e "fica como estava"; a segunda é a única
+   correta, porque **abrir a comanda nunca mexeu no status do agendamento** —
+   não há o que devolver. Forçar `CONFIRMED` apagaria um `DONE` legítimo do
+   Bloco A. Coberto pelos dois casos (agendamento `CONFIRMED` e `DONE`).
+
+Colunas novas: `Order.canceledAt`. No frontend, "Cancelar comanda" fica à
+esquerda do rodapé, com o `ConfirmDialog` de dois passos do kit, e some quando
+a comanda deixa de estar aberta. A cancelada sai de "Abertas" (a contagem já
+filtrava por `status`) e aparece em "Todas", num terceiro bloco que só existe
+quando há alguma.
+
+### Bloco E — fechar com R$ 0, com motivo ✅
+
+`PaymentMethod.COURTESY`, rótulo "Cortesia" no `PAYMENT_METHOD_LABEL`. Regras,
+todas no serviço (o DTO só garante formato, porque a decisão depende do total
+recalculado DENTRO da transação):
+
+- **cortesia é o fechamento inteiro, nunca uma parcela** — um pagamento só, de
+  R$ 0,00, ou 400 `COURTESY_CANNOT_SPLIT`;
+- **total zero exige cortesia** — qualquer outro método é 400
+  `ORDER_ZERO_TOTAL_REQUIRES_COURTESY`, e um método real com valor zero é
+  recusado à parte (seria um fechamento sem cobrar disfarçado de Pix);
+- **motivo obrigatório** (5–200) quando o total é zero OU quando há `COURTESY`:
+  400 `COURTESY_REASON_REQUIRED`;
+- comanda vazia recusa com 400 `ORDER_EMPTY` — código próprio, para a tela
+  poder dizer "Adicione um item ou cancele a comanda".
+
+**A cortesia perdoa o total.** `courtesyCents` guarda o que teria sido cobrado
+e `totalCents` fecha em zero — é a única leitura em que "COURTESY não entra em
+conta bancária nem no caixa" é verdade e em que um corte de graça não infla o
+faturamento. Consequências, todas na mesma transação: **sem `CashMovement`,
+sem `CommissionEntry`, sem ponto de fidelidade** (não houve receita para
+repartir nem gasto para pontuar), e o resgate de pontos é derrubado — queimar
+saldo para descontar de um R$ 0 seria roubo do cliente. O que **continua**
+acontecendo: `Appointment` → `DONE`, baixa de estoque (o produto saiu da
+prateleira, mesmo de graça) e `visitCount` do cliente.
+
+`reopen` ganhou o par simétrico: limpa `courtesyCents`/`courtesyReason` e
+**recalcula**. Sem isso a comanda voltava com total zero e fechar de novo por
+Pix registraria uma venda de R$ 0,00.
+
+**"Fechar comanda" nunca mais fica `disabled`.** A regra virou uma função pura,
+`closeBlockedReason` em `pos-shared.ts`, e o rodapé renderiza **o motivo no
+lugar do botão**: "Adicione um item ou cancele a comanda", "Informe o motivo da
+cortesia", "A soma dos pagamentos não bate com o total". Coberta por 8 casos
+unitários de frontend. Dois ramos de render na régua de pagamento: sem valor a
+cobrar, ela some e entram "Esta comanda não tem valor a cobrar" + o campo de
+motivo; com valor, "Cortesia" é mais uma pastilha e o campo aparece abaixo dela.
+Na mesma passada saiu o outro `disabled` de regra de negócio do POS: o
+interruptor "Resgatar pontos" com saldo insuficiente virou texto ("Faltam N pts
+para este resgate").
+
+### Relatórios — o atendimento sem comanda não some ✅
+
+"Atendimentos" (`ReportsSummaryResponse.orders`) contava **comandas fechadas**.
+Com a regra nova, o atendimento concluído e não cobrado sumia do relatório
+inteiro. A consulta passou a somar **comandas fechadas no período + agendamentos
+`DONE` no período sem comanda FECHADA** — sem interseção possível, e sem
+métrica nova: é a mesma que já existia, ajustada. `revenueCents` não muda (um
+atendimento sem comanda não faturou nada), e o ticket médio cai quando existem
+atendimentos assim — que é o número certo: a casa atendeu mais gente pelo mesmo
+dinheiro.
+
+O KPI "concluídos" da tela Dashboard (`appointmentsToday`) já contava
+`Appointment.status = DONE` desde a fase 13 — conferido, nada a mudar ali.
+
+**Cortesias ganharam recorte próprio** no card "Faturamento por forma de
+pagamento": quantas foram e o que teriam valido **a preço de tabela**. O valor
+não sai de `courtesyCents` de propósito — aquele número já desconta a cobertura
+de assinatura, e uma comanda inteiramente coberta fechada como cortesia diria
+que a casa deu R$ 0,00 de graça num corte de R$ 45,00. Sai do catálogo, item a
+item. E `COURTESY` foi **excluída da rosca**: ela reparte faturamento, e uma
+fatia de 0% ali seria só ruído.
+
+### Schema (migration `20260904180000_concluir_e_comanda_zero`)
+
+`PaymentMethod.COURTESY`; `Order.courtesyCents` (default 0),
+`Order.courtesyReason`, `Order.canceledAt`. `OrderStatus.CANCELED` **já
+existia** desde a fase 01 e nenhuma rota chegava nele — agora chega.
+
+### Testes (+18 e2e, +3 isolamento, +8 de frontend)
+
+`concluir-comanda-zero.e2e-spec.ts` é novo e cobre os cinco blocos contra o
+banco real: `done` sem comanda (e sem `Payment`/`CommissionEntry`/`Order`
+nenhum atrás), `done` idempotente e recusado em cancelado, `done` por `BARBER`
+em atendimento alheio → 403, comanda nascida do agendamento com itens e
+subtotal batendo, cobertura de assinatura **sem débito duplo**, `cancel`
+deixando o agendamento como estava nos dois estados, `close` de total zero sem
+motivo → 400, cortesia sem `CashMovement`/comissão/pontos mas COM baixa de
+estoque, cortesia indivisível, `reopen` devolvendo o total, e o delta de
+"Atendimentos" no relatório. As três rotas novas entraram no gate de isolamento
+(`full-coverage.isolation-spec.ts`). No frontend,
+`pos-close-blocked.spec.ts` trava a regra 4 no ponto em que ela mais custou.
+
+### Conferido no navegador
+
+Com `dono@barbeariacentral.com.br` / `BarberVP@2026`:
+
+1. `/app/agenda` → drawer de um agendamento → **"Concluir"** → selo `Concluído`,
+   o drawer continua aberto explicando o que restou, a grade reflete;
+2. `/app/relatorios` → "Atendimentos" subiu 1 com faturamento igual;
+3. de volta ao drawer → **"Abrir comanda"** → `/app/comandas` com os itens do
+   agendamento já dentro;
+4. remover todos os itens → o botão "Fechar comanda" **some** e no lugar dele
+   aparece "Adicione um item ou cancele a comanda";
+5. recolocar o item, escolher "Cortesia" → campo de motivo → **"Fechar como
+   cortesia"** → comanda fechada, `AuditLog` com o motivo, nenhuma
+   movimentação de caixa;
+6. nova comanda vazia → **"Cancelar comanda"** → confirmação em dois passos →
+   some de "Abertas" e aparece em "Todas", com o selo `Cancelada`.
+
 ## O que o agente 30 (configuração inicial obrigatória) entregou
 
 Alvo: o wizard `/app/configurar`, nascido na fase 03 e nunca auditado desde
@@ -1840,6 +2084,12 @@ Em uma tela, porque é isto que quem abrir a próxima sessão precisa ver:
 **O produto está inteiro. O que falta é publicar.**
 
 ## O que o agente 15 (auditoria 1:1 da aba Agenda) entregou
+
+> **O rodapé de ações do drawer foi reescrito pelo agente 31** (2026-09-04):
+> "Concluir e abrir comanda" virou dois botões, e um agendamento encerrado
+> passou a mostrar o estado em texto no lugar dos quatro botões apagados.
+> Confirmar, Remarcar, Cancelar e Marcar falta continuam com a lógica do 15/29
+> — só a condição de RENDER mudou.
 
 > Registro escrito pelo **agente 29** (2026-09-03). O trabalho é do 15, que o
 > deixou no working tree sem commit e sem registro; o 29 o auditou contra o
@@ -4651,6 +4901,49 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 
 ## Decisões tomadas
 
+- 2026-09-04 (agente 31) — **Concluir um atendimento e cobrar por ele são
+  ações INDEPENDENTES.** Regra de produto do dono. Até aqui o único caminho
+  para `AppointmentStatus.DONE` era fechar a comanda vinculada (regra da fase
+  07), o que obrigava a abrir comanda para todo atendimento — inclusive o que
+  não vai ser cobrado. `PATCH /staff-agenda/:id/done` passa a marcar `DONE` e
+  parar aí; a comanda continua existindo como fluxo, aberta à parte, quando o
+  balcão quiser cobrar. **A regra da fase 07 continua valendo no outro
+  sentido**: fechar a comanda ainda conclui o agendamento, e reabri-la ainda o
+  devolve a `CONFIRMED`.
+- 2026-09-04 (agente 31) — **`COURTESY` é um método de pagamento, e vale sempre
+  R$ 0.** Existe como método, e não como um desconto de 100%, porque o balcão
+  precisa distinguir "cobrei zero de propósito" de "esqueci de lançar os
+  itens", e o relatório precisa contar as duas coisas separado. Escolher
+  cortesia **perdoa o total**: `Order.courtesyCents` guarda o que teria sido
+  cobrado, `totalCents` fecha em zero. É a única leitura em que "cortesia não
+  entra em conta bancária nem no caixa" é verdade e em que um corte de graça
+  não infla o faturamento. Consequências: sem `CashMovement`, sem
+  `CommissionEntry`, sem ponto de fidelidade — mas COM baixa de estoque e COM
+  `Appointment` → `DONE`, porque o atendimento aconteceu.
+- 2026-09-04 (agente 31) — **Todo fechamento sem cobrar exige motivo** (5–200
+  chars), inclusive o da comanda inteiramente coberta pela assinatura. Poderia
+  parecer excesso — a assinatura já explica o R$ 0 —, mas a alternativa é a
+  tela decidir sozinha quando o zero é legítimo, e o registro de POR QUE nada
+  foi cobrado é justamente o que faltava. O motivo vai para o `AuditLog` e
+  para `Order.courtesyReason`, que a comanda fechada exibe.
+- 2026-09-04 (agente 31) — **`BARBER` cancela a própria comanda.** É ele quem a
+  abre por engano no meio do atendimento; comanda ABERTA não gerou pagamento,
+  caixa nem comissão, então não há dinheiro envolvido, e mandá-lo procurar o
+  gerente para apagar uma comanda vazia seria fricção sem ganho. **Reabrir uma
+  comanda FECHADA continua `MANAGER+`** — ali há estorno de verdade.
+- 2026-09-04 (agente 31) — **Cancelar a comanda NÃO mexe no agendamento
+  vinculado.** Abrir a comanda nunca mexeu no status dele, então cancelá-la não
+  tem o que devolver. Forçar `CONFIRMED` apagaria um `DONE` legítimo de quem
+  concluiu o atendimento à parte.
+- 2026-09-04 (agente 31) — **A comanda nascida de um agendamento herda o preço
+  zero da assinatura, mas NÃO o `subscriptionUsageId`.** A quota já foi
+  debitada na reserva; copiar o id faria o fechamento debitar uma segunda vez —
+  quatro cortes do plano virariam dois. Quem segura a reserva é o agendamento.
+- 2026-09-04 (agente 31) — **"Atendimentos" do relatório conta comandas
+  fechadas MAIS agendamentos `DONE` sem comanda fechada.** Não é métrica nova:
+  é a que já existia, ajustada à regra de independência. Contar só a comanda
+  faria o atendimento concluído e não cobrado sumir do relatório inteiro.
+
 - 2026-09-04 (agente 30) — **Concluir a configuração inicial é OBRIGATÓRIO para
   acessar o painel.** Regra de produto do dono, não inferência: não existe
   "explorar antes" nem "continuar depois". Consequências, todas nesta fase: os
@@ -5559,6 +5852,59 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   **resolvida na fase 04**: OTP condicional por regra de risco, com os três
   limites em env (`BOOKING_GUEST_IP_HOURLY_LIMIT`, `BOOKING_GUEST_OPEN_LIMIT`,
   `BOOKING_CREATE_HOURLY_LIMIT`). Ver decisão da fase 04.
+
+### Dívidas novas do agente 31 (concluir e comanda de R$ 0)
+
+- **Cortesias não têm lugar no LAYOUT do relatório.** O protótipo não desenha
+  bloco nenhum para elas. O dado está consultável pela API
+  (`ReportsSummaryResponse.courtesies`: quantidade e valor a preço de tabela) e
+  a tela o mostra como uma linha ABAIXO da rosca de formas de pagamento — o
+  lugar menos errado, porque é ali que o dono procura como o dinheiro entrou.
+  Um card próprio ("Cortesias do período", com a lista e o motivo de cada uma)
+  é o que o produto pede quando o volume justificar.
+- **Um atendimento pode ser contado em dois períodos.** "Atendimentos" soma
+  agendamentos `DONE` por `startsAt` e comandas fechadas por `closedAt`. Um
+  atendimento concluído hoje cuja comanda só feche amanhã conta hoje (como
+  agendamento) e amanhã (como comanda). Dentro de um mesmo período não há
+  duplicidade — a comanda fechada exclui o agendamento —, e a alternativa
+  (ignorar o agendamento enquanto a comanda estiver aberta) fazia o
+  atendimento sumir da tela justamente enquanto o cliente ainda está no balcão.
+  Some sozinha quando o balcão não deixa comanda virar o dia.
+- **`addItem` de um serviço já coberto pela reserva ainda pode debitar duas
+  vezes.** O caminho principal está fechado (Bloco B: a comanda nasce com as
+  linhas do agendamento e sem o `subscriptionUsageId`), mas se o operador
+  REMOVER o item e adicioná-lo de novo pelo catálogo, `addItem` resolve a
+  cobertura do zero e anexa um `usageId` que o fechamento vai debitar — sobre
+  uma quota que a reserva já consumiu. Pré-existente (a fase 07 se comportava
+  assim), agora mais visível. Resolver exige `OrderItem` saber que a linha veio
+  de um `AppointmentService`.
+- **Achado FORA do escopo, visto de passagem: a corrida de slot do booking
+  público pode dar 500 em vez de 409.** `critical-flows` 1.4 dispara dois
+  agendamentos simultâneos no MESMO horário e espera `[201, 409]`; em ~1 de
+  cada 6 rodadas da suíte completa o perdedor volta **500**, e o log mostra
+  `40P01 deadlock detected` em `tx.appointment.create` — não o `23P01` da
+  EXCLUDE `no_double_booking`, que é o único que
+  `AppointmentsService.runGuardingDoubleBooking` converte em `DOUBLE_BOOKING`.
+  Duas transações concorrentes travam uma na outra no índice antes de qualquer
+  uma violar a restrição. **Não é desta fase** (`apps/api/src/booking/` não foi
+  tocado aqui) e vale em produção, não só no teste: dois clientes tocando o
+  mesmo horário no mesmo instante podem receber "erro interno" em vez de "esse
+  horário acabou de ser ocupado". Resolver é uma retentativa curta em `40P01`
+  dentro do mesmo guarda — mas mapear deadlock para `DOUBLE_BOOKING` sem
+  retentar seria mentir sobre a causa, então fica registrado para o agente do
+  booking, não remendado aqui.
+- **A cortesia não tem recorte por barbeiro.** `courtesyCents` fica na comanda,
+  não no item, então "quanto o Carlos deu de graça este mês" não é
+  consultável. Como a comissão de uma cortesia é zero, isso não afeta pagamento
+  nenhum — é informação de gestão.
+- **`disabled` que sobraram em `apps/web/components/dashboard/pos/`, e por
+  quê.** O grep do critério de aceite não volta vazio, e não deveria: sobraram
+  os de ESTADO (`isPending` de mutação em voo, comanda já fechada, stepper no
+  mínimo), o de formulário incompleto no walk-in (campos visivelmente em
+  branco) e o da linha de catálogo com estoque zerado — esse último é regra de
+  negócio, mas carrega a explicação **na própria linha** ("Sem estoque"), que é
+  o que a regra 4 pede. O que a fase eliminou foram os dois `disabled` sem
+  explicação: "Fechar comanda" e o interruptor de resgate de pontos.
 
 ### Dívidas novas do agente 29 (reparos transversais)
 
@@ -6491,10 +6837,26 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 | Suíte | Casos |
 |---|---|
 | Unitários (`apps/api`) | 97 |
-| Unitários (`apps/web`) | **25** |
-| E2E | **364** |
-| Isolamento de tenant (gate) | **183** |
-| **Total** | **669** |
+| Unitários (`apps/web`) | **33** |
+| E2E | **382** |
+| Isolamento de tenant (gate) | **186** |
+| **Total** | **698** |
+
+> Contagem do agente 31 (2026-09-04), medida rodando as QUATRO suítes, uma de
+> cada vez, com o container `web` parado — pelo mesmo motivo de RAM registrado
+> abaixo. O agente 31 somou **+18 e2e** (`concluir-comanda-zero.e2e-spec.ts`,
+> novo: os cinco blocos da fase contra o banco real), **+3 isolamento** (as
+> três rotas novas — `done`, `cancel` e `POST /orders` com `appointmentId` de
+> outro tenant) e **+8 de frontend** (`pos-close-blocked.spec.ts`, sobre
+> `closeBlockedReason` — a regra 4 no ponto em que ela mais custou). Nenhum
+> caso foi removido: `critical-flows` 1.5 foi REESCRITO no lugar, porque a
+> comanda nascida de um agendamento deixou de precisar do lançamento à mão.
+>
+> **Uma instabilidade conhecida, e anterior a esta fase:** `critical-flows` 1.4
+> (corrida de slot no booking público) falha em ~1 de cada 6 rodadas da suíte
+> completa, com `40P01 deadlock detected` virando 500 em vez do 409 esperado —
+> e derruba 1.5–1.8 em cascata, porque elas dependem do agendamento que 1.4
+> cria. Rodada sozinha, a suíte passa 4/4. Ver a dívida registrada abaixo.
 
 > Contagem do agente 30 (2026-09-04), medida rodando as QUATRO suítes, uma de
 > cada vez, com o container `web` parado — pelo mesmo motivo de RAM registrado

@@ -151,6 +151,20 @@ export class StaffAgendaController {
     return this.appointments.confirm(tenantId, id, scope, principal.id, request);
   }
 
+  @Patch(':id/done')
+  @ApiOperation({
+    summary: 'Conclui o atendimento — sem comanda, sem lançamento financeiro',
+  })
+  async markDone(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<StaffAppointmentItem> {
+    const scope = await this.scopes.resolve(tenantId, principal);
+    return this.appointments.markDone(tenantId, id, scope, principal.id, request);
+  }
+
   @Patch(':id/no-show')
   @ApiOperation({ summary: 'Marca falta — conta em ClientProfile e pode bloquear o cliente' })
   async markNoShow(

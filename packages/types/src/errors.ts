@@ -38,6 +38,22 @@ export const ErrorCode = {
   /// wizard inteiro chamando a rota direto — a obrigatoriedade é do servidor,
   /// não do guard do navegador (agente 30).
   ONBOARDING_INCOMPLETE: 'ONBOARDING_INCOMPLETE',
+  /// `PATCH /staff-agenda/:id/done` num agendamento que já foi cancelado ou
+  /// marcado como falta. Concluir é idempotente sobre `DONE` — só estes dois
+  /// recusam (agente 31).
+  APPOINTMENT_NOT_CONCLUDABLE: 'APPOINTMENT_NOT_CONCLUDABLE',
+  /// Fechar comanda sem nenhum item. É 400, não `disabled`: a tela explica no
+  /// lugar do botão ("Adicione um item ou cancele a comanda").
+  ORDER_EMPTY: 'ORDER_EMPTY',
+  /// Fechamento sem valor a cobrar (total zero, ou pagamento `COURTESY`) e sem
+  /// `courtesyReason`. R$ 0 não é impedido — é explicado (agente 31).
+  COURTESY_REASON_REQUIRED: 'COURTESY_REASON_REQUIRED',
+  /// Comanda de total zero fechada com qualquer coisa que não seja
+  /// exatamente `[{ method: COURTESY, amountCents: 0 }]`.
+  ORDER_ZERO_TOTAL_REQUIRES_COURTESY: 'ORDER_ZERO_TOTAL_REQUIRES_COURTESY',
+  /// `COURTESY` misturada com outro método, ou com valor diferente de zero.
+  /// Cortesia é o fechamento inteiro, nunca uma parcela dele.
+  COURTESY_CANNOT_SPLIT: 'COURTESY_CANNOT_SPLIT',
   // OTP (fase 03)
   OTP_INVALID: 'OTP_INVALID',
   OTP_EXPIRED: 'OTP_EXPIRED',

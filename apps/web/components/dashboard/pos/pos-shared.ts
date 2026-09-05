@@ -10,6 +10,18 @@ import type { OrderListLine, PaymentMethod } from '@barbervp/types';
  */
 export const SPLIT_METHODS: PaymentMethod[] = ['PIX', 'CASH', 'DEBIT', 'CREDIT'];
 
+/**
+ * Cortesia (agente 31) — a quinta pastilha da régua, e a ÚNICA forma de fechar
+ * uma comanda que não cobra nada. Fica fora de `SPLIT_METHODS` de propósito:
+ * cortesia é o fechamento inteiro, nunca uma parcela dele (o servidor recusa
+ * com `COURTESY_CANNOT_SPLIT`).
+ */
+export const COURTESY_METHOD = 'COURTESY' satisfies PaymentMethod;
+
+/** Limites de `CloseOrderDto.courtesyReason`, espelhando a validação do servidor. */
+export const COURTESY_REASON_MIN = 5;
+export const COURTESY_REASON_MAX = 200;
+
 /** Rótulo pt-BR — o mapa mora em `@barbervp/types`, nunca copiado por tela. */
 export function methodLabel(method: PaymentMethod | string): string {
   return PAYMENT_METHOD_LABEL[method as PaymentMethod] ?? method;
@@ -63,4 +75,51 @@ export function inputToCents(input: string): number {
 /** Centavos → `1234,56`, o formato que os campos de valor exibem. */
 export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2).replace('.', ',');
+}
+
+/** O estado do fechamento que `closeBlockedReason` precisa conhecer. */
+export interface CloseAttempt {
+  /** Quantos itens a comanda tem. */
+  itemCount: number;
+  /** O que ainda há a cobrar, em centavos. */
+  totalCents: number;
+  /** O balconista escolheu "Cortesia" na régua de métodos. */
+  courtesyChosen: boolean;
+  /** Motivo digitado, já sem espaços nas pontas. */
+  courtesyReason: string;
+  /** O balconista escolheu "Dividir". */
+  splitting: boolean;
+  /** Total menos o que foi alocado no split. `0` = fecha. */
+  remainingCents: number;
+}
+
+/**
+ * POR QUE o fechamento não pode acontecer agora — em texto, para ocupar o
+ * LUGAR do botão. `null` = pode fechar.
+ *
+ * Regra 4 do projeto: nada de `disabled` para regra de negócio. Era
+ * exatamente isso que travava o balcão numa comanda de R$ 0 — o botão
+ * "Fechar comanda" apagado, sem explicação e sem saída.
+ *
+ * Mora aqui, fora do componente, porque é a regra que decide se a comanda
+ * fecha: vale tê-la coberta por teste sem montar um modal inteiro.
+ */
+export function closeBlockedReason(attempt: CloseAttempt): string | null {
+  if (attempt.itemCount === 0) {
+    return 'Adicione um item ou cancele a comanda.';
+  }
+  // Sem valor a cobrar, o fechamento é sempre por cortesia — e cortesia
+  // exige motivo, tenha a comanda valor ou não.
+  const courtesy = attempt.totalCents === 0 || attempt.courtesyChosen;
+  if (courtesy) {
+    const length = attempt.courtesyReason.trim().length;
+    if (length < COURTESY_REASON_MIN || length > COURTESY_REASON_MAX) {
+      return 'Informe o motivo da cortesia.';
+    }
+    return null;
+  }
+  if (attempt.splitting && attempt.remainingCents !== 0) {
+    return 'A soma dos pagamentos não bate com o total.';
+  }
+  return null;
 }

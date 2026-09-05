@@ -159,6 +159,20 @@ export class OrdersController {
     return this.orders.close(tenantId, scope, id, dto, principal.id, request);
   }
 
+  @Post(':id/cancel')
+  @ApiOperation({
+    summary: 'Cancela uma comanda aberta — sem lançamento financeiro, sempre auditado',
+  })
+  async cancel(
+    @Param('id') id: string,
+    @CurrentTenant('id') tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: RequestContext,
+  ): Promise<OrderDetail> {
+    const scope = await this.scopes.resolve(tenantId, principal);
+    return this.orders.cancel(tenantId, scope, id, principal.id, request);
+  }
+
   @Post(':id/reopen')
   @Roles('OWNER', 'MANAGER')
   @ApiOperation({ summary: 'Reabre uma comanda fechada — só MANAGER+, sempre auditado' })

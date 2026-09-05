@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
+  CourtesySummary,
   HeatmapRow,
   NoShowMonthPoint,
   PaymentDistributionEntry,
@@ -81,12 +82,13 @@ export class ReportsService {
     const { window } = context;
     const previous = previousWindow(window, context.timeZone);
 
-    const [current, previousAgg, series, byBarber, payments] = await Promise.all([
+    const [current, previousAgg, series, byBarber, payments, courtesies] = await Promise.all([
       this.revenueTotals(context, window.start, window.end),
       this.revenueTotals(context, previous.start, previous.end),
       this.revenueSeries(context),
       this.revenueByBarber(context),
       this.paymentDistribution(context),
+      this.courtesies(context),
     ]);
 
     return {
@@ -101,6 +103,7 @@ export class ReportsService {
       revenueSeries: series,
       revenueByBarber: byBarber,
       paymentDistribution: payments,
+      courtesies,
     };
   }
 
@@ -181,24 +184,107 @@ export class ReportsService {
 
   // ── Blocos abertos ─────────────────────────────────────────────────────
 
+  /**
+   * Faturamento e ATENDIMENTOS do intervalo.
+   *
+   * O card "Atendimentos" contava comandas fechadas. Desde o agente 31
+   * concluir um atendimento e cobrar por ele são ações INDEPENDENTES: quem
+   * clica "Concluir" na Agenda e não abre comanda tem um atendimento real, com
+   * faturamento zero — e ele sumia do relatório inteiro. A conta agora soma os
+   * dois conjuntos, sem interseção possível: comandas fechadas no período MAIS
+   * agendamentos `DONE` que não têm comanda nenhuma.
+   *
+   * `revenueCents` não muda: um atendimento sem comanda não faturou nada. O
+   * ticket médio cai quando existem atendimentos assim, e é o número certo —
+   * a casa atendeu mais gente pelo mesmo dinheiro.
+   *
+   * O agendamento é recortado por `startsAt` (quando o atendimento aconteceu),
+   * que é o análogo do `closedAt` da comanda; e pelo `barberId`/`unitId` dele
+   * próprio, não pelos da comanda — daí o `appointmentFilter` separado.
+   */
   private async revenueTotals(
     context: ReportContext,
     start: Date,
     end: Date,
   ): Promise<{ revenueCents: number; orders: number }> {
-    const rows = await this.prisma.$queryRaw<Array<{ revenueCents: bigint; orders: bigint }>>`
-      SELECT COALESCE(SUM(o."totalCents"), 0)::bigint AS "revenueCents",
-             COUNT(o.id)::bigint AS "orders"
-      FROM "Order" o
-      WHERE o."tenantId" = ${context.tenantId}
-        AND o.status = 'CLOSED'
-        AND o."closedAt" >= ${start} AND o."closedAt" < ${end}
-        ${this.orderFilter(context)}
+    const [orderRows, appointmentRows] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ revenueCents: bigint; orders: bigint }>>`
+        SELECT COALESCE(SUM(o."totalCents"), 0)::bigint AS "revenueCents",
+               COUNT(o.id)::bigint AS "orders"
+        FROM "Order" o
+        WHERE o."tenantId" = ${context.tenantId}
+          AND o.status = 'CLOSED'
+          AND o."closedAt" >= ${start} AND o."closedAt" < ${end}
+          ${this.orderFilter(context)}
+      `,
+      this.prisma.$queryRaw<Array<{ appointments: bigint }>>`
+        SELECT COUNT(a.id)::bigint AS "appointments"
+        FROM "Appointment" a
+        -- Sem comanda FECHADA: a comanda ainda aberta não faturou nada e não
+        -- entrou na conta acima, então o atendimento tem de aparecer por aqui
+        -- — senão ele some da tela justamente enquanto o cliente ainda está no
+        -- balcão.
+        LEFT JOIN "Order" o
+          ON o."appointmentId" = a.id AND o."deletedAt" IS NULL AND o.status = 'CLOSED'
+        WHERE a."tenantId" = ${context.tenantId}
+          AND a.status = 'DONE'
+          AND a."startsAt" >= ${start} AND a."startsAt" < ${end}
+          AND o.id IS NULL
+          ${this.appointmentFilter(context)}
+      `,
+    ]);
+    const row = orderRows[0];
+    return {
+      revenueCents: Number(row?.revenueCents ?? 0),
+      orders: Number(row?.orders ?? 0) + Number(appointmentRows[0]?.appointments ?? 0),
+    };
+  }
+
+  /** O mesmo recorte de barbeiro/unidade do `orderFilter`, sobre `Appointment`. */
+  private appointmentFilter(context: ReportContext): Prisma.Sql {
+    const parts: Prisma.Sql[] = [];
+    if (context.barberIds) {
+      parts.push(Prisma.sql`AND a."barberId" IN (${Prisma.join(context.barberIds)})`);
+    }
+    if (context.unitId) {
+      parts.push(Prisma.sql`AND a."unitId" = ${context.unitId}`);
+    }
+    return parts.length > 0 ? Prisma.join(parts, ' ') : Prisma.empty;
+  }
+
+  /**
+   * Cortesias do período (agente 31): quantas comandas fecharam sem cobrar e o
+   * que elas teriam valido A PREÇO DE TABELA.
+   *
+   * O valor NÃO sai de `Order.courtesyCents`: aquele número é o que a comanda
+   * cobraria depois de desconto e de cobertura de assinatura, e uma comanda
+   * inteiramente coberta por assinatura fechada como cortesia valeria zero ali
+   * — dizendo que a casa deu R$ 0,00 de graça num corte de R$ 45,00. O preço
+   * de tabela vem do catálogo, item a item, que é a pergunta que o dono faz.
+   */
+  private async courtesies(context: ReportContext): Promise<CourtesySummary> {
+    const rows = await this.prisma.$queryRaw<Array<{ count: bigint; listPriceCents: bigint }>>`
+      WITH courtesy AS (
+        SELECT o.id
+        FROM "Order" o
+        WHERE o."tenantId" = ${context.tenantId}
+          AND o.status = 'CLOSED'
+          AND o."courtesyReason" IS NOT NULL
+          AND o."closedAt" >= ${context.window.start} AND o."closedAt" < ${context.window.end}
+          ${this.orderFilter(context)}
+      )
+      SELECT (SELECT COUNT(*) FROM courtesy)::bigint AS "count",
+             COALESCE(SUM(COALESCE(s."priceCents", p."priceCents", oi."unitPriceCents") * oi.quantity), 0)::bigint
+               AS "listPriceCents"
+      FROM "OrderItem" oi
+      JOIN courtesy c ON c.id = oi."orderId"
+      LEFT JOIN "Service" s ON s.id = oi."serviceId"
+      LEFT JOIN "Product" p ON p.id = oi."productId"
     `;
     const row = rows[0];
     return {
-      revenueCents: Number(row?.revenueCents ?? 0),
-      orders: Number(row?.orders ?? 0),
+      count: Number(row?.count ?? 0),
+      listPriceCents: Number(row?.listPriceCents ?? 0),
     };
   }
 
@@ -310,6 +396,10 @@ export class ReportsService {
       WHERE p."tenantId" = ${context.tenantId}
         AND p.status = 'PAID'
         AND p."deletedAt" IS NULL
+        -- COURTESY é sempre R$ 0: entraria aqui como uma fatia de 0% num
+        -- gráfico que reparte FATURAMENTO. As cortesias têm o recorte próprio
+        -- do bloco courtesies(), com o número que interessa.
+        AND p.method <> 'COURTESY'
         AND o.status = 'CLOSED'
         AND o."closedAt" >= ${context.window.start} AND o."closedAt" < ${context.window.end}
         ${this.orderFilter(context)}

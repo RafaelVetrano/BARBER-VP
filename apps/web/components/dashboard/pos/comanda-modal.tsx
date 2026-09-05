@@ -16,12 +16,14 @@ import {
   useEstablishmentAuth,
   useToast,
 } from '@barbervp/ui';
-import { formatBRL } from '@barbervp/types';
-import type { OrderDetail, PaymentMethod, PosCatalogResponse } from '@barbervp/types';
+import { courtesyPayments, formatBRL } from '@barbervp/types';
+import type { CloseOrderDto, OrderDetail, PaymentMethod, PosCatalogResponse } from '@barbervp/types';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import {
   useAddOrderItemMutation,
   useApplyDiscountMutation,
   useAssignOrderMutation,
+  useCancelOrderMutation,
   useCloseOrderMutation,
   useOpenOrderMutation,
   useOrderQuery,
@@ -31,9 +33,22 @@ import {
   useUpdateOrderItemMutation,
 } from '@/lib/dashboard/api/pos';
 import { ClientPicker } from './client-picker';
-import { SPLIT_METHODS, centsToInput, inputToCents, methodLabel, posErrorMessage } from './pos-shared';
+import {
+  COURTESY_METHOD,
+  COURTESY_REASON_MAX,
+  COURTESY_REASON_MIN,
+  SPLIT_METHODS,
+  closeBlockedReason,
+  centsToInput,
+  inputToCents,
+  methodLabel,
+  posErrorMessage,
+} from './pos-shared';
 
-/** As 5 pastilhas de `PAYMENT_METHODS` (l.4528) — "Dividir" é a quinta. */
+/**
+ * As pastilhas da régua de pagamento (`PAYMENT_METHODS`, l.4528): os 4 métodos
+ * reais, "Dividir" e — desde o agente 31 — "Cortesia", que fecha sem cobrar.
+ */
 type PaymentChoice = PaymentMethod | 'SPLIT';
 
 export interface ComandaModalProps {
@@ -281,37 +296,82 @@ function ComandaBody({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [payment, setPayment] = useState<PaymentChoice>('PIX');
   const [split, setSplit] = useState<Record<string, string>>({});
+  const [courtesyReason, setCourtesyReason] = useState('');
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   const assign = useAssignOrderMutation(order.id);
   const addItem = useAddOrderItemMutation(order.id);
   const updateItem = useUpdateOrderItemMutation(order.id);
   const removeItem = useRemoveOrderItemMutation(order.id);
   const closeOrder = useCloseOrderMutation(order.id);
+  const cancelOrder = useCancelOrderMutation();
 
   // ── Pagamento ───────────────────────────────────────────────────────────
-  const splitting = payment === 'SPLIT';
+  /*
+   * Uma comanda sem valor a cobrar (tudo coberto pela assinatura, 100% de
+   * desconto, o corte refeito de graça) NÃO tem régua de métodos: não há o que
+   * repartir entre Pix e cartão. Ela fecha por cortesia, com motivo — que é o
+   * que a régua vira nesse caso. Dois ramos de render, não um botão apagado
+   * (era exatamente esse `disabled` sem explicação que travava o balcão).
+   */
+  const nothingToCharge = order.totalCents === 0;
+  const splitting = !nothingToCharge && payment === 'SPLIT';
+  const courtesy = nothingToCharge || payment === COURTESY_METHOD;
   const splitCents = SPLIT_METHODS.reduce((sum, method) => sum + inputToCents(split[method] ?? ''), 0);
   const allocated = splitting ? splitCents : order.totalCents;
   const remaining = order.totalCents - allocated;
+  const reason = courtesyReason.trim();
 
-  const payments = splitting
-    ? SPLIT_METHODS.map((method) => ({ method, amountCents: inputToCents(split[method] ?? '') })).filter(
-        (entry) => entry.amountCents > 0,
-      )
-    : [{ method: payment as PaymentMethod, amountCents: order.totalCents }];
+  const closeDto: CloseOrderDto = courtesy
+    ? { payments: courtesyPayments(), courtesyReason: reason }
+    : {
+        payments: splitting
+          ? SPLIT_METHODS.map((method) => ({
+              method,
+              amountCents: inputToCents(split[method] ?? ''),
+            })).filter((entry) => entry.amountCents > 0)
+          : [{ method: payment as PaymentMethod, amountCents: order.totalCents }],
+      };
 
-  const canClose = isOpen && order.items.length > 0 && order.totalCents > 0 && remaining === 0;
+  // Por que o fechamento não pode acontecer AGORA — em texto, para ocupar o
+  // LUGAR do botão. A regra mora em `pos-shared.ts`, coberta por teste.
+  const blockedReason = isOpen
+    ? closeBlockedReason({
+        itemCount: order.items.length,
+        totalCents: order.totalCents,
+        courtesyChosen: payment === COURTESY_METHOD,
+        courtesyReason,
+        splitting,
+        remainingCents: remaining,
+      })
+    : null;
 
   const finish = async () => {
     try {
-      await closeOrder.mutateAsync({ payments });
-      toast({ message: `Comanda #${order.number} fechada.`, tone: 'success' });
+      await closeOrder.mutateAsync(closeDto);
+      toast({
+        message: courtesy
+          ? `Comanda #${order.number} fechada como cortesia.`
+          : `Comanda #${order.number} fechada.`,
+        tone: 'success',
+      });
       onClose();
     } catch (error) {
       // O fechamento é a transação única da fase 07: estoque, comissão, quota
       // de assinatura. Quando ela recusa, o motivo dela é a única informação
       // útil na tela — nunca um "algo deu errado".
       toast({ message: posErrorMessage(error, 'Não foi possível fechar a comanda.'), tone: 'danger' });
+    }
+  };
+
+  const discard = async () => {
+    try {
+      await cancelOrder.mutateAsync(order.id);
+      toast({ message: `Comanda #${order.number} cancelada.`, tone: 'success' });
+      setConfirmingCancel(false);
+      onClose();
+    } catch (error) {
+      toast({ message: posErrorMessage(error, 'Não foi possível cancelar a comanda.'), tone: 'danger' });
     }
   };
 
@@ -346,15 +406,39 @@ function ComandaBody({
             </span>
           </div>
           {isOpen ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              {/* "Salvar e deixar aberta" (l.3315): tudo já está gravado a cada
-                  clique, então o botão só sai do caminho — não há rascunho. */}
-              <Button variant="outline" onClick={onClose}>
-                Salvar e deixar aberta
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              {/* Cancelar fica à ESQUERDA, longe do fluxo de fechar — e some
+                  assim que a comanda deixa de estar aberta. */}
+              <Button
+                variant="ghost"
+                className="text-danger sm:mr-auto"
+                onClick={() => setConfirmingCancel(true)}
+              >
+                Cancelar comanda
               </Button>
-              <Button loading={closeOrder.isPending} disabled={!canClose} onClick={() => void finish()}>
-                Fechar comanda
-              </Button>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {/* "Salvar e deixar aberta" (l.3315): tudo já está gravado a
+                    cada clique, então o botão só sai do caminho — não há
+                    rascunho. */}
+                <Button variant="outline" onClick={onClose}>
+                  Salvar e deixar aberta
+                </Button>
+                {/* O botão de fechar NUNCA é desabilitado: quando não dá para
+                    fechar, o motivo ocupa o lugar dele. */}
+                {blockedReason ? (
+                  <p
+                    role="status"
+                    className="rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-center text-[13px] text-fg-muted sm:text-left"
+                  >
+                    {blockedReason}
+                  </p>
+                ) : (
+                  <Button loading={closeOrder.isPending} onClick={() => void finish()}>
+                    {courtesy ? 'Fechar como cortesia' : 'Fechar comanda'}
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             <Button fullWidth variant="outline" onClick={onClose}>
@@ -480,10 +564,21 @@ function ComandaBody({
 
           <div className="flex flex-col gap-2">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Pagamento</p>
-            {isOpen ? (
+            {isOpen && nothingToCharge ? (
+              /* Comanda sem valor a cobrar: a régua de métodos não faz sentido
+                 (não há o que repartir), e o campo de motivo toma o lugar
+                 dela. É o que destrava o R$ 0 — que é legítimo: corte refeito,
+                 cortesia, serviço já pago pela assinatura. */
+              <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface-2 p-3">
+                <p className="text-[13px] font-medium text-fg">
+                  Esta comanda não tem valor a cobrar
+                </p>
+                <CourtesyReasonField value={courtesyReason} onChange={setCourtesyReason} />
+              </div>
+            ) : isOpen ? (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  {[...SPLIT_METHODS, 'SPLIT' as const].map((choice) => {
+                  {([...SPLIT_METHODS, COURTESY_METHOD, 'SPLIT'] as PaymentChoice[]).map((choice) => {
                     const active = payment === choice;
                     return (
                       <button
@@ -493,6 +588,7 @@ function ComandaBody({
                         onClick={() => {
                           setPayment(choice);
                           if (choice !== 'SPLIT') setSplit({});
+                          if (choice !== COURTESY_METHOD) setCourtesyReason('');
                         }}
                         className={cn(
                           'min-h-11 rounded-lg border px-3.5 text-xs font-semibold transition-colors lg:min-h-[34px]',
@@ -507,6 +603,17 @@ function ComandaBody({
                     );
                   })}
                 </div>
+
+                {/* Cortesia com valor na comanda: a casa está perdoando
+                    {formatBRL(order.totalCents)}, e isso precisa de motivo. */}
+                {courtesy && (
+                  <div className="flex flex-col gap-2 pt-1">
+                    <p className="text-xs text-fg-muted">
+                      A comanda fecha sem cobrar os {formatBRL(order.totalCents)}.
+                    </p>
+                    <CourtesyReasonField value={courtesyReason} onChange={setCourtesyReason} />
+                  </div>
+                )}
 
                 {splitting && (
                   <div className="flex flex-col gap-1.5 pt-1">
@@ -542,6 +649,16 @@ function ComandaBody({
                   </div>
                 )}
               </>
+            ) : order.courtesyReason ? (
+              <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface-2 p-3">
+                <p className="text-[13px] font-semibold text-fg">Fechada como cortesia</p>
+                {order.courtesyCents > 0 && (
+                  <p className="text-xs text-fg-muted tabular-nums">
+                    {formatBRL(order.courtesyCents)} não cobrados.
+                  </p>
+                )}
+                <p className="text-xs text-fg-muted">{order.courtesyReason}</p>
+              </div>
             ) : (
               <p className="text-[13px] text-fg-muted">
                 Pago em {order.payments.map((entry) => methodLabel(entry.method)).join(' + ') || '—'}
@@ -551,7 +668,51 @@ function ComandaBody({
         </section>
       </div>
     </div>
+
+      <ConfirmDialog
+        open={confirmingCancel}
+        onClose={() => setConfirmingCancel(false)}
+        title={`Cancelar a comanda #${order.number}?`}
+        description={
+          order.items.length > 0
+            ? `Os ${order.items.length} item(ns) lançados serão descartados. A comanda sai de "Abertas" e nada é cobrado — nenhum pagamento, comissão ou baixa de estoque acontece.`
+            : 'A comanda sai de "Abertas". Nada é cobrado — ela não chegou a ter item nenhum.'
+        }
+        confirmLabel="Cancelar comanda"
+        cancelLabel="Manter aberta"
+        tone="danger"
+        busy={cancelOrder.isPending}
+        onConfirm={() => void discard()}
+      />
     </Modal>
+  );
+}
+
+/**
+ * "Motivo da cortesia" — o campo que substitui o `disabled` do botão de
+ * fechar. O servidor exige 5–200 caracteres; o contador diz isso antes de a
+ * requisição sair.
+ */
+function CourtesyReasonField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Input
+      label="Motivo da cortesia"
+      placeholder="Ex.: refazendo o corte da semana passada"
+      value={value}
+      maxLength={COURTESY_REASON_MAX}
+      onChange={(event) => onChange(event.target.value)}
+      hint={
+        value.trim().length >= COURTESY_REASON_MIN
+          ? undefined
+          : `Pelo menos ${COURTESY_REASON_MIN} caracteres.`
+      }
+    />
   );
 }
 
@@ -943,29 +1104,36 @@ function SummaryColumn({ order, editable }: { order: OrderDetail; editable: bool
             order.useLoyalty ? 'border-gold bg-gold/10' : 'border-border bg-surface-2',
           )}
         >
-          <Switch
-            label="Resgatar pontos"
-            checked={order.useLoyalty}
-            disabled={!editable || (!order.useLoyalty && !loyaltyAffordable)}
-            onChange={(event) =>
-              void redeemLoyalty
-                .mutateAsync({ useLoyalty: event.target.checked })
-                .catch((error: unknown) =>
-                  toast({
-                    message: posErrorMessage(error, 'Não foi possível mudar o resgate.'),
-                    tone: 'danger',
-                  }),
-                )
-            }
-          />
+          {/* Saldo que não cobre o resgate não vira um interruptor apagado:
+              o interruptor sai e o motivo fica no lugar dele (regra 4). */}
+          {editable && (order.useLoyalty || loyaltyAffordable) ? (
+            <Switch
+              label="Resgatar pontos"
+              checked={order.useLoyalty}
+              onChange={(event) =>
+                void redeemLoyalty
+                  .mutateAsync({ useLoyalty: event.target.checked })
+                  .catch((error: unknown) =>
+                    toast({
+                      message: posErrorMessage(error, 'Não foi possível mudar o resgate.'),
+                      tone: 'danger',
+                    }),
+                  )
+              }
+            />
+          ) : (
+            <span className="text-[13px] font-medium text-fg">Resgatar pontos</span>
+          )}
           <span className="text-xs text-fg-muted tabular-nums">
             − {formatBRL(order.loyaltyRewardCents)} · usa {order.loyaltyPointsRequired} pts
           </span>
           <span className="text-[11px] text-fg-subtle tabular-nums">
             Saldo do cliente: {order.loyaltyBalance} pts
           </span>
-          {!loyaltyAffordable && !order.useLoyalty && (
-            <span className="text-[11px] text-fg-subtle">Saldo insuficiente para este resgate.</span>
+          {editable && !loyaltyAffordable && !order.useLoyalty && (
+            <span className="text-[11px] text-fg-subtle">
+              Faltam {order.loyaltyPointsRequired - order.loyaltyBalance} pts para este resgate.
+            </span>
           )}
         </div>
       )}

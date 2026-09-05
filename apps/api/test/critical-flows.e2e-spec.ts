@@ -306,16 +306,19 @@ describe('fluxos críticos (e2e)', () => {
       appointmentId = appointment.id;
     });
 
-    it('1.5 — abre a comanda do agendamento e lança o serviço', async () => {
+    it('1.5 — abre a comanda do agendamento, que já nasce com o serviço', async () => {
       const owner = bearer(ownerToken);
 
       const order = await owner.post('/orders').send({ appointmentId }).expect(201);
       orderId = order.body.id;
 
-      await owner
-        .post(`/orders/${orderId}/items`)
-        .send({ kind: 'SERVICE', serviceId, quantity: 1 })
-        .expect(201);
+      // Agente 31: a comanda aberta a partir de um agendamento nasce com os
+      // serviços dele, ao preço fotografado na reserva. O balcão não redigita
+      // o que o agendamento já diz — e por isso o passo aqui deixou de lançar
+      // o item à mão (lançar de novo agora dobraria a comanda).
+      expect(order.body.items).toHaveLength(1);
+      expect(order.body.items[0].serviceId).toBe(serviceId);
+      expect(order.body.items[0].unitPriceCents).toBe(servicePriceCents);
 
       const loaded = await owner.get(`/orders/${orderId}`).expect(200);
       expect(loaded.body.totalCents).toBe(servicePriceCents);

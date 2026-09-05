@@ -93,9 +93,17 @@ export interface OrderDetail {
   loyaltyRewardCents: number;
   totalCents: number;
   paidCents: number;
+  /**
+   * Fechada por cortesia: o motivo que o balcão registrou (agente 31).
+   * `null` em toda comanda que cobrou alguma coisa.
+   */
+  courtesyReason: string | null;
+  /** Quanto a cortesia perdoou. `0` quando a comanda já não tinha valor. */
+  courtesyCents: number;
   notes: string | null;
   openedAt: string;
   closedAt: string | null;
+  canceledAt: string | null;
 }
 
 /** Uma linha do resumo "2× Corte · 1× Pomada" do card de comanda aberta. */
@@ -116,8 +124,11 @@ export interface OrderListItem {
   paymentMethods: PaymentMethod[];
   /** O card da comanda aberta resume os itens; a tabela de fechadas ignora. */
   lines: OrderListLine[];
+  /** Cortesia: a linha da tabela mostra o selo em vez do método de pagamento. */
+  courtesyReason: string | null;
   openedAt: string;
   closedAt: string | null;
+  canceledAt: string | null;
 }
 
 /**
@@ -184,6 +195,21 @@ export interface OrderPaymentSplitDto {
 
 export interface CloseOrderDto {
   payments: OrderPaymentSplitDto[];
+  /**
+   * Obrigatório (5–200 chars) quando a comanda fecha sem cobrar: total zero,
+   * ou algum pagamento `COURTESY`. Sem ele o fechamento é recusado com 400
+   * `COURTESY_REASON_REQUIRED` — a regra do agente 31 é registrar o R$ 0, não
+   * impedi-lo.
+   */
+  courtesyReason?: string;
+}
+
+/**
+ * O fechamento por cortesia — o único corpo aceito quando a comanda não cobra.
+ * Existe como helper porque o modal e os testes montam o mesmo objeto.
+ */
+export function courtesyPayments(): OrderPaymentSplitDto[] {
+  return [{ method: 'COURTESY', amountCents: 0 }];
 }
 
 export interface ReopenOrderDto {
@@ -204,4 +230,5 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   PIX: 'Pix',
   SUBSCRIPTION: 'Assinatura',
   LOYALTY: 'Fidelidade',
+  COURTESY: 'Cortesia',
 };

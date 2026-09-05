@@ -60,6 +60,7 @@ function ComandasContent() {
   const [search, setSearch] = useState('');
   const [openPage, setOpenPage] = useState(1);
   const [closedPage, setClosedPage] = useState(1);
+  const [canceledPage, setCanceledPage] = useState(1);
 
   // `?order=` abre a comanda direto — é o destino de "Abrir comanda" do menu ⋯
   // dos próximos atendimentos e do drawer da Agenda.
@@ -72,12 +73,17 @@ function ComandasContent() {
       setSearch(searchInput.trim());
       setOpenPage(1);
       setClosedPage(1);
+      setCanceledPage(1);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
   const showOpen = tab === 'abertas' || tab === 'todas';
   const showClosed = tab === 'fechadas' || tab === 'todas';
+  // Canceladas só em "Todas": elas não estão abertas nem foram fechadas hoje,
+  // mas existiram — sumir de vez seria apagar do balcão uma comanda que o
+  // operador viu na tela cinco minutos antes (agente 31).
+  const showCanceled = tab === 'todas';
 
   const openQuery = useOrdersQuery(
     { status: 'OPEN', search, page: openPage, perPage: PER_PAGE },
@@ -87,6 +93,10 @@ function ComandasContent() {
     { status: 'CLOSED', closedToday: true, search, page: closedPage, perPage: PER_PAGE },
     { enabled: showClosed },
   );
+  const canceledQuery = useOrdersQuery(
+    { status: 'CANCELED', search, page: canceledPage, perPage: PER_PAGE },
+    { enabled: showCanceled },
+  );
 
   // As duas consultas devolvem a MESMA contagem (ela ignora a aba de propósito);
   // vale a que já respondeu.
@@ -94,10 +104,12 @@ function ComandasContent() {
 
   const openRows = openQuery.data?.data ?? [];
   const closedRows = closedQuery.data?.data ?? [];
+  const canceledRows = canceledQuery.data?.data ?? [];
 
   const openBlock = showOpen && (openQuery.isLoading || openQuery.isError || openRows.length > 0);
   const closedBlock = showClosed && (closedQuery.isLoading || closedQuery.isError || closedRows.length > 0);
-  const nothingAtAll = !openBlock && !closedBlock;
+  const canceledBlock = showCanceled && canceledRows.length > 0;
+  const nothingAtAll = !openBlock && !closedBlock && !canceledBlock;
 
   const closedColumns: TableColumn<OrderListItem>[] = [
     {
@@ -131,7 +143,13 @@ function ComandasContent() {
       header: 'Pagamento',
       mobile: 'meta',
       render: (row) =>
-        row.paymentMethods.length === 0 ? (
+        // Cortesia não é "pago em Cortesia": a comanda fechou sem cobrar, e o
+        // selo com o motivo é o que o dono procura no fim do dia (agente 31).
+        row.courtesyReason ? (
+          <span title={row.courtesyReason}>
+            <Badge tone="warning">Cortesia</Badge>
+          </span>
+        ) : row.paymentMethods.length === 0 ? (
           <span className="text-fg-muted">—</span>
         ) : (
           <div className="flex flex-wrap gap-1">
@@ -149,6 +167,49 @@ function ComandasContent() {
       align: 'right',
       mobile: 'meta',
       render: (row) => <span className="font-semibold text-fg tabular-nums">{formatBRL(row.totalCents)}</span>,
+    },
+  ];
+
+  /**
+   * A cancelada não tem "Fechada às", pagamento nem total a mostrar — mostrar
+   * R$ 0,00 numa comanda que nunca cobrou seria confundir com uma cortesia.
+   * Quatro colunas, e a data em que ela morreu.
+   */
+  const canceledColumns: TableColumn<OrderListItem>[] = [
+    {
+      key: 'number',
+      header: 'Nº',
+      mobile: 'meta',
+      render: (row) => <span className="font-semibold text-fg-muted tabular-nums">#{row.number}</span>,
+    },
+    {
+      key: 'client',
+      header: 'Cliente',
+      mobile: 'title',
+      render: (row) => row.clientName ?? 'Cliente avulso',
+    },
+    {
+      key: 'barber',
+      header: 'Barbeiro',
+      mobile: 'subtitle',
+      render: (row) => <span className="text-fg-muted">{row.barberName ?? '—'}</span>,
+    },
+    {
+      key: 'canceledAt',
+      header: 'Cancelada às',
+      mobile: 'meta',
+      render: (row) => (
+        <span className="text-fg-muted tabular-nums">
+          {row.canceledAt ? formatTime(row.canceledAt, timezone) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      align: 'right',
+      mobile: 'meta',
+      render: () => <Badge tone="neutral">Cancelada</Badge>,
     },
   ];
 
@@ -297,6 +358,32 @@ function ComandasContent() {
                 />
               </>
             ) : null}
+          </section>
+        )}
+
+        {/* ── Canceladas (agente 31) ──────────────────────────────────────
+            Só aparece em "Todas", e só quando existe alguma: uma barbearia
+            que nunca cancelou comanda não ganha uma seção vazia. */}
+        {canceledBlock && (
+          <section aria-label="Comandas canceladas" className="flex flex-col gap-3">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
+              Canceladas
+            </h2>
+            <div className="min-w-0 md:rounded-xl md:border md:border-border md:bg-surface-2 md:p-1">
+              <ResponsiveTable
+                columns={canceledColumns}
+                rows={canceledRows}
+                getRowKey={(row) => row.id}
+                caption="Comandas canceladas"
+                onRowClick={(row) => openComanda(row.id)}
+                empty={<EmptyState message="Nenhuma comanda cancelada." />}
+              />
+            </div>
+            <Pager
+              page={canceledQuery.data?.meta.page ?? 1}
+              totalPages={canceledQuery.data?.meta.totalPages ?? 1}
+              onChange={setCanceledPage}
+            />
           </section>
         )}
 
