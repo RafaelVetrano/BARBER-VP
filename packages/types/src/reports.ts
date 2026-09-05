@@ -82,11 +82,35 @@ export interface ReportsSummaryResponse {
   previousRevenueCents: number;
   /** `null` quando o período anterior faturou zero: "não dá para comparar". */
   deltaPct: number | null;
+  /**
+   * ATENDIMENTOS concluídos no período — não "comandas fechadas".
+   *
+   * Desde o agente 31 concluir um atendimento e cobrar por ele são ações
+   * separadas, então a conta soma as comandas fechadas MAIS os agendamentos
+   * `DONE` que não geraram comanda nenhuma. Contar só a comanda faria o
+   * atendimento concluído e não cobrado sumir do relatório — ele aconteceu,
+   * com faturamento zero.
+   */
   orders: number;
   averageTicketCents: number;
   revenueSeries: ReportRevenuePoint[];
   revenueByBarber: RevenueByBarber[];
   paymentDistribution: PaymentDistributionEntry[];
+  /** O recorte das comandas fechadas sem cobrar (agente 31). */
+  courtesies: CourtesySummary;
+}
+
+/**
+ * Cortesias do período: quantas foram e o que teriam valido a preço de tabela.
+ *
+ * Fica fora do `paymentDistribution` de propósito — aquele bloco reparte o
+ * FATURAMENTO, e cortesia é R$ 0. Uma fatia de 0% ali seria ruído; aqui é a
+ * informação que o dono procura (quanto a casa deu de graça no mês).
+ */
+export interface CourtesySummary {
+  count: number;
+  /** Soma dos itens ao preço de tabela do catálogo. */
+  listPriceCents: number;
 }
 
 export interface ReturnRateBucket {

@@ -75,6 +75,12 @@ export const AuditAction = {
   STAFF_APPOINTMENT_CANCELED: 'staff_agenda.appointment_canceled',
   STAFF_APPOINTMENT_CONFIRMED: 'staff_agenda.appointment_confirmed',
   STAFF_APPOINTMENT_NO_SHOW: 'staff_agenda.appointment_no_show',
+  /**
+   * "Concluir" do drawer (agente 31) — o atendimento aconteceu, SEM comanda.
+   * `metadata.withOrder` distingue esta conclusão da que o fechamento de
+   * comanda faz de tabela (`ORDER_CLOSED`).
+   */
+  STAFF_APPOINTMENT_DONE: 'staff_agenda.appointment_done',
   STAFF_AGENDA_BLOCK_CREATED: 'staff_agenda.block_created',
   STAFF_AGENDA_BLOCK_DELETED: 'staff_agenda.block_deleted',
   // Fase 07 — dashboard financeiro.
@@ -82,6 +88,8 @@ export const AuditAction = {
   /** Troca de cliente/barbeiro numa comanda aberta (agente 17). */
   ORDER_UPDATED: 'pos.order_updated',
   ORDER_CLOSED: 'pos.order_closed',
+  /** Comanda cancelada sem cobrar (agente 31) — só ABERTA cancela. */
+  ORDER_CANCELED: 'pos.order_canceled',
   ORDER_REOPENED: 'pos.order_reopened',
   CASH_REGISTER_OPENED: 'finance.cash_register_opened',
   CASH_REGISTER_CLOSED: 'finance.cash_register_closed',

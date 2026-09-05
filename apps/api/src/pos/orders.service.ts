@@ -8,6 +8,7 @@ import {
   LoyaltyPointsKind,
   OrderItemKind,
   OrderStatus,
+  PaymentMethod,
   PaymentStatus,
   Prisma,
 } from '@prisma/client';
@@ -19,7 +20,7 @@ import type {
   OrderListResponse,
   PosCatalogResponse,
 } from '@barbervp/types';
-import { applyPercentDiscount } from '@barbervp/types';
+import { ErrorCode, applyPercentDiscount } from '@barbervp/types';
 import { PrismaService, type PrismaTransaction } from '../prisma/prisma.service';
 import { ApiException } from '../common/errors/api.exception';
 import { AuditAction, AuditService } from '../audit/audit.service';
@@ -48,6 +49,14 @@ const ORDER_INCLUDE = {
 } satisfies Prisma.OrderInclude;
 
 type OrderRow = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
+
+/** Uma linha do agendamento pronta para virar `OrderItem` (agente 31). */
+interface AppointmentSeedLine {
+  serviceId: string;
+  description: string;
+  unitPriceCents: number;
+  coveredBySubscription: boolean;
+}
 
 @Injectable()
 export class OrdersService {
@@ -126,7 +135,12 @@ export class OrdersService {
       this.prisma.order.findMany({
         where,
         include: ORDER_INCLUDE,
-        orderBy: query.status === OrderStatus.CLOSED ? { closedAt: 'desc' } : { openedAt: 'desc' },
+        orderBy:
+          query.status === OrderStatus.CLOSED
+            ? { closedAt: 'desc' }
+            : query.status === OrderStatus.CANCELED
+              ? { canceledAt: 'desc' }
+              : { openedAt: 'desc' },
         skip: window.skip,
         take: window.take,
       }),
@@ -205,10 +219,34 @@ export class OrdersService {
     let clientId = dto.clientId ?? null;
     let guestName: string | null = dto.walkIn?.name ?? null;
 
+    /**
+     * Linhas que a comanda nascida de um agendamento já traz (agente 31).
+     *
+     * O agendamento diz o que vai ser feito e por quanto; a comanda nascia
+     * VAZIA e o balcão tinha que redigitar tudo — "Barba + Corte degradê" no
+     * agendamento, "Nenhum item adicionado ainda" na comanda.
+     */
+    let seedLines: AppointmentSeedLine[] = [];
+
     if (dto.appointmentId) {
       const appointment = await this.prisma.appointment.findFirst({
         where: { id: dto.appointmentId, tenantId },
-        select: { id: true, barberId: true, clientId: true, guestName: true, order: { select: { id: true } } },
+        select: {
+          id: true,
+          barberId: true,
+          clientId: true,
+          guestName: true,
+          order: { select: { id: true } },
+          services: {
+            orderBy: { sortOrder: 'asc' },
+            select: {
+              serviceId: true,
+              priceCents: true,
+              subscriptionUsageId: true,
+              service: { select: { name: true } },
+            },
+          },
+        },
       });
       if (!appointment) {
         throw ApiException.notFound('Agendamento não encontrado.');
@@ -216,9 +254,24 @@ export class OrdersService {
       if (appointment.order) {
         throw ApiException.conflict('Este agendamento já tem uma comanda aberta.', 'ORDER_ALREADY_EXISTS');
       }
+      // `BARBER` só abre comanda do PRÓPRIO atendimento. Sem esta linha o
+      // recorte do papel virava um jeito de reivindicar o atendimento de
+      // outro: `scope.forcedBarberId` logo abaixo trocava o barbeiro da
+      // comanda para quem chamou.
+      if (scope.forcedBarberId && appointment.barberId !== scope.forcedBarberId) {
+        throw ApiException.forbidden('Você só pode abrir comanda dos próprios atendimentos.');
+      }
       barberId = barberId ?? appointment.barberId;
       clientId = clientId ?? appointment.clientId;
       guestName = guestName ?? appointment.guestName;
+      seedLines = appointment.services.map((line) => ({
+        serviceId: line.serviceId,
+        description: line.service.name,
+        // O preço FOTOGRAFADO na reserva, não o de tabela de hoje: é o que o
+        // cliente combinou, e é o que o drawer da Agenda mostra.
+        unitPriceCents: line.priceCents,
+        coveredBySubscription: line.subscriptionUsageId !== null,
+      }));
     }
 
     if (scope.forcedBarberId) {
@@ -244,12 +297,48 @@ export class OrdersService {
       include: ORDER_INCLUDE,
     });
 
+    if (seedLines.length > 0) {
+      await this.prisma.orderItem.createMany({
+        data: seedLines.map((line) => ({
+          tenantId,
+          orderId: order.id,
+          kind: OrderItemKind.SERVICE,
+          serviceId: line.serviceId,
+          barberId,
+          description: line.description,
+          quantity: 1,
+          unitPriceCents: line.unitPriceCents,
+          totalCents: line.unitPriceCents,
+          coveredBySubscription: line.coveredBySubscription,
+          /*
+           * `subscriptionUsageId` fica NULO de propósito, mesmo na linha
+           * coberta.
+           *
+           * A quota já foi debitada na RESERVA (`Appointment` grava o
+           * `subscriptionUsageId` da linha e `SubscriptionCoverageService.debit`
+           * roda ali). Copiar o id para cá faria `close()` debitar a MESMA
+           * quota uma segunda vez — quatro cortes do plano viravam dois. Quem
+           * segura a reserva é o agendamento; a comanda só herda o preço zero.
+           */
+          subscriptionUsageId: null,
+        })),
+      });
+      await this.recompute(this.prisma, order.id);
+    }
+
     await this.audit.record(
-      { action: AuditAction.ORDER_OPENED, entity: 'Order', entityId: order.id, tenantId, actorUserId },
+      {
+        action: AuditAction.ORDER_OPENED,
+        entity: 'Order',
+        entityId: order.id,
+        tenantId,
+        actorUserId,
+        metadata: { appointmentId: dto.appointmentId ?? null, seededItems: seedLines.length },
+      },
       request,
     );
 
-    return this.toDetail(tenantId, order);
+    return this.detail(tenantId, scope, order.id);
   }
 
   /**
@@ -585,6 +674,41 @@ export class OrdersService {
   ): Promise<OrderDetail> {
     await this.loadOwned(tenantId, scope, orderId, OrderStatus.OPEN);
 
+    /*
+     * CORTESIA (agente 31) — o outro jeito de fechar.
+     *
+     * R$ 0 legítimo existe: refazer um corte que saiu ruim, um brinde, um
+     * serviço que a assinatura já cobriu. Antes disto o botão "Fechar comanda"
+     * ficava `disabled` e a comanda não fechava nem cancelava — regra 4
+     * violada, e um balcão travado.
+     *
+     * Cortesia é o fechamento INTEIRO, nunca uma parcela: um pagamento só, de
+     * valor zero, com motivo. O que a comanda teria cobrado vai para
+     * `courtesyCents` — sem ele o número se perderia (o `totalCents` de uma
+     * comanda fechada por cortesia é zero, por definição) e o relatório não
+     * teria como dizer quanto a casa deu de graça.
+     */
+    const isCourtesy = dto.payments.some((payment) => payment.method === PaymentMethod.COURTESY);
+    const courtesyReason = dto.courtesyReason?.trim() ?? '';
+
+    if (isCourtesy) {
+      const [only] = dto.payments;
+      if (dto.payments.length !== 1 || !only || only.amountCents !== 0) {
+        throw ApiException.badRequest(
+          'Cortesia é o fechamento inteiro: um único pagamento, de R$ 0,00.',
+          undefined,
+          ErrorCode.COURTESY_CANNOT_SPLIT,
+        );
+      }
+    }
+    // Um método real com valor zero seria um fechamento sem cobrar disfarçado
+    // de Pix — a soma bateria com um total zero e nada explicaria o R$ 0.
+    for (const payment of dto.payments) {
+      if (payment.method !== PaymentMethod.COURTESY && payment.amountCents <= 0) {
+        throw ApiException.badRequest('Todo pagamento precisa de um valor maior que zero.');
+      }
+    }
+
     const paymentsSum = dto.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
 
     const closed = await this.prisma.$transaction(async (tx) => {
@@ -607,7 +731,11 @@ export class OrdersService {
         throw ApiException.conflict('Esta comanda não está aberta.', 'ORDER_NOT_OPEN');
       }
       if (order.items.length === 0) {
-        throw ApiException.badRequest('Adicione ao menos um item antes de fechar a comanda.');
+        throw ApiException.badRequest(
+          'Adicione ao menos um item antes de fechar a comanda.',
+          undefined,
+          ErrorCode.ORDER_EMPTY,
+        );
       }
 
       // Reconfirma a cobertura de assinatura DENTRO da transação — débito
@@ -654,7 +782,9 @@ export class OrdersService {
        * que nenhuma. Colisão de hash apenas serializa dois clientes sem
        * relação por um instante — barato, e do lado seguro.
        */
-      if (order.clientId && order.loyaltyPointsUsed > 0) {
+      // A cortesia perdoa o total inteiro; gastar pontos para descontar de um
+      // R$ 0 queimaria o saldo do cliente à toa.
+      if (!isCourtesy && order.clientId && order.loyaltyPointsUsed > 0) {
         await tx.$executeRaw`
           SELECT pg_advisory_xact_lock(hashtext(${`${tenantId}:${order.clientId}`})::bigint)
         `;
@@ -679,8 +809,36 @@ export class OrdersService {
       } else if (order.discountType === DiscountType.FIXED) {
         discountCents = Math.min(order.discountValue, subtotalCents);
       }
-      const loyaltyDiscountCents = Math.min(order.loyaltyDiscountCents, subtotalCents - discountCents);
-      const totalCents = Math.max(0, subtotalCents - discountCents - loyaltyDiscountCents);
+      const loyaltyDiscountCents = isCourtesy
+        ? 0
+        : Math.min(order.loyaltyDiscountCents, subtotalCents - discountCents);
+      const dueCents = Math.max(0, subtotalCents - discountCents - loyaltyDiscountCents);
+
+      // O motivo é obrigatório sempre que a comanda fecha sem cobrar — tanto
+      // na cortesia explícita quanto no total zero de origem (tudo coberto
+      // pela assinatura, ou 100% de desconto). O R$ 0 não é impedido; é
+      // registrado com a razão dele.
+      if (isCourtesy || dueCents === 0) {
+        if (courtesyReason.length < 5 || courtesyReason.length > 200) {
+          throw ApiException.badRequest(
+            'Informe o motivo da cortesia (entre 5 e 200 caracteres).',
+            undefined,
+            ErrorCode.COURTESY_REASON_REQUIRED,
+          );
+        }
+      }
+      if (dueCents === 0 && !isCourtesy) {
+        throw ApiException.badRequest(
+          'Comanda sem valor a cobrar fecha como cortesia.',
+          undefined,
+          ErrorCode.ORDER_ZERO_TOTAL_REQUIRES_COURTESY,
+        );
+      }
+
+      // Cortesia perdoa o que havia a cobrar: o total FECHADO é zero e
+      // `courtesyCents` guarda o que teria sido cobrado.
+      const courtesyCents = isCourtesy ? dueCents : 0;
+      const totalCents = isCourtesy ? 0 : dueCents;
 
       if (paymentsSum !== totalCents) {
         throw ApiException.badRequest(
@@ -715,7 +873,11 @@ export class OrdersService {
       // regra; produto usa o "% produtos" dela — a coluna "Comissão produtos"
       // da aba Comissões (`Dashboard.dc.html` l.1141) sai daqui. Regra com 0%
       // de produto (o padrão) não gera lançamento nenhum.
-      for (const item of order.items) {
+      //
+      // Cortesia não gera comissão: não houve receita para repartir. (Com base
+      // zero a regra de faixa devolveria zero de qualquer jeito — pular evita
+      // encher a aba Comissões de linhas de R$ 0,00 sem sentido.)
+      for (const item of isCourtesy ? [] : order.items) {
         if (!item.barberId) continue;
         const params = {
           tenantId,
@@ -751,10 +913,15 @@ export class OrdersService {
       // de pagamento. O extrato do dia da aba Financeiro lista Pix e cartão ao
       // lado do dinheiro (`Dashboard.dc.html` l.789); a conferência do
       // fechamento é que filtra só o que passou pela gaveta.
-      const register = await tx.cashRegister.findFirst({
-        where: { tenantId, status: CashRegisterStatus.OPEN },
-        select: { id: true },
-      });
+      // `COURTESY` NÃO passa pelo caixa nem por conta bancária — é R$ 0, e uma
+      // movimentação de zero real no extrato do dia é só ruído. Por isso a
+      // consulta ao registro nem acontece numa cortesia.
+      const register = isCourtesy
+        ? null
+        : await tx.cashRegister.findFirst({
+            where: { tenantId, status: CashRegisterStatus.OPEN },
+            select: { id: true },
+          });
       if (register) {
         const clientLabel = order.client?.name ?? order.guestName ?? null;
         await tx.cashMovement.createMany({
@@ -782,9 +949,10 @@ export class OrdersService {
         });
       }
 
-      // Pontos de fidelidade — `Math.round(subtotal / gastoPorPonto)`.
+      // Pontos de fidelidade — `Math.round(subtotal / gastoPorPonto)`. Cortesia
+      // não pontua: o cliente não gastou nada.
       if (order.clientId) {
-        const program = await tx.loyaltyProgram.findUnique({ where: { tenantId } });
+        const program = isCourtesy ? null : await tx.loyaltyProgram.findUnique({ where: { tenantId } });
         if (program?.active) {
           const earned = Math.round(subtotalCents / program.gastoPorPonto);
           if (earned > 0) {
@@ -834,7 +1002,12 @@ export class OrdersService {
           subtotalCents,
           discountCents,
           loyaltyDiscountCents,
+          // A cortesia derruba o resgate junto com a cobrança — o saldo do
+          // cliente continua intacto para a próxima visita.
+          ...(isCourtesy ? { useLoyalty: false, loyaltyPointsUsed: 0 } : {}),
           totalCents,
+          courtesyCents,
+          courtesyReason: isCourtesy ? courtesyReason : null,
           closedAt: now,
         },
         include: ORDER_INCLUDE,
@@ -848,12 +1021,72 @@ export class OrdersService {
         entityId: orderId,
         tenantId,
         actorUserId,
-        metadata: { totalCents: closed.totalCents },
+        metadata: {
+          totalCents: closed.totalCents,
+          // O motivo da cortesia é a prova de que o R$ 0 foi decidido, não
+          // esquecido — por isso ele vai para o log, sempre.
+          ...(isCourtesy
+            ? { courtesy: true, courtesyCents: closed.courtesyCents, courtesyReason }
+            : {}),
+        },
       },
       request,
     );
 
     return this.toDetail(tenantId, closed);
+  }
+
+  /**
+   * Cancela uma comanda ABERTA — aberta por engano, cliente que desistiu.
+   *
+   * Antes disto uma comanda vazia não tinha saída nenhuma: "Fechar comanda"
+   * recusa sem itens e não existia outro botão. Ela ficava para sempre na aba
+   * "Abertas", contando na contagem do balcão.
+   *
+   * Só `OPEN` cancela, e é isso que torna a operação barata: comanda aberta
+   * não gerou pagamento, movimentação de caixa, comissão nem ponto de
+   * fidelidade — não há nada a estornar, ao contrário de `reopen`. Nenhum
+   * lançamento financeiro é criado nem desfeito aqui.
+   *
+   * **O agendamento vinculado não é tocado.** Abrir a comanda nunca mexeu no
+   * status dele (concluir é `PATCH /staff-agenda/:id/done`, ação separada
+   * desde o agente 31), então cancelar a comanda não tem o que devolver: o
+   * agendamento fica exatamente como estava — `CONFIRMED` se era, `DONE` se o
+   * balcão já havia concluído o atendimento à parte.
+   *
+   * `BARBER` cancela a PRÓPRIA comanda (`loadOwned` recorta): é ele quem a
+   * abre por engano no meio do atendimento, e mandá-lo procurar o gerente para
+   * apagar uma comanda vazia seria fricção sem ganho — não há dinheiro
+   * envolvido. Reabrir uma comanda FECHADA, essa sim, continua `MANAGER+`.
+   */
+  async cancel(
+    tenantId: string,
+    scope: StaffScope,
+    orderId: string,
+    actorUserId: string,
+    request: RequestContext,
+  ): Promise<OrderDetail> {
+    const order = await this.loadOwned(tenantId, scope, orderId, OrderStatus.OPEN);
+
+    const canceled = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.CANCELED, canceledAt: new Date() },
+      include: ORDER_INCLUDE,
+    });
+
+    await this.audit.record(
+      {
+        action: AuditAction.ORDER_CANCELED,
+        entity: 'Order',
+        entityId: orderId,
+        tenantId,
+        actorUserId,
+        metadata: { number: order.number, itemCount: order.items.length },
+      },
+      request,
+    );
+
+    return this.toDetail(tenantId, canceled);
   }
 
   /**
@@ -958,11 +1191,24 @@ export class OrdersService {
         });
       }
 
-      return tx.order.update({
+      await tx.order.update({
         where: { id: orderId },
-        data: { status: OrderStatus.OPEN, closedAt: null },
-        include: ORDER_INCLUDE,
+        data: {
+          status: OrderStatus.OPEN,
+          closedAt: null,
+          // 8. Desfaz a cortesia. Sem isto a comanda reaberta voltaria com
+          // `totalCents` zero e o motivo antigo colado nela — e fechar de novo
+          // por Pix registraria uma venda de R$ 0,00.
+          courtesyCents: 0,
+          courtesyReason: null,
+        },
       });
+      // O total foi zerado pela cortesia (ou reduzido pelo resgate que o passo
+      // 5 acabou de estornar): recalcular é o que devolve a comanda ao estado
+      // de antes do fechamento.
+      await this.recompute(tx, orderId);
+
+      return tx.order.findUniqueOrThrow({ where: { id: orderId }, include: ORDER_INCLUDE });
     });
 
     await this.audit.record(
@@ -1059,9 +1305,12 @@ export class OrdersService {
       loyaltyRewardCents: program?.valorDesconto ?? 0,
       totalCents: order.totalCents,
       paidCents: order.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
+      courtesyReason: order.courtesyReason,
+      courtesyCents: order.courtesyCents,
       notes: order.notes,
       openedAt: order.openedAt.toISOString(),
       closedAt: order.closedAt?.toISOString() ?? null,
+      canceledAt: order.canceledAt?.toISOString() ?? null,
     };
   }
 }
@@ -1083,8 +1332,10 @@ function toListItem(order: OrderRow): OrderListItem {
       quantity: item.quantity,
       unitPriceCents: item.unitPriceCents,
     })),
+    courtesyReason: order.courtesyReason,
     openedAt: order.openedAt.toISOString(),
     closedAt: order.closedAt?.toISOString() ?? null,
+    canceledAt: order.canceledAt?.toISOString() ?? null,
   };
 }
 

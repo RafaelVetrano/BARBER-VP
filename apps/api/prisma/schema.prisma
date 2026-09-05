@@ -80,6 +80,8 @@ enum PaymentMethod {
   PIX
   SUBSCRIPTION
   LOYALTY
+  /// Cortesia (agente 31) — sempre R$ 0. Ver `Order.courtesyCents`.
+  COURTESY
 }
 
 enum PaymentStatus {
@@ -1069,8 +1071,19 @@ model Order {
   loyaltyDiscountCents Int           @default(0)
   totalCents           Int           @default(0)
   notes                String?
+  /// Valor que a comanda teria cobrado e foi perdoado no fechamento por
+  /// cortesia. `0` numa comanda normal E numa cortesia que já valia R$ 0
+  /// (tudo coberto pela assinatura, por exemplo) — o que distingue as duas é
+  /// `courtesyReason`, que só a cortesia tem.
+  courtesyCents        Int           @default(0)
+  /// Motivo da cortesia, obrigatório quando a comanda fecha sem cobrar
+  /// (5–200 chars). É a regra do agente 31: R$ 0 não é impedido, é explicado.
+  courtesyReason       String?
   openedAt             DateTime      @default(now()) @db.Timestamptz(3)
   closedAt             DateTime?     @db.Timestamptz(3)
+  /// Comanda cancelada (`OrderStatus.CANCELED`) — aberta por engano, cliente
+  /// desistiu. Sem lançamento financeiro nenhum: só comanda ABERTA cancela.
+  canceledAt           DateTime?     @db.Timestamptz(3)
   createdAt            DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
   deletedAt            DateTime?     @db.Timestamptz(3)

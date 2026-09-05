@@ -180,6 +180,30 @@ export function useCloseOrderMutation(orderId: string) {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['pos-catalog'] });
       queryClient.invalidateQueries({ queryKey: ['commissions'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+}
+
+/**
+ * "Cancelar comanda" — a saída que faltava para a comanda aberta por engano
+ * (agente 31). Sem lançamento financeiro nenhum atrás: só comanda ABERTA
+ * cancela, e comanda aberta não gerou pagamento, caixa nem comissão.
+ */
+export function useCancelOrderMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await client.post<OrderDetail>(`/orders/${id}/cancel`, {});
+      return data;
+    },
+    onSuccess: (order) => {
+      queryClient.invalidateQueries({ queryKey: ['order', order.id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // A comanda podia ter nascido de um agendamento — o drawer da Agenda
+      // volta a oferecer "Abrir comanda".
+      queryClient.invalidateQueries({ queryKey: ['staff-agenda-detail'] });
     },
   });
 }

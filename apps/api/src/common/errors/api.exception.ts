@@ -10,9 +10,18 @@ export class ApiException extends HttpException {
     super(body, status);
   }
 
-  static badRequest(message: string, details?: unknown): ApiException {
+  /**
+   * `code` vem DEPOIS de `details` porque `details` já era o segundo
+   * parâmetro em chamadas espalhadas pelo produto — inverter a ordem
+   * silenciaria erros de tipo em quem passa um objeto de detalhes.
+   */
+  static badRequest(
+    message: string,
+    details?: unknown,
+    code: string = ErrorCode.BAD_REQUEST,
+  ): ApiException {
     return new ApiException(HttpStatus.BAD_REQUEST, {
-      code: ErrorCode.BAD_REQUEST,
+      code,
       message,
       details,
     });

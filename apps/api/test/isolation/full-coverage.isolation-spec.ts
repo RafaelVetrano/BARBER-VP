@@ -218,6 +218,22 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       );
     });
 
+    /** Rota nova do agente 31 — cancelar comanda. */
+    it('não cancela a comanda de B', async () => {
+      await expectDenied(
+        asA.post(`/orders/${fixture.b.orderId}/cancel`),
+        'POST /orders/:id/cancel',
+      );
+    });
+
+    /** Rota nova do agente 31 — abrir comanda a partir de um agendamento. */
+    it('não abre comanda a partir do agendamento de B', async () => {
+      await expectDenied(
+        asA.post('/orders').send({ appointmentId: fixture.b.appointmentId }),
+        'POST /orders com appointmentId de outro tenant',
+      );
+    });
+
     it('a comanda de B segue aberta e sem itens', async () => {
       const order = await fixture.prisma.order.findUniqueOrThrow({
         where: { id: fixture.b.orderId },
@@ -942,6 +958,14 @@ describe('GATE — isolamento por recurso de negócio (fase 09)', () => {
       await expectDenied(
         asA.patch(`/staff-agenda/${fixture.b.appointmentId}/cancel`).send({}),
         'PATCH /staff-agenda/:id/cancel',
+      );
+    });
+
+    /** Rota nova do agente 31 — concluir atendimento. */
+    it('não conclui o agendamento de B', async () => {
+      await expectDenied(
+        asA.patch(`/staff-agenda/${fixture.b.appointmentId}/done`).send({}),
+        'PATCH /staff-agenda/:id/done',
       );
     });
 

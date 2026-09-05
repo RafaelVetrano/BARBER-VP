@@ -165,6 +165,28 @@ export function useCancelStaffAppointmentMutation() {
   });
 }
 
+/**
+ * "Concluir" — o atendimento aconteceu (agente 31).
+ *
+ * Independente de abrir comanda: marca `DONE` e nada mais. O relatório é
+ * invalidado junto porque "Atendimentos" passou a contar o agendamento
+ * concluído sem comanda.
+ */
+export function useDoneStaffAppointmentMutation() {
+  const { client } = useEstablishmentAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await client.patch<StaffAppointmentItem>(`/staff-agenda/${id}/done`, {});
+      return data;
+    },
+    onSuccess: () => {
+      invalidateAgenda(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+}
+
 /** "Marcar falta" — muda o status E incrementa o contador do cliente. */
 export function useNoShowStaffAppointmentMutation() {
   const { client } = useEstablishmentAuth();

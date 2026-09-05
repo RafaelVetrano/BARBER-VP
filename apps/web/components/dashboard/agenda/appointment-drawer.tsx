@@ -16,6 +16,7 @@ import { useOpenOrderMutation } from '@/lib/dashboard/api/pos';
 import {
   useCancelStaffAppointmentMutation,
   useConfirmStaffAppointmentMutation,
+  useDoneStaffAppointmentMutation,
   useNoShowStaffAppointmentMutation,
   useStaffAppointmentDetailQuery,
 } from '@/lib/dashboard/api/agenda';
@@ -50,18 +51,24 @@ export function AppointmentDrawer({
   const confirm = useConfirmStaffAppointmentMutation();
   const cancel = useCancelStaffAppointmentMutation();
   const noShow = useNoShowStaffAppointmentMutation();
+  const markDone = useDoneStaffAppointmentMutation();
   const openOrder = useOpenOrderMutation();
 
   // Enquanto o detalhe carrega, o cabeçalho já usa o item da grade: o drawer
   // abre preenchido, sem salto de layout.
   const current = detailQuery.data?.appointment ?? appointment;
 
-  const run = async (action: () => Promise<unknown>, success: string) => {
+  /**
+   * `keepOpen` existe por causa de "Concluir": o drawer precisa continuar
+   * aberto para mostrar o selo `Concluído` e o botão de comanda que sobra —
+   * fechar tiraria da tela justamente a confirmação do que acabou de mudar.
+   */
+  const run = async (action: () => Promise<unknown>, success: string, keepOpen = false) => {
     setBusy(true);
     try {
       await action();
       toast({ message: success, tone: 'success' });
-      onClose();
+      if (!keepOpen) onClose();
     } catch (error) {
       toast({ message: agendaErrorMessage(error), tone: 'danger' });
     } finally {
@@ -70,6 +77,9 @@ export function AppointmentDrawer({
   };
 
   const closed = current ? isClosed(current.status) : true;
+  const done = current?.status === AppointmentStatus.DONE;
+  /** Comanda já vinculada a este agendamento — decide "Abrir" e "Ver". */
+  const order = detailQuery.data?.order ?? null;
 
   return (
     <Drawer open={appointment !== null} onClose={onClose} title="Detalhes do agendamento">
@@ -97,7 +107,17 @@ export function AppointmentDrawer({
             <Row label="Serviço" value={current.services.map((service) => service.name).join(' + ')} />
             <Row label="Barbeiro" value={current.barberName} />
             <Row label="Duração" value={formatDuration(current.durationMin)} />
-            <Row label="Total" value={formatBRL(current.totalPriceCents)} />
+            {/* Um total de R$ 0,00 sem explicação parecia preço faltando — e
+                não era: o combo estava coberto pela assinatura do cliente. O
+                rótulo é a correção (agente 31). */}
+            <Row
+              label="Total"
+              value={
+                current.coveredBySubscription
+                  ? 'Coberto pela assinatura'
+                  : formatBRL(current.totalPriceCents)
+              }
+            />
             <Row label="Código" value={current.bookingCode} />
           </dl>
 
@@ -142,75 +162,131 @@ export function AppointmentDrawer({
                     <span className="min-w-0 flex-1 truncate text-center text-fg">
                       {visit.serviceName}
                     </span>
-                    <span className="shrink-0 text-fg">{formatBRL(visit.totalPriceCents)}</span>
+                    <span className="shrink-0 text-fg">
+                      {visit.coveredBySubscription ? 'Assinatura' : formatBRL(visit.totalPriceCents)}
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
           </div>
 
-          {/* ── Ações (l.3866–3872) ── */}
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button
-              size="sm"
-              disabled={busy || closed || current.status === AppointmentStatus.CONFIRMED}
-              onClick={() => void run(() => confirm.mutateAsync(current.id), 'Agendamento confirmado.')}
-            >
-              Confirmar
-            </Button>
+          {/* ── Ações (l.3866–3872) ──
+              Concluir e cobrar são ações SEPARADAS desde o agente 31: antes
+              havia um botão só, "Concluir e abrir comanda", e o ÚNICO caminho
+              para `DONE` era fechar a comanda — quem não ia cobrar naquele
+              instante não tinha como encerrar o atendimento.
 
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy || current.status === AppointmentStatus.CANCELED}
-              onClick={() =>
-                void run(async () => {
-                  const order = await openOrder.mutateAsync({ appointmentId: current.id });
-                  router.push(`/app/comandas?order=${order.id}`);
-                }, 'Comanda aberta.')
-              }
-            >
-              Concluir e abrir comanda
-            </Button>
+              Dois ramos de render, não botões apagados: um agendamento
+              encerrado (concluído, cancelado ou falta) não tem o que
+              confirmar, remarcar ou cancelar, então o drawer diz o estado e
+              mantém só o caminho que continua valendo — a comanda. */}
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+            {closed ? (
+              <p className="w-full text-[13px] text-fg-muted">
+                {done
+                  ? 'Atendimento concluído. Resta abrir a comanda, se for cobrar.'
+                  : current.status === AppointmentStatus.CANCELED
+                    ? 'Agendamento cancelado — não há mais ações sobre ele.'
+                    : 'Falta registrada — não há mais ações sobre este horário.'}
+              </p>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  disabled={busy || current.status === AppointmentStatus.CONFIRMED}
+                  onClick={() =>
+                    void run(() => confirm.mutateAsync(current.id), 'Agendamento confirmado.')
+                  }
+                >
+                  Confirmar
+                </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy || closed}
-              onClick={() => onReschedule(current)}
-            >
-              Remarcar
-            </Button>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() => markDone.mutateAsync(current.id), 'Atendimento concluído.', true)
+                  }
+                >
+                  Concluir
+                </Button>
+              </>
+            )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy || closed}
-              className="border-border text-danger"
-              onClick={() =>
-                void run(
-                  () => cancel.mutateAsync({ id: current.id, dto: { reason: 'Cancelado pela barbearia' } }),
-                  'Agendamento cancelado.',
-                )
-              }
-            >
-              Cancelar
-            </Button>
+            {/* A comanda sobrevive à conclusão — e só o cancelamento a tira do
+                caminho, porque um atendimento cancelado não tem o que cobrar. */}
+            {current.status !== AppointmentStatus.CANCELED && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    async () => {
+                      const target =
+                        order ?? (await openOrder.mutateAsync({ appointmentId: current.id }));
+                      router.push(`/app/comandas?order=${target.id}`);
+                    },
+                    order ? 'Comanda aberta.' : 'Comanda criada com os serviços do agendamento.',
+                  )
+                }
+              >
+                {order ? `Ver comanda #${order.number}` : 'Abrir comanda'}
+              </Button>
+            )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy || closed || current.isWalkIn}
-              className="border-warning text-warning"
-              onClick={() =>
-                void run(
-                  () => noShow.mutateAsync(current.id),
-                  'Falta registrada na ficha do cliente.',
-                )
-              }
-            >
-              Marcar falta
-            </Button>
+            {!closed && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onReschedule(current)}
+                >
+                  Remarcar
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  className="border-border text-danger"
+                  onClick={() =>
+                    void run(
+                      () =>
+                        cancel.mutateAsync({
+                          id: current.id,
+                          dto: { reason: 'Cancelado pela barbearia' },
+                        }),
+                      'Agendamento cancelado.',
+                    )
+                  }
+                >
+                  Cancelar
+                </Button>
+
+                {/* Walk-in não tem ficha para contar falta — o botão não some
+                    por regra de negócio, ele simplesmente não existe para
+                    quem não tem cadastro. */}
+                {!current.isWalkIn && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    className="border-warning text-warning"
+                    onClick={() =>
+                      void run(
+                        () => noShow.mutateAsync(current.id),
+                        'Falta registrada na ficha do cliente.',
+                      )
+                    }
+                  >
+                    Marcar falta
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

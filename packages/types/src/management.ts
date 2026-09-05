@@ -10,6 +10,7 @@ import type {
   AppointmentOrigin,
   AppointmentStatus,
   MembershipRole,
+  OrderStatus,
   PaymentMethod,
   ScheduleExceptionType,
   StaffInviteStatus,
@@ -518,9 +519,21 @@ export interface StaffAppointmentItem {
     /** "Cor na agenda" do catálogo (`Service.color`). `null` = sem cor definida. */
     color: string | null;
     durationMin: number;
+    /** Preço FOTOGRAFADO na reserva — `0` quando a assinatura cobriu a linha. */
     priceCents: number;
+    /** A linha saiu de graça porque a assinatura do cliente a cobre. */
+    coveredBySubscription: boolean;
+    /** Preço de tabela do serviço hoje — o que a linha valeria sem cobertura. */
+    listPriceCents: number;
   }>;
   totalPriceCents: number;
+  /**
+   * TODAS as linhas saíram por conta da assinatura (agente 31).
+   *
+   * Sem isto o drawer mostrava "Total R$ 0,00" para um combo de R$ 80 e
+   * parecia defeito de preço: o zero era correto, faltava dizer POR QUÊ.
+   */
+  coveredBySubscription: boolean;
   /** Soma das durações — o bloco na grade é desenhado com ela. */
   durationMin: number;
   notes: string | null;
@@ -643,12 +656,19 @@ export interface StaffAgendaVisit {
   date: string;
   serviceName: string;
   totalPriceCents: number;
+  /** Visita coberta pela assinatura — o histórico diz "Assinatura", não "R$ 0,00". */
+  coveredBySubscription: boolean;
 }
 
 export interface StaffAppointmentDetail {
   appointment: StaffAppointmentItem;
   /** Últimas visitas concluídas do cliente nesta barbearia. */
   history: StaffAgendaVisit[];
+  /**
+   * Comanda já vinculada a este agendamento, se houver — o drawer alterna
+   * entre "Abrir comanda" e "Ver comanda" com ela (agente 31).
+   */
+  order: { id: string; number: number; status: OrderStatus } | null;
 }
 
 // ── Agenda — bloqueio de horário ─────────────────────────────────────────
