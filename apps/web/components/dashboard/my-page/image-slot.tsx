@@ -17,6 +17,15 @@ export interface ImageSlotProps {
   shape: 'circle' | 'rounded';
   className?: string;
   busy?: boolean;
+  /**
+   * Erro DESTE slot, mostrado abaixo do quadro (agente 30).
+   *
+   * A validação local (formato, 5 MB) segue em toast — ela acontece antes de
+   * qualquer requisição e some sozinha. O que precisa ficar na tela é a recusa
+   * do SERVIDOR: quem acabou de ver o arquivo sumir precisa saber por quê na
+   * hora de escolher outro, e um toast de 3 segundos não cobre isso.
+   */
+  error?: string | null;
   onSelect: (file: File) => void;
   /** Ausente = slot sem remoção (a galeria remove pelo card, não pelo slot). */
   onRemove?: () => void;
@@ -34,6 +43,7 @@ export function ImageSlot({
   shape,
   className,
   busy = false,
+  error = null,
   onSelect,
   onRemove,
 }: ImageSlotProps) {
@@ -57,7 +67,7 @@ export function ImageSlot({
     onSelect(file);
   };
 
-  return (
+  const slot = (
     <div className={cn('group relative', className)}>
       <input
         ref={inputRef}
@@ -130,6 +140,21 @@ export function ImageSlot({
           </span>
         </button>
       )}
+    </div>
+  );
+
+  if (!error) return slot;
+
+  // A moldura de erro EMBRULHA o slot, que continua carregando o `className` de
+  // tamanho que o chamador passou — sem isso, acrescentar a mensagem mudaria as
+  // dimensões do quadro nas três telas que já usam o componente. A mensagem
+  // entra embaixo, onde o `Field` do design system a colocaria.
+  return (
+    <div className="flex flex-col gap-1.5">
+      {slot}
+      <span role="alert" className="text-xs text-danger">
+        {error}
+      </span>
     </div>
   );
 }

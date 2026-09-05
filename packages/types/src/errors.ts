@@ -29,6 +29,15 @@ export const ErrorCode = {
   EMAIL_IN_USE: 'EMAIL_IN_USE',
   PHONE_IN_USE: 'PHONE_IN_USE',
   SLUG_IN_USE: 'SLUG_IN_USE',
+  /// Slug que pertence a uma rota do produto (`/entrar`, `/cadastro`…) — a
+  /// barbearia nunca abriria nesse endereço. Distinto de `SLUG_IN_USE`: não
+  /// há outra barbearia com ele, e trocar de nome é a única saída.
+  SLUG_RESERVED: 'SLUG_RESERVED',
+  /// `POST /onboarding/complete` com passo OBRIGATÓRIO faltando (1, 2, 4 ou 6).
+  /// `details.missingSteps` traz os números que faltam. É o que impede pular o
+  /// wizard inteiro chamando a rota direto — a obrigatoriedade é do servidor,
+  /// não do guard do navegador (agente 30).
+  ONBOARDING_INCOMPLETE: 'ONBOARDING_INCOMPLETE',
   // OTP (fase 03)
   OTP_INVALID: 'OTP_INVALID',
   OTP_EXPIRED: 'OTP_EXPIRED',

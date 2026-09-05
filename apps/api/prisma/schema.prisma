@@ -1437,6 +1437,10 @@ model TenantSettings {
   addressComplement   String?
   addressNeighborhood String?
   addressCity         String?
+  /// Código IBGE do município (7 dígitos), do seletor de cidade do passo 2
+  /// (agente 30). É por ele que a resposta do CEP casa com o item da lista —
+  /// o nome do município diverge em acento e caixa, o código não.
+  addressCityIbge     String?
   addressState        String?
   logoUrl             String?
   coverUrl            String?

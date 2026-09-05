@@ -99,7 +99,17 @@ export class SlugService {
     const slug = this.normalize(input);
 
     if (!isValidSlug(slug) || RESERVED_SLUGS.has(slug)) {
-      return { slug, available: false, suggestion: await this.generateUnique(`${slug}-barbearia`) };
+      // `reserved` separa os dois "indisponível" que a tela precisa distinguir:
+      // este nunca vai ficar livre (a URL é de uma rota do produto), enquanto
+      // `SLUG_IN_USE` é de outra barbearia. Sem a marca, o passo 3 dizia "já
+      // está em uso" para `entrar`, `cadastro` e `admin` — e o dono ficava
+      // esperando o dia em que a outra barbearia soltasse o nome.
+      return {
+        slug,
+        available: false,
+        reserved: RESERVED_SLUGS.has(slug),
+        suggestion: await this.generateUnique(`${slug}-barbearia`),
+      };
     }
 
     const owner = await this.prisma.tenant.findUnique({

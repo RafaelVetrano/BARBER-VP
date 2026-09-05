@@ -12,6 +12,30 @@ export const ONBOARDING_STEPS = 6;
 /** Passos que o rodapé do protótipo deixa pular ("Pular etapa"). */
 export const SKIPPABLE_STEPS: readonly number[] = [3, 5];
 
+/**
+ * Passos SEM os quais a barbearia não funciona, e por isso obrigatórios para
+ * `POST /onboarding/complete` (agente 30):
+ *
+ * 1 (perfil) — sem nome e telefone a página pública não se identifica;
+ * 2 (endereço) — sem endereço o cliente não sabe aonde ir;
+ * 4 (serviços) — sem serviço não há o que agendar;
+ * 6 (horário) — sem expediente o `AvailabilityService` não monta grade nenhuma.
+ *
+ * É o complemento exato de `SKIPPABLE_STEPS` (3 e 5, decisão da fase 03), e a
+ * lista mora aqui para o servidor recusar e a tela avisar pelo MESMO conjunto.
+ */
+export const REQUIRED_STEPS: readonly number[] = [1, 2, 4, 6];
+
+/** Rótulo de cada passo, para a mensagem do 409 e para a tela. */
+export const ONBOARDING_STEP_LABELS: Record<number, string> = {
+  1: 'Dados da barbearia',
+  2: 'Endereço',
+  3: 'Identidade e link público',
+  4: 'Serviços',
+  5: 'Equipe',
+  6: 'Horário de funcionamento',
+};
+
 export interface OnboardingProfile {
   name: string;
   phone: string | null;
@@ -27,6 +51,84 @@ export interface OnboardingLocation {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
+  /**
+   * Código IBGE do município (7 dígitos), do seletor de cidade do passo 2.
+   *
+   * É ele — e não o nome — que casa a resposta do CEP com o item da lista:
+   * "Ribeirão Preto" volta da ViaCEP com acento e do IBGE com acento, mas
+   * qualquer divergência de grafia (ou de caixa) faria a busca por nome errar
+   * um município que o código acerta sempre.
+   */
+  cityIbgeCode: string | null;
+}
+
+/** Uma UF do seletor do passo 2. */
+export interface UfOption {
+  /** Sigla de 2 letras — é o que `TenantSettings.addressState` guarda. */
+  code: string;
+  name: string;
+}
+
+/** Um município, como o IBGE devolve (`id` é o código de 7 dígitos). */
+export interface IbgeCity {
+  id: string;
+  name: string;
+}
+
+/**
+ * As 27 unidades federativas. Lista ESTÁTICA de propósito: são 27 itens que não
+ * mudam desde 1988, e uma chamada externa para servi-los seria latência sem
+ * ganho. Os municípios, esses sim, vêm do IBGE (`GET /onboarding/cities/:uf`).
+ */
+export const BRAZIL_UFS: readonly UfOption[] = [
+  { code: 'AC', name: 'Acre' },
+  { code: 'AL', name: 'Alagoas' },
+  { code: 'AP', name: 'Amapá' },
+  { code: 'AM', name: 'Amazonas' },
+  { code: 'BA', name: 'Bahia' },
+  { code: 'CE', name: 'Ceará' },
+  { code: 'DF', name: 'Distrito Federal' },
+  { code: 'ES', name: 'Espírito Santo' },
+  { code: 'GO', name: 'Goiás' },
+  { code: 'MA', name: 'Maranhão' },
+  { code: 'MT', name: 'Mato Grosso' },
+  { code: 'MS', name: 'Mato Grosso do Sul' },
+  { code: 'MG', name: 'Minas Gerais' },
+  { code: 'PA', name: 'Pará' },
+  { code: 'PB', name: 'Paraíba' },
+  { code: 'PR', name: 'Paraná' },
+  { code: 'PE', name: 'Pernambuco' },
+  { code: 'PI', name: 'Piauí' },
+  { code: 'RJ', name: 'Rio de Janeiro' },
+  { code: 'RN', name: 'Rio Grande do Norte' },
+  { code: 'RS', name: 'Rio Grande do Sul' },
+  { code: 'RO', name: 'Rondônia' },
+  { code: 'RR', name: 'Roraima' },
+  { code: 'SC', name: 'Santa Catarina' },
+  { code: 'SP', name: 'São Paulo' },
+  { code: 'SE', name: 'Sergipe' },
+  { code: 'TO', name: 'Tocantins' },
+];
+
+/** `true` se a sigla é uma das 27 — a validação que a API e a tela compartilham. */
+export function isValidUf(code: string): boolean {
+  const upper = (code ?? '').trim().toUpperCase();
+  return BRAZIL_UFS.some((uf) => uf.code === upper);
+}
+
+/**
+ * Texto pronto para busca: sem acento e sem caixa, para "ribeirao" achar
+ * "Ribeirão Preto" e "sao paulo" achar "São Paulo".
+ *
+ * Mesma decomposição NFD de `slugify`, mas preservando o espaço — aqui o
+ * objetivo é comparar palavras, não montar URL.
+ */
+export function normalizeSearchText(input: string): string {
+  return (input ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 export interface OnboardingIdentity {
@@ -63,8 +165,20 @@ export interface OnboardingBusinessHour {
 export interface OnboardingState {
   step: number;
   completed: boolean;
-  ownerFirstName: string;
+  /**
+   * Primeiro nome do dono para o vocativo das telas de boas-vindas e de
+   * conclusão — **vazio** quando o cadastro não tem nome próprio de gente, e aí
+   * a tela cumprimenta sem vocativo. Nunca um pedaço de e-mail (agente 30).
+   */
+  ownerGreetingName: string;
+  /** Link público completo da barbearia: `{publicBaseUrl}/{slug}`. */
   publicUrl: string;
+  /**
+   * Base do link público, sem barra final — o mesmo valor que `GET /my-page`
+   * devolve, para o prefixo do campo de slug e o link do fim do wizard dizerem
+   * a mesma coisa.
+   */
+  publicBaseUrl: string;
   profile: OnboardingProfile;
   location: OnboardingLocation;
   identity: OnboardingIdentity;
@@ -83,6 +197,12 @@ export interface CepLookupResult {
   city: string;
   state: string;
   complement: string;
+  /**
+   * Código IBGE do município, que a ViaCEP devolve no campo `ibge`. É por ele
+   * que o passo 2 SELECIONA a cidade no combo, em vez de casar pelo nome.
+   * Vazio quando a ViaCEP não o traz (acontece em CEP recém-criado).
+   */
+  ibgeCode: string;
 }
 
 export interface SlugAvailability {
@@ -90,6 +210,13 @@ export interface SlugAvailability {
   available: boolean;
   /** Sugestão livre quando o slug pedido já existe (`studio-navalha-2`). */
   suggestion?: string;
+  /**
+   * `true` quando o link é de uma ROTA do produto (`entrar`, `cadastro`,
+   * `admin`…), não de outra barbearia. A tela precisa saber a diferença: "já
+   * está em uso" convida a tentar de novo mais tarde, e este caso nunca vai
+   * ficar livre.
+   */
+  reserved?: boolean;
 }
 
 /**

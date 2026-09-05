@@ -142,6 +142,71 @@ describe('isolamento de tenant — auth & tenancy (fase 03)', () => {
     expect(servicesA.map((service) => service.name)).toContain('Serviço só do A');
   });
 
+  it('as rotas de referência do passo 2 não carregam nada de tenant', async () => {
+    // `ufs` e `cities/:uf` (agente 30) são dados públicos do IBGE servidos pela
+    // API: exigem sessão, mas a resposta é a MESMA para todo mundo. O caso
+    // registra isso — no dia em que alguém recortar essas listas por tenant
+    // (unidades por estado, cidades atendidas), ele reprova e cobra o escopo.
+    const [ufsA, ufsB, citiesA, citiesB] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`/${prefix}/onboarding/ufs`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`/${prefix}/onboarding/ufs`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`/${prefix}/onboarding/cities/AC`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`/${prefix}/onboarding/cities/AC`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(200),
+    ]);
+
+    expect(ufsA.body).toEqual(ufsB.body);
+    expect(citiesA.body).toEqual(citiesB.body);
+
+    const serialized = JSON.stringify([ufsA.body, citiesA.body]);
+    expect(serialized).not.toContain(fixture.a.id);
+    expect(serialized).not.toContain(fixture.b.id);
+    expect(serialized).not.toContain(fixture.a.slug);
+  });
+
+  it('sem token, as rotas de referência do passo 2 respondem 401', async () => {
+    await request(app.getHttpServer()).get(`/${prefix}/onboarding/ufs`).expect(401);
+    await request(app.getHttpServer()).get(`/${prefix}/onboarding/cities/SP`).expect(401);
+  });
+
+  it('o endereço com código IBGE do tenant A não chega ao B', async () => {
+    await request(app.getHttpServer())
+      .put(`/${prefix}/onboarding/location`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        street: 'Rua do Isolamento',
+        number: '10',
+        city: 'São Paulo',
+        state: 'SP',
+        cityIbgeCode: '3550308',
+      })
+      .expect(200);
+
+    const settingsB = await fixture.prisma.tenantSettings.findUnique({
+      where: { tenantId: fixture.b.id },
+      select: { addressCityIbge: true, addressStreet: true },
+    });
+    expect(settingsB?.addressCityIbge ?? null).toBeNull();
+    expect(settingsB?.addressStreet ?? null).not.toBe('Rua do Isolamento');
+
+    const settingsA = await fixture.prisma.tenantSettings.findUnique({
+      where: { tenantId: fixture.a.id },
+      select: { addressCityIbge: true },
+    });
+    expect(settingsA?.addressCityIbge).toBe('3550308');
+  });
+
   it('membership em um tenant não concede papel no outro', async () => {
     const membershipsOfA = await fixture.prisma.membership.findMany({
       where: { userId: fixture.a.ownerUserId },

@@ -11,6 +11,7 @@ interface ViaCepResponse {
   bairro?: string;
   localidade?: string;
   uf?: string;
+  ibge?: string;
   erro?: boolean | string;
 }
 
@@ -58,6 +59,10 @@ export class CepService {
       city: data.localidade ?? '',
       state: data.uf ?? '',
       complement: data.complemento ?? '',
+      // O código IBGE é o que permite ao passo 2 SELECIONAR a cidade no combo
+      // sem casar por nome. A ViaCEP nem sempre o traz; vazio degrada para
+      // seleção por nome normalizado, que é o melhor esforço possível.
+      ibgeCode: data.ibge ?? '',
     };
 
     await this.writeCache(digits, result);
@@ -107,7 +112,13 @@ export class CepService {
     }
   }
 
+  /**
+   * `v2` porque o agente 30 acrescentou `ibgeCode` ao resultado: as entradas
+   * gravadas antes não têm o campo, e servi-las do cache devolveria a cidade
+   * sem o código que o passo 2 usa para selecioná-la. Versionar a chave é o
+   * jeito de a mudança de contrato não conviver com 30 dias de cache velho.
+   */
   private key(cep: string): string {
-    return `bvp:cep:${cep}`;
+    return `bvp:cep:v2:${cep}`;
   }
 }

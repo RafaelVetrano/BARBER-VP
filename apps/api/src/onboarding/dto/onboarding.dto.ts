@@ -8,7 +8,6 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   Length,
   Matches,
   Max,
@@ -18,6 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsBrazilPhone } from '../../auth/validators/is-brazil-phone.validator';
+import { IsBrazilUf } from '../validators/is-brazil-uf.validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -98,10 +98,32 @@ export class OnboardingLocationDto {
   @ApiProperty({ example: 'SP' })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
   @Length(2, 2, { message: 'UF tem 2 letras.' })
+  @IsBrazilUf()
   state!: string;
+
+  /**
+   * Opcional porque o passo 2 degrada: com o IBGE fora do ar, o seletor de
+   * cidade vira campo de texto e não há código a enviar. Quando vem, é ele que
+   * identifica o município — o nome é só o rótulo.
+   */
+  @ApiPropertyOptional({ example: '3550308', description: 'Código IBGE do município.' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Matches(/^\d{7}$/, { message: 'Código de município inválido.' })
+  cityIbgeCode?: string;
 }
 
-/** Passo 3 — identidade e link público (pulável). */
+/**
+ * Passo 3 — link público (pulável).
+ *
+ * **Só o slug.** Logo e capa saíram daqui no agente 30: eram campos de URL
+ * digitada, e desde o agente 25 existe upload de verdade em
+ * `POST /my-page/images/:slot`, que escreve na MESMA `TenantSettings`. Dois
+ * caminhos de escrita para o mesmo campo é como uma URL digitada à mão
+ * sobrescreve um arquivo que o dono acabou de subir — por isso este DTO
+ * recusa `logoUrl`/`coverUrl` (o `forbidNonWhitelisted` do `ValidationPipe`
+ * devolve 400 se vierem).
+ */
 export class OnboardingIdentityDto {
   @ApiProperty({ example: 'barbearia-central' })
   @Transform(({ value }) =>
@@ -111,16 +133,6 @@ export class OnboardingIdentityDto {
   @MinLength(3, { message: 'O link precisa de ao menos 3 caracteres.' })
   @MaxLength(63)
   slug!: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUrl({ require_tld: false }, { message: 'URL de logo inválida.' })
-  logoUrl?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUrl({ require_tld: false }, { message: 'URL de capa inválida.' })
-  coverUrl?: string;
 }
 
 export class OnboardingServiceDto {
@@ -234,6 +246,13 @@ export class SlugQueryDto {
   @MinLength(1)
   @MaxLength(80)
   slug!: string;
+}
+
+export class UfParamDto {
+  @ApiProperty({ example: 'SP', description: 'Sigla da unidade federativa.' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @IsBrazilUf()
+  uf!: string;
 }
 
 export class CepParamDto {

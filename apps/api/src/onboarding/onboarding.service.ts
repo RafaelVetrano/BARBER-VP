@@ -4,6 +4,8 @@ import {
   DEFAULT_BUSINESS_HOURS,
   ErrorCode,
   ONBOARDING_STEPS,
+  ONBOARDING_STEP_LABELS,
+  REQUIRED_STEPS,
   SUGGESTED_SERVICES,
   formatPhone,
   isValidSlug,
@@ -83,7 +85,7 @@ export class OnboardingService {
 
     const owner = await this.prisma.user.findUnique({
       where: { id: principal.id },
-      select: { name: true },
+      select: { name: true, email: true },
     });
 
     const settings = tenant.settings;
@@ -105,8 +107,9 @@ export class OnboardingService {
     return {
       step: settings?.onboardingStep ?? 0,
       completed: Boolean(settings?.onboardingDoneAt),
-      ownerFirstName: (owner?.name ?? '').split(' ')[0] ?? '',
+      ownerGreetingName: greetingName(owner?.name ?? null, owner?.email ?? null),
       publicUrl: this.publicUrl(tenant.slug),
+      publicBaseUrl: this.config.urls.publicBooking,
       profile: {
         name: tenant.name,
         phone: tenant.phone ? formatPhone(tenant.phone) : null,
@@ -121,6 +124,7 @@ export class OnboardingService {
         neighborhood: settings?.addressNeighborhood ?? null,
         city: settings?.addressCity ?? null,
         state: settings?.addressState ?? null,
+        cityIbgeCode: settings?.addressCityIbge ?? null,
       },
       identity: {
         slug: tenant.slug,
@@ -188,6 +192,7 @@ export class OnboardingService {
       addressComplement: dto.complement ?? null,
       addressNeighborhood: dto.neighborhood ?? null,
       addressCity: dto.city,
+      addressCityIbge: dto.cityIbgeCode ?? null,
       addressState: dto.state,
       address: formatAddressLine(dto),
     });
@@ -197,7 +202,15 @@ export class OnboardingService {
     return this.getState(tenantId, principal);
   }
 
-  /** Passo 3 — logo, capa e slug público (pulável). */
+  /**
+   * Passo 3 — link público (pulável).
+   *
+   * **Só o slug.** Logo e capa saíram deste caminho no agente 30: sobem por
+   * `POST /my-page/images/:slot`, que é upload de verdade e escreve na MESMA
+   * `TenantSettings`. Manter aqui uma segunda escrita por URL digitada daria
+   * dois donos ao mesmo campo — e o último a salvar apagaria o arquivo do
+   * outro sem avisar ninguém.
+   */
   async saveIdentity(
     tenantId: string,
     dto: OnboardingIdentityDto,
@@ -212,16 +225,18 @@ export class OnboardingService {
 
     const availability = await this.slugs.checkAvailability(slug, tenantId);
     if (!availability.available) {
-      throw ApiException.conflict('Este link já está em uso.', ErrorCode.SLUG_IN_USE);
+      // Reservado e "de outra barbearia" são recusas diferentes: a primeira
+      // nunca vai ficar livre, e o dono precisa saber disso para trocar de nome
+      // em vez de tentar de novo depois.
+      throw availability.reserved
+        ? ApiException.conflict(
+            'Este nome é reservado pelo sistema. Escolha outro para o seu link.',
+            ErrorCode.SLUG_RESERVED,
+          )
+        : ApiException.conflict('Este link já está em uso.', ErrorCode.SLUG_IN_USE);
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.tenant.update({ where: { id: tenantId }, data: { slug } });
-      await this.upsertSettings(tx, tenantId, {
-        logoUrl: dto.logoUrl ?? null,
-        coverUrl: dto.coverUrl ?? null,
-      });
-    });
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { slug } });
 
     await this.advance(tenantId, 3);
     await this.recordSettingsChange(tenantId, principal, request, 'identity');
@@ -412,12 +427,29 @@ export class OnboardingService {
     return this.getState(tenantId, principal);
   }
 
-  /** Tela de conclusão — marca o wizard como concluído e devolve o link público. */
+  /**
+   * Tela de conclusão — marca o wizard como concluído e devolve o link público.
+   *
+   * **A obrigatoriedade do wizard é verdade AQUI**, não só no guard do
+   * navegador (agente 30). Antes bastava um `POST /onboarding/complete` avulso
+   * para marcar `onboardingDoneAt` e destravar o painel inteiro sem nunca ter
+   * cadastrado serviço nem horário — e uma barbearia nesse estado não monta
+   * grade de agendamento nenhuma.
+   */
   async complete(
     tenantId: string,
     principal: AuthPrincipal,
     request: RequestContext,
   ): Promise<OnboardingState> {
+    const missing = await this.missingRequiredSteps(tenantId);
+    if (missing.length > 0) {
+      throw ApiException.conflict(
+        `Faltam passos obrigatórios: ${missing.map((step) => ONBOARDING_STEP_LABELS[step]).join(', ')}.`,
+        ErrorCode.ONBOARDING_INCOMPLETE,
+        { missingSteps: missing },
+      );
+    }
+
     await this.upsertSettings(this.prisma, tenantId, {
       onboardingStep: ONBOARDING_STEPS,
       onboardingDoneAt: new Date(),
@@ -439,8 +471,51 @@ export class OnboardingService {
 
   // ── Internos ──────────────────────────────────────────────────────────────
 
+  /**
+   * A página da barbearia é `{base}/{slug}` — o `/agendar/` que estava aqui
+   * levava a 404 desde a fase 03, e o wizard terminava entregando ao dono um
+   * link quebrado para mandar aos clientes. Mesma montagem de
+   * `my-page.service.ts`, que sempre esteve certa (dívida da fase 11, fechada
+   * no agente 30).
+   */
   private publicUrl(slug: string): string {
-    return `${this.config.urls.publicBooking}/agendar/${slug}`;
+    return `${this.config.urls.publicBooking}/${slug}`;
+  }
+
+  /**
+   * Quais dos passos OBRIGATÓRIOS ainda não têm o dado que os define.
+   *
+   * Confere o DADO, não o contador `onboardingStep`: "Pular etapa" faz o
+   * contador subir sem gravar nada (decisão da fase 03), então confiar nele
+   * deixaria passar exatamente o caso que esta verificação existe para pegar.
+   */
+  private async missingRequiredSteps(tenantId: string): Promise<number[]> {
+    const [tenant, services, hours] = await Promise.all([
+      this.prisma.tenant.findFirst({
+        where: { id: tenantId, deletedAt: null },
+        select: { name: true, phone: true, settings: true },
+      }),
+      this.prisma.service.count({ where: { tenantId, deletedAt: null, active: true } }),
+      this.prisma.tenantBusinessHour.count({ where: { tenantId } }),
+    ]);
+
+    if (!tenant) {
+      throw ApiException.notFound('Barbearia não encontrada.');
+    }
+
+    const settings = tenant.settings;
+    const done: Record<number, boolean> = {
+      1: Boolean(tenant.name?.trim()) && Boolean(tenant.phone?.trim()),
+      2:
+        Boolean(settings?.addressStreet?.trim()) &&
+        Boolean(settings?.addressNumber?.trim()) &&
+        Boolean(settings?.addressCity?.trim()) &&
+        Boolean(settings?.addressState?.trim()),
+      4: services > 0,
+      6: hours > 0,
+    };
+
+    return REQUIRED_STEPS.filter((step) => !done[step]);
   }
 
   /** `onboardingStep` só sobe: pular etapa não pode fazer o wizard regredir. */
@@ -508,6 +583,35 @@ export class OnboardingService {
       request,
     );
   }
+}
+
+/**
+ * Primeiro nome do dono para o vocativo — ou string vazia, e aí a tela
+ * cumprimenta sem nome nenhum.
+ *
+ * **Por que existe** (agente 30): o `Bem-vindo ao BarberVP, {nome}` mostrava o
+ * primeiro token de `User.name` cru. Uma conta cujo nome fosse o pedaço local
+ * do e-mail — `contato`, `barbearia.central`, `rafael00` — virava vocativo, e
+ * o produto cumprimentava um endereço de e-mail em vez de uma pessoa. Sem
+ * vocativo é melhor do que com o vocativo errado.
+ *
+ * O que reprova: nome vazio, com `@`, igual ao pedaço local do e-mail, ou sem
+ * letra nenhuma. O que passa vai como foi digitado no cadastro, só com a
+ * inicial em maiúscula — o dono digita o nome apressado, e "rafael" num título
+ * de 30px lê como dado de máquina, não como saudação.
+ */
+function greetingName(name: string | null, email: string | null): string {
+  const first = (name ?? '').trim().split(/\s+/)[0] ?? '';
+  if (first.length < 2 || first.includes('@') || !/\p{L}/u.test(first)) {
+    return '';
+  }
+
+  const localPart = (email ?? '').split('@')[0] ?? '';
+  if (localPart && first.toLowerCase() === localPart.toLowerCase()) {
+    return '';
+  }
+
+  return first.charAt(0).toLocaleUpperCase('pt-BR') + first.slice(1);
 }
 
 /** `Avenida Paulista, 1000 — Sala 12 · Bela Vista, São Paulo/SP`. */

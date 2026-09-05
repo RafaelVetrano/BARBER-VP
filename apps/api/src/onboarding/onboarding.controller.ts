@@ -12,12 +12,19 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { CepLookupResult, OnboardingState, SlugAvailability } from '@barbervp/types';
+import type {
+  CepLookupResult,
+  IbgeCity,
+  OnboardingState,
+  SlugAvailability,
+  UfOption,
+} from '@barbervp/types';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-tenant.decorator';
 import type { AuthPrincipal, RequestContext } from '../common/types/request-context';
 import { OnboardingService } from './onboarding.service';
 import { CepService } from './cep.service';
+import { CitiesService } from './cities.service';
 import {
   CepParamDto,
   OnboardingBusinessHoursDto,
@@ -27,6 +34,7 @@ import {
   OnboardingServicesDto,
   OnboardingTeamDto,
   SlugQueryDto,
+  UfParamDto,
 } from './dto/onboarding.dto';
 
 /**
@@ -46,6 +54,7 @@ export class OnboardingController {
   constructor(
     private readonly onboarding: OnboardingService,
     private readonly cep: CepService,
+    private readonly cities: CitiesService,
   ) {}
 
   @Get()
@@ -79,6 +88,27 @@ export class OnboardingController {
     return this.cep.lookup(params.cep);
   }
 
+  @Get('ufs')
+  @ApiOperation({
+    summary: 'As 27 UFs (passo 2)',
+    description: 'Lista estática de `@barbervp/types` — não chama ninguém de fora.',
+  })
+  listUfs(): readonly UfOption[] {
+    return this.cities.listUfs();
+  }
+
+  @Get('cities/:uf')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Municípios de uma UF (passo 2)',
+    description:
+      'Proxy da API de localidades do IBGE com cache no Redis (30 dias) — mesmo arranjo do CEP. ' +
+      'Lista VAZIA quando o IBGE não responde: a tela degrada para cidade digitada.',
+  })
+  listCities(@Param() params: UfParamDto): Promise<IbgeCity[]> {
+    return this.cities.list(params.uf);
+  }
+
   @Put('profile')
   @ApiOperation({ summary: 'Passo 1 — dados da barbearia' })
   saveProfile(
@@ -102,7 +132,11 @@ export class OnboardingController {
   }
 
   @Put('identity')
-  @ApiOperation({ summary: 'Passo 3 — identidade e link público (pulável)' })
+  @ApiOperation({
+    summary: 'Passo 3 — link público (pulável)',
+    description:
+      'Só o slug. Logo e capa vão por `POST /my-page/images/:slot` desde o agente 30.',
+  })
   saveIdentity(
     @Body() dto: OnboardingIdentityDto,
     @CurrentTenant('id') tenantId: string,
@@ -149,7 +183,12 @@ export class OnboardingController {
   // Não cria recurso nenhum — só marca a conclusão e devolve o estado, como os
   // demais passos. 201 seria mentira sobre o que aconteceu.
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Conclui o wizard' })
+  @ApiOperation({
+    summary: 'Conclui o wizard',
+    description:
+      'Recusa com 409 `ONBOARDING_INCOMPLETE` se faltar passo OBRIGATÓRIO (1, 2, 4 ou 6). ' +
+      'É o que impede pular o wizard inteiro chamando a rota direto.',
+  })
   complete(
     @CurrentTenant('id') tenantId: string,
     @CurrentUser() principal: AuthPrincipal,

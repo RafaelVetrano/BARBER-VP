@@ -84,7 +84,7 @@ export function StepBusinessHours({ value, onChange }: StepBusinessHoursProps) {
                     }
                     options={TIME_OPTIONS}
                     aria-label={`Abertura de ${WEEKDAY_LABELS[weekday]}`}
-                    className="w-24 [&_select]:h-10"
+                    className="w-24 [&_select]:h-11 sm:[&_select]:h-10"
                   />
                   <span className="text-[13px] text-fg-subtle">às</span>
                   <Select
@@ -94,7 +94,7 @@ export function StepBusinessHours({ value, onChange }: StepBusinessHoursProps) {
                     }
                     options={TIME_OPTIONS}
                     aria-label={`Fechamento de ${WEEKDAY_LABELS[weekday]}`}
-                    className="w-24 [&_select]:h-10"
+                    className="w-24 [&_select]:h-11 sm:[&_select]:h-10"
                   />
                 </span>
               )}
@@ -103,7 +103,16 @@ export function StepBusinessHours({ value, onChange }: StepBusinessHoursProps) {
         })}
       </ul>
 
-      <Button variant="ghost" onClick={applyToAllOpen} className="self-start px-0 text-gold">
+      {/* `Button` é `whitespace-nowrap` por padrão, e este rótulo tem 365px:
+          a 360 ele empurrava a página inteira para o lado — e o culpado
+          aparecia como "rodapé", porque o rodapé é `inset-x-0` e se estica
+          junto. Abaixo de `sm` o texto quebra em duas linhas e a altura
+          acompanha, mantendo os 44px de alvo. */}
+      <Button
+        variant="ghost"
+        onClick={applyToAllOpen}
+        className="h-auto min-h-11 self-start whitespace-normal px-0 py-2 text-left text-gold sm:h-12 sm:whitespace-nowrap"
+      >
         ↧ Aplicar estes horários para todos os dias abertos
       </Button>
 

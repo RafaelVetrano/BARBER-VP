@@ -60,7 +60,9 @@ export function StepServices({ value, onChange }: StepServicesProps) {
               value={service.name}
               onChange={(event) => update(index, { name: event.target.value })}
               aria-label={`Nome do serviço ${index + 1}`}
-              className="h-10 min-w-0 flex-1 rounded-control border border-transparent bg-transparent px-2 font-sans text-sm font-semibold text-fg outline-none transition-colors focus:border-gold focus:bg-surface-2"
+              // `flex-1` só a partir de `sm` — abaixo disso o eixo principal é
+              // vertical e o `h-10` virava 19px. E 44px no dedo, 40 no ponteiro.
+              className="h-11 w-full min-w-0 rounded-control border border-transparent bg-transparent px-2 font-sans text-sm font-semibold text-fg outline-none transition-colors focus:border-gold focus:bg-surface-2 sm:h-10 sm:w-auto sm:flex-1"
             />
 
             <div className="flex items-center gap-2.5">
@@ -69,10 +71,10 @@ export function StepServices({ value, onChange }: StepServicesProps) {
                 onChange={(event) => update(index, { durationMin: Number(event.target.value) })}
                 options={DURATION_OPTIONS}
                 aria-label={`Duração de ${service.name || 'serviço'}`}
-                className="w-28 shrink-0 [&_select]:h-10"
+                className="w-28 shrink-0 [&_select]:h-11 sm:[&_select]:h-10"
               />
 
-              <div className="flex h-10 items-center gap-1 rounded-control border border-border-strong bg-surface-2 px-2.5">
+              <div className="flex h-11 items-center gap-1 rounded-control border border-border-strong bg-surface-2 px-2.5 sm:h-10">
                 <span className="text-[13px] font-medium text-fg-subtle">R$</span>
                 <input
                   value={centsToInput(service.priceCents)}
@@ -81,7 +83,7 @@ export function StepServices({ value, onChange }: StepServicesProps) {
                   }
                   inputMode="decimal"
                   aria-label={`Preço de ${service.name || 'serviço'}`}
-                  className="w-16 bg-transparent text-right font-sans text-sm font-semibold text-fg outline-none"
+                  className="h-11 w-16 bg-transparent text-right font-sans text-sm font-semibold text-fg outline-none sm:h-full"
                 />
               </div>
 
@@ -107,7 +109,7 @@ export function StepServices({ value, onChange }: StepServicesProps) {
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             placeholder="Nome do serviço"
             aria-label="Nome do novo serviço"
-            className="h-10 min-w-0 flex-1 rounded-control border border-border-strong bg-surface-2 px-2.5 font-sans text-sm font-semibold text-fg outline-none focus:border-gold"
+            className="h-11 w-full min-w-0 rounded-control border border-border-strong bg-surface-2 px-2.5 font-sans text-sm font-semibold text-fg outline-none focus:border-gold sm:h-10 sm:w-auto sm:flex-1"
           />
           <div className="flex items-center gap-2.5">
             <Select
@@ -115,9 +117,9 @@ export function StepServices({ value, onChange }: StepServicesProps) {
               onChange={(event) => setDraft({ ...draft, durationMin: Number(event.target.value) })}
               options={DURATION_OPTIONS}
               aria-label="Duração do novo serviço"
-              className="w-28 shrink-0 [&_select]:h-10"
+              className="w-28 shrink-0 [&_select]:h-11 sm:[&_select]:h-10"
             />
-            <div className="flex h-10 items-center gap-1 rounded-control border border-border-strong bg-surface-2 px-2.5">
+            <div className="flex h-11 items-center gap-1 rounded-control border border-border-strong bg-surface-2 px-2.5 sm:h-10">
               <span className="text-[13px] font-medium text-fg-subtle">R$</span>
               <input
                 value={draft.price}
@@ -125,7 +127,7 @@ export function StepServices({ value, onChange }: StepServicesProps) {
                 placeholder="0"
                 inputMode="decimal"
                 aria-label="Preço do novo serviço"
-                className="w-16 bg-transparent text-right font-sans text-sm font-semibold text-fg outline-none"
+                className="h-11 w-16 bg-transparent text-right font-sans text-sm font-semibold text-fg outline-none sm:h-full"
               />
             </div>
             <Button size="sm" onClick={commitDraft} disabled={!draft.name.trim()}>

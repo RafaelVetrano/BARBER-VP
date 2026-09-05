@@ -53,6 +53,12 @@ const API = process.env.API_URL ?? 'http://localhost:3333/api/v1';
 const CREDENTIALS = {
   admin: { email: 'admin@barbervp.com.br', password: 'BarberVP@2026' },
   owner: { email: 'dono@barbeariacentral.com.br', password: 'BarberVP@2026' },
+  /**
+   * Dona da barbearia com o onboarding PENDENTE (`seedOnboardingTenant`) — a
+   * única conta pela qual o wizard abre, já que o guard devolve ao painel quem
+   * já concluiu.
+   */
+  onboardingOwner: { email: 'dono@barbeariaconfiguracao.com.br', password: 'BarberVP@2026' },
 };
 
 /** Frontend único (fase 11): uma porta só, quatro prefixos. */
@@ -188,6 +194,263 @@ async function isUp(port) {
   }
 }
 
+/**
+ * O que se mede DENTRO da página, nos 5 tamanhos.
+ *
+ * Virou constante no agente 30 para ser reusada pela varredura por rota e
+ * pela varredura do wizard, que mede a MESMA página em seis estados.
+ */
+const MEASURE = (minTouch) => {
+  const doc = document.documentElement;
+  const overflowBy = doc.scrollWidth - doc.clientWidth;
+
+  /** Quem, concretamente, é mais largo que a viewport. */
+  const culprits = [];
+  if (overflowBy > 0) {
+    for (const element of document.querySelectorAll('body *')) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;
+      if (rect.right <= doc.clientWidth + 1) continue;
+      // Um contêiner que rola por dentro não é problema.
+      const style = getComputedStyle(element);
+      if (style.overflowX === 'auto' || style.overflowX === 'scroll') continue;
+      culprits.push(
+        `${element.tagName.toLowerCase()}.${String(element.className || '').slice(0, 60)}`,
+      );
+      if (culprits.length >= 3) break;
+    }
+  }
+
+  const smallTargets = [];
+  if (minTouch) {
+    const interactive = document.querySelectorAll(
+      'button, a[href], input, select, textarea, [role="button"], [role="tab"]',
+    );
+    for (const element of interactive) {
+      let rect = element.getBoundingClientRect();
+
+      /*
+       * Caixa de seleção e rádio são desenhados pequenos de
+       * propósito; quem recebe o toque é o `<label>` em volta, que
+       * é bem maior. Medir o input puniria um padrão correto — o
+       * alvo real é o rótulo.
+       */
+      /*
+       * Exceção "inline" das WCAG 2.5.8: um link no meio de uma
+       * frase ("aceito os <a>termos de uso</a>") é dimensionado
+       * pelo texto e não tem como crescer sem quebrar o parágrafo.
+       * A régua vale para controle que se sustenta sozinho.
+       */
+      if (element.tagName === 'A') {
+        const parent = element.parentElement;
+        const hasSiblingText = Array.from(parent?.childNodes ?? []).some(
+          (node) => node.nodeType === 3 && node.textContent.trim().length > 0,
+        );
+        if (hasSiblingText) continue;
+      }
+
+      const type = element.getAttribute('type');
+      if (type === 'checkbox' || type === 'radio') {
+        const label =
+          element.closest('label') ??
+          (element.id
+            ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`)
+            : null);
+        if (label) {
+          rect = label.getBoundingClientRect();
+        }
+      }
+
+      if (rect.width === 0 || rect.height === 0) continue;
+      if (getComputedStyle(element).visibility === 'hidden') continue;
+      if (rect.width < 44 || rect.height < 44) {
+        smallTargets.push(
+          `${element.tagName.toLowerCase()}"${(element.textContent || '').trim().slice(0, 24)}" ${Math.round(rect.width)}x${Math.round(rect.height)}`,
+        );
+        if (smallTargets.length >= 5) break;
+      }
+    }
+  }
+
+  /*
+   * A tela de erro do Next tem layout próprio e mediria tudo
+   * errado. Detectá-la evita reportar "alvo de toque pequeno"
+   * quando o que houve foi a página não carregar.
+   */
+  const errorOverlay =
+    document.querySelector('nextjs-portal') !== null ||
+    /Checking the proxy|Unhandled Runtime Error|Application error/i.test(
+      document.body.innerText.slice(0, 400),
+    );
+
+  return { overflowBy, culprits, smallTargets, errorOverlay };
+};
+
+/**
+ * Erros de console da página, filtrados.
+ *
+ * 401/403 numa rota protegida é o guard funcionando, não defeito de layout — e
+ * é o que se vê na tela de login, que também é varrida.
+ */
+function watchConsole(page) {
+  const errors = [];
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return;
+    const text = message.text();
+    if (/\b(401|403)\b/.test(text)) return;
+    errors.push(text.slice(0, 200));
+  });
+  return errors;
+}
+
+/**
+ * Mede a página aberta nos 5 tamanhos, redimensionando (não recarregando).
+ *
+ * `label` é o que aparece no relatório: normalmente a rota, mas para o wizard é
+ * `/app/configurar (passo 3 de 6)` — a lição do #9 da fase 13 é que verde de
+ * varredura não prova que a tela CERTA foi medida, e um rótulo por passo é o
+ * que torna isso auditável na saída.
+ */
+async function measureViewports(page, { app, label, checkTouchTargets, consoleErrors }) {
+  for (const viewport of VIEWPORTS) {
+    await page.setViewport({
+      width: viewport.width,
+      height: viewport.height,
+      isMobile: viewport.mobile,
+      hasTouch: viewport.mobile,
+      deviceScaleFactor: 1,
+    });
+    // Folga para o reflow assentar antes de medir.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const before = consoleErrors.length;
+
+    const result = await page.evaluate(MEASURE, viewport.mobile && checkTouchTargets);
+
+    const problems = [];
+    if (result.overflowBy > 0) {
+      problems.push(
+        `rolagem horizontal (+${result.overflowBy}px): ${result.culprits.join(', ') || 'origem não identificada'}`,
+      );
+    }
+    if (result.smallTargets.length > 0) {
+      problems.push(`alvo de toque < 44px: ${result.smallTargets.join(' · ')}`);
+    }
+    const newErrors = consoleErrors.slice(before);
+    if (newErrors.length > 0) {
+      problems.push(`erro de console: ${newErrors[0]}`);
+    }
+    if (result.errorOverlay) {
+      problems.push(
+        'a página não renderizou (tela de erro do Next). Se veio junto de um 429, ' +
+          'é o rate limit da API reagindo à varredura — use --delay maior.',
+      );
+    }
+
+    if (problems.length === 0) {
+      log(`   ✓ ${label} @ ${viewport.name}`);
+    } else {
+      log(`   ✗ ${label} @ ${viewport.name}`);
+      for (const problem of problems) {
+        log(`       ${problem}`);
+        findings.push({ app, route: label, viewport: viewport.name, problem });
+      }
+    }
+  }
+}
+
+/**
+ * O wizard de configuração — os SEIS passos, um a um.
+ *
+ * **Por que ele precisa de tratamento próprio.** `/app/configurar` é uma rota
+ * só, e o passo é estado do cliente: abrir a URL seis vezes mediria seis vezes
+ * o passo 1. É a lição do #9 da fase 13 — verde de varredura não prova que a
+ * tela CERTA foi medida — aplicada ao caso em que ela mais dói, porque o
+ * wizard é agora a PORTA do produto (agente 30: concluir é obrigatório).
+ *
+ * **Por que `?passo=N` e não clicar em "Continuar".** Trocar a viewport
+ * RECARREGA a página (o Chrome refaz a emulação ao ligar/desligar `isMobile`),
+ * e um passo alcançado por clique não sobrevive ao recarregamento — a medição
+ * do 360 mostraria o passo 3 e a do 768, as boas-vindas. Com o passo na URL,
+ * cada um é uma rota como qualquer outra e as cinco medidas são do mesmo lugar.
+ *
+ * **Por que uma conta própria.** O dono do seed já concluiu o onboarding, e
+ * desde o agente 30 o guard manda quem concluiu de volta ao painel — abrir o
+ * wizard com ele mediria o dashboard. A varredura entra como a dona de
+ * `barbearia-configuracao`, a fixture que `make seed` deixa no passo 0.
+ * Registrar uma conta a cada execução não serviria: `POST /auth/register` é
+ * limitado a 5 por hora, e a varredura passaria a depender de quantas vezes
+ * rodou.
+ *
+ * A varredura só MEDE: não salva passo nenhum e não conclui o wizard.
+ */
+async function sweepWizard(browser) {
+  const port = WEB_PORT;
+  if (!(await isUp(port))) {
+    log(`\n⏭  wizard — app fora do ar na porta ${port}, pulando`);
+    return;
+  }
+
+  log(`\n▸ wizard — /app/configurar, os 6 passos (porta ${port})`);
+
+  const authPage = await browser.newPage();
+  const ok = await login(authPage, port, CREDENTIALS.onboardingOwner);
+  await authPage.close();
+  if (!ok) {
+    log('   ! login da fixture de onboarding falhou — rode `make seed`');
+    findings.push({
+      app: 'wizard',
+      route: '/app/configurar',
+      viewport: 'todos',
+      problem: 'login da fixture de onboarding falhou (rode `make seed`)',
+    });
+    return;
+  }
+
+  // Sem `?passo`, a fixture (passo 0) abre nas boas-vindas — a primeira tela do
+  // produto, e de onde saiu o "Pular e explorar o painel" (agente 30).
+  const routes = [
+    '/app/configurar',
+    ...Array.from({ length: 6 }, (_, index) => `/app/configurar?passo=${index + 1}`),
+  ];
+
+  for (const route of routes) {
+    const page = await browser.newPage();
+    const consoleErrors = watchConsole(page);
+
+    try {
+      await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+      await page.goto(`http://localhost:${port}${route}`, {
+        waitUntil: 'networkidle2',
+        timeout: 45_000,
+      });
+      // O wizard é CSR e ainda pede `GET /onboarding` antes de desenhar o passo.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+      await measureViewports(page, {
+        app: 'wizard',
+        label: route,
+        checkTouchTargets: true,
+        consoleErrors,
+      });
+
+      if (consoleErrors.length > 0 && !findings.some((f) => f.route === route)) {
+        log(`   ✗ ${route} — erro de console na carga: ${consoleErrors[0]}`);
+        findings.push({ app: 'wizard', route, viewport: 'carga', problem: consoleErrors[0] });
+      }
+    } catch (error) {
+      log(`   ! ${route} — ${error.message}`);
+      findings.push({ app: 'wizard', route, viewport: 'todos', problem: error.message });
+    } finally {
+      await page.close();
+    }
+
+    if (ROUTE_DELAY_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, ROUTE_DELAY_MS));
+    }
+  }
+}
+
 async function sweep() {
   if (!CHROME) {
     console.error('Chrome não encontrado. Defina CHROME_PATH.');
@@ -237,19 +500,7 @@ async function sweep() {
          * (Tailwind `md:`/`lg:`), não JavaScript de largura.
          */
         const page = await browser.newPage();
-        const consoleErrors = [];
-        page.on('console', (message) => {
-          if (message.type() !== 'error') {
-            return;
-          }
-          const text = message.text();
-          // 401/403 numa rota protegida é o guard funcionando, não defeito de
-          // layout — e é o que se vê na tela de login, que também é varrida.
-          if (/\b(401|403)\b/.test(text)) {
-            return;
-          }
-          consoleErrors.push(text.slice(0, 200));
-        });
+        const consoleErrors = watchConsole(page);
 
         try {
           await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
@@ -257,136 +508,7 @@ async function sweep() {
           // As telas são CSR: sem esta folga, mede-se o esqueleto.
           await new Promise((resolve) => setTimeout(resolve, 1_200));
 
-          for (const viewport of VIEWPORTS) {
-            await page.setViewport({
-              width: viewport.width,
-              height: viewport.height,
-              isMobile: viewport.mobile,
-              hasTouch: viewport.mobile,
-              deviceScaleFactor: 1,
-            });
-            // Folga para o reflow assentar antes de medir.
-            await new Promise((resolve) => setTimeout(resolve, 350));
-
-            const before = consoleErrors.length;
-
-            const result = await page.evaluate((minTouch) => {
-              const doc = document.documentElement;
-              const overflowBy = doc.scrollWidth - doc.clientWidth;
-
-              /** Quem, concretamente, é mais largo que a viewport. */
-              const culprits = [];
-              if (overflowBy > 0) {
-                for (const element of document.querySelectorAll('body *')) {
-                  const rect = element.getBoundingClientRect();
-                  if (rect.width === 0 || rect.height === 0) continue;
-                  if (rect.right <= doc.clientWidth + 1) continue;
-                  // Um contêiner que rola por dentro não é problema.
-                  const style = getComputedStyle(element);
-                  if (style.overflowX === 'auto' || style.overflowX === 'scroll') continue;
-                  culprits.push(
-                    `${element.tagName.toLowerCase()}.${String(element.className || '').slice(0, 60)}`,
-                  );
-                  if (culprits.length >= 3) break;
-                }
-              }
-
-              const smallTargets = [];
-              if (minTouch) {
-                const interactive = document.querySelectorAll(
-                  'button, a[href], input, select, textarea, [role="button"], [role="tab"]',
-                );
-                for (const element of interactive) {
-                  let rect = element.getBoundingClientRect();
-
-                  /*
-                   * Caixa de seleção e rádio são desenhados pequenos de
-                   * propósito; quem recebe o toque é o `<label>` em volta, que
-                   * é bem maior. Medir o input puniria um padrão correto — o
-                   * alvo real é o rótulo.
-                   */
-                  /*
-                   * Exceção "inline" das WCAG 2.5.8: um link no meio de uma
-                   * frase ("aceito os <a>termos de uso</a>") é dimensionado
-                   * pelo texto e não tem como crescer sem quebrar o parágrafo.
-                   * A régua vale para controle que se sustenta sozinho.
-                   */
-                  if (element.tagName === 'A') {
-                    const parent = element.parentElement;
-                    const hasSiblingText = Array.from(parent?.childNodes ?? []).some(
-                      (node) => node.nodeType === 3 && node.textContent.trim().length > 0,
-                    );
-                    if (hasSiblingText) continue;
-                  }
-
-                  const type = element.getAttribute('type');
-                  if (type === 'checkbox' || type === 'radio') {
-                    const label =
-                      element.closest('label') ??
-                      (element.id
-                        ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`)
-                        : null);
-                    if (label) {
-                      rect = label.getBoundingClientRect();
-                    }
-                  }
-
-                  if (rect.width === 0 || rect.height === 0) continue;
-                  if (getComputedStyle(element).visibility === 'hidden') continue;
-                  if (rect.width < 44 || rect.height < 44) {
-                    smallTargets.push(
-                      `${element.tagName.toLowerCase()}"${(element.textContent || '').trim().slice(0, 24)}" ${Math.round(rect.width)}x${Math.round(rect.height)}`,
-                    );
-                    if (smallTargets.length >= 5) break;
-                  }
-                }
-              }
-
-              /*
-               * A tela de erro do Next tem layout próprio e mediria tudo
-               * errado. Detectá-la evita reportar "alvo de toque pequeno"
-               * quando o que houve foi a página não carregar.
-               */
-              const errorOverlay =
-                document.querySelector('nextjs-portal') !== null ||
-                /Checking the proxy|Unhandled Runtime Error|Application error/i.test(
-                  document.body.innerText.slice(0, 400),
-                );
-
-              return { overflowBy, culprits, smallTargets, errorOverlay };
-            }, viewport.mobile && checkTouchTargets);
-
-            const problems = [];
-            if (result.overflowBy > 0) {
-              problems.push(
-                `rolagem horizontal (+${result.overflowBy}px): ${result.culprits.join(', ') || 'origem não identificada'}`,
-              );
-            }
-            if (result.smallTargets.length > 0) {
-              problems.push(`alvo de toque < 44px: ${result.smallTargets.join(' · ')}`);
-            }
-            const newErrors = consoleErrors.slice(before);
-            if (newErrors.length > 0) {
-              problems.push(`erro de console: ${newErrors[0]}`);
-            }
-            if (result.errorOverlay) {
-              problems.push(
-                'a página não renderizou (tela de erro do Next). Se veio junto de um 429, ' +
-                  'é o rate limit da API reagindo à varredura — use --delay maior.',
-              );
-            }
-
-            if (problems.length === 0) {
-              log(`   ✓ ${route} @ ${viewport.name}`);
-            } else {
-              log(`   ✗ ${route} @ ${viewport.name}`);
-              for (const problem of problems) {
-                log(`       ${problem}`);
-                findings.push({ app, route, viewport: viewport.name, problem });
-              }
-            }
-          }
-
+          await measureViewports(page, { app, label: route, checkTouchTargets, consoleErrors });
           // Erros que apareceram durante a carga inicial contam uma vez só.
           if (consoleErrors.length > 0 && !findings.some((f) => f.route === route)) {
             log(`   ✗ ${route} — erro de console na carga: ${consoleErrors[0]}`);
@@ -403,6 +525,10 @@ async function sweep() {
           await new Promise((resolve) => setTimeout(resolve, ROUTE_DELAY_MS));
         }
       }
+    }
+
+    if (!onlyApp || onlyApp === 'wizard') {
+      await sweepWizard(browser);
     }
   } finally {
     await browser.close();

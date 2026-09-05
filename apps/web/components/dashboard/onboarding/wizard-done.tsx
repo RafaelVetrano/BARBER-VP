@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { Button, buttonClasses, useToast } from '@barbervp/ui';
 
 export interface WizardDoneProps {
-  ownerFirstName: string;
+  /** Vazio = sem vocativo (a API decide; ver `greetingName`). */
+  ownerGreetingName: string;
   publicUrl: string;
   barbersCount: number;
 }
 
 /** Tela de conclusão: anel + check desenhados, link copiável e próximos passos. */
-export function WizardDone({ ownerFirstName, publicUrl, barbersCount }: WizardDoneProps) {
+export function WizardDone({ ownerGreetingName, publicUrl, barbersCount }: WizardDoneProps) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
@@ -52,7 +53,7 @@ export function WizardDone({ ownerFirstName, publicUrl, barbersCount }: WizardDo
       </svg>
 
       <h1 className="mb-3 font-display text-[32px] font-bold tracking-tight text-fg">
-        Tudo pronto{ownerFirstName ? `, ${ownerFirstName}` : ''}!
+        Tudo pronto{ownerGreetingName ? `, ${ownerGreetingName}` : ''}!
       </h1>
       <p className="mb-6 max-w-md text-[15px] leading-relaxed text-fg-muted">
         Sua barbearia está configurada. Agora é hora de ver o painel e receber seus primeiros

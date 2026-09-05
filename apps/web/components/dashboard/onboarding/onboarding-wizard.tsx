@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   ONBOARDING_STEPS,
   SKIPPABLE_STEPS,
@@ -66,9 +66,23 @@ const STEP_COPY: Record<number, { title: string; subtitle: string }> = {
  * numa `useState` que morre com a aba.
  */
 export function OnboardingWizard() {
-  const router = useRouter();
   const { client, refresh } = useEstablishmentAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+
+  /**
+   * `?passo=N` abre direto num passo, em vez de retomar do último gravado.
+   *
+   * Serve ao dono que quer voltar a um passo por link (o wizard já permite ir e
+   * vir por "Voltar"/"Continuar", então nada aqui é alcance novo) e à varredura
+   * responsiva, que precisa endereçar cada passo por URL: mudar a viewport
+   * recarrega a página, e o passo é estado do cliente — sem isto, medir os 6
+   * passos mediria seis vezes o primeiro.
+   *
+   * Não pula validação nenhuma: cada passo continua salvando pelo seu próprio
+   * endpoint, e `POST /onboarding/complete` recusa o que estiver faltando.
+   */
+  const forcedStep = clampStep(searchParams.get('passo'));
 
   const [state, setState] = useState<OnboardingState | null>(null);
   const [step, setStep] = useState<WizardStep>(0);
@@ -85,7 +99,11 @@ export function OnboardingWizard() {
         if (cancelled) return;
         setState(loaded);
         // Retoma no passo seguinte ao último concluído; concluído abre no fim.
-        setStep(loaded.completed ? 'done' : loaded.step === 0 ? 0 : Math.min(loaded.step + 1, ONBOARDING_STEPS));
+        setStep(
+          loaded.completed
+            ? 'done'
+            : (forcedStep ?? (loaded.step === 0 ? 0 : Math.min(loaded.step + 1, ONBOARDING_STEPS))),
+        );
       })
       .catch((error) => {
         if (!cancelled) setLoadError(authErrorMessage(error, 'Não foi possível carregar o wizard.'));
@@ -94,7 +112,7 @@ export function OnboardingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, forcedStep]);
 
   const patch = useCallback((partial: Partial<OnboardingState>) => {
     setState((current) => (current ? { ...current, ...partial } : current));
@@ -122,7 +140,10 @@ export function OnboardingWizard() {
           next = await onboardingApi.saveLocation(client, state.location);
           break;
         case 3:
-          next = await onboardingApi.saveIdentity(client, state.identity);
+          // Só o slug: logo e capa já subiram pelo `ImageSlot`, direto para
+          // `POST /my-page/images/:slot`, e o estado local já reflete o que a
+          // resposta daquele upload devolveu.
+          next = await onboardingApi.saveIdentity(client, state.identity.slug);
           break;
         case 4:
           next = await onboardingApi.saveServices(client, state.services);
@@ -178,13 +199,13 @@ export function OnboardingWizard() {
   }
 
   if (step === 0) {
-    return <WizardWelcome ownerFirstName={state.ownerFirstName} onStart={() => setStep(1)} />;
+    return <WizardWelcome ownerGreetingName={state.ownerGreetingName} onStart={() => setStep(1)} />;
   }
 
   if (step === 'done') {
     return (
       <WizardDone
-        ownerFirstName={state.ownerFirstName}
+        ownerGreetingName={state.ownerGreetingName}
         publicUrl={state.publicUrl}
         barbersCount={state.barbers.length}
       />
@@ -192,7 +213,6 @@ export function OnboardingWizard() {
   }
 
   const copy = STEP_COPY[step]!;
-  const publicUrlBase = state.publicUrl.replace(/\/agendar\/.*$/, '');
 
   return (
     <WizardChrome
@@ -206,7 +226,11 @@ export function OnboardingWizard() {
       onNext={() => void advance()}
       onBack={step > 1 ? () => setStep(step - 1) : undefined}
       onSkip={SKIPPABLE_STEPS.includes(step) ? () => void advance(true) : undefined}
-      onExit={() => router.push('/app')}
+      skipHint={
+        step === 3
+          ? 'Você pode adicionar logo e capa depois em Minha Página.'
+          : undefined
+      }
     >
       {step === 1 && (
         <StepProfile value={state.profile} onChange={(profile) => patch({ profile })} />
@@ -217,7 +241,9 @@ export function OnboardingWizard() {
       {step === 3 && (
         <StepIdentity
           value={state.identity}
-          publicUrlBase={publicUrlBase}
+          profile={state.profile}
+          location={state.location}
+          publicBaseUrl={state.publicBaseUrl}
           onChange={(identity) => patch({ identity })}
           onAvailabilityChange={setSlugAvailable}
         />
@@ -234,6 +260,13 @@ export function OnboardingWizard() {
       )}
     </WizardChrome>
   );
+}
+
+/** `?passo=3` → `3`. Fora de 1..6 (ou ausente) devolve `null`. */
+function clampStep(raw: string | null): number | null {
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > ONBOARDING_STEPS) return null;
+  return parsed;
 }
 
 /**
