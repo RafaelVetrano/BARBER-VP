@@ -65,7 +65,7 @@ export class ClientRegisterDto {
   confirmEmail!: string;
 
   @ApiProperty({ minLength: 8 })
-  @IsStrongPassword({ message: 'Mínimo 8 caracteres, com letra e número' })
+  @IsStrongPassword()
   password!: string;
 
   @ApiProperty()
@@ -125,7 +125,7 @@ export class ClientResetPasswordDto {
   resetToken!: string;
 
   @ApiProperty({ minLength: 8 })
-  @IsStrongPassword({ message: 'Mínimo 8 caracteres, com letra e número' })
+  @IsStrongPassword()
   password!: string;
 
   @ApiProperty()
@@ -187,7 +187,7 @@ export class ChangeClientPasswordDto {
   currentPassword!: string;
 
   @ApiProperty({ minLength: 8 })
-  @IsStrongPassword({ message: 'Mínimo 8 caracteres, com letra e número' })
+  @IsStrongPassword()
   newPassword!: string;
 
   @ApiProperty()

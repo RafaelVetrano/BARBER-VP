@@ -49,7 +49,7 @@ describe('aba Financeiro (agente 18, e2e)', () => {
   const slugEssencial = `e2e-fin18-ess-${run}`;
   const planCode = `e2e-fin18-${run}`;
   const planCodeEssencial = `e2e-fin18-ess-${run}`;
-  const password = 'FinanceiroDezoito1';
+  const password = 'FinanceiroDezoito1!';
 
   let tenantId: string;
   let ownerToken: string;

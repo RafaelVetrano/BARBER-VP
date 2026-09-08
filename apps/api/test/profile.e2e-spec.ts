@@ -33,7 +33,7 @@ describe('tela Meu perfil — dados, foto, LGPD e exclusão de conta (e2e)', () 
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-perfil-${run}`;
-  const password = 'PerfilSenhaForte1';
+  const password = 'PerfilSenhaForte1!';
   const ownerEmail = `e2e-perfil-owner-${run}@barbervp.test`;
   const managerEmail = `e2e-perfil-manager-${run}@barbervp.test`;
   const barberEmail = `e2e-perfil-barber-${run}@barbervp.test`;

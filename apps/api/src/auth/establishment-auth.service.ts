@@ -151,24 +151,41 @@ export class EstablishmentAuthService {
     }
 
     const phone = normalizeMobilePhone(dto.phone);
+
+    // `User.phone` é `@unique` desde o agente 32. A consulta aqui existe para
+    // a MENSAGEM: o índice sozinho devolveria o P2002 genérico, que não diz ao
+    // formulário qual campo marcar. Normalizado antes de consultar, então
+    // `(16) 99999-0001` e `+5516999990001` batem no mesmo registro.
+    if (phone) {
+      const phoneTaken = await this.prisma.user.findUnique({
+        where: { phone },
+        select: { id: true },
+      });
+      if (phoneTaken) {
+        throw ApiException.conflict('Este celular já está em uso.', ErrorCode.PHONE_IN_USE);
+      }
+    }
+
     const passwordHash = await this.passwords.hash(dto.password);
 
-    const { userId, tenantId } = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: { name: dto.name, email: dto.email, phone, passwordHash },
-        select: { id: true, name: true },
-      });
+    const { userId, tenantId } = await this.uniqueOrConflict(() =>
+      this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: { name: dto.name, email: dto.email, phone, passwordHash },
+          select: { id: true, name: true },
+        });
 
-      const tenant = await this.provisionTenant(tx, {
-        shopName: dto.shopName,
-        ownerUserId: user.id,
-        ownerName: user.name,
-        ownerPhone: phone,
-        ownerEmail: dto.email,
-      });
+        const tenant = await this.provisionTenant(tx, {
+          shopName: dto.shopName,
+          ownerUserId: user.id,
+          ownerName: user.name,
+          ownerPhone: phone,
+          ownerEmail: dto.email,
+        });
 
-      return { userId: user.id, tenantId: tenant.id };
-    });
+        return { userId: user.id, tenantId: tenant.id };
+      }),
+    );
 
     await this.audit.record(
       {
@@ -224,12 +241,20 @@ export class EstablishmentAuthService {
       );
     }
 
-    const { userId, tenantId } = await this.prisma.$transaction(async (tx) => {
+    // O telefone vem do `Client`, não de um campo desta tela — e desde o agente
+    // 32 `User.phone` é `@unique`. Se o número já for de outro `User`, o dono
+    // não teria onde corrigi-lo, e o vínculo inteiro morreria por um dado que
+    // ele não digitou. Então o `User` nasce SEM telefone e o dono o preenche
+    // depois em "Meu perfil": perder o campo é reparável, perder o vínculo (e
+    // com ele o histórico do cliente) não é. O `Client.phone` continua intacto.
+    const ownerPhone = await this.phoneFreeForNewUser(client.phone);
+    const { userId, tenantId } = await this.uniqueOrConflict(() =>
+      this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           name: client.name,
           email: dto.email,
-          phone: client.phone,
+          phone: ownerPhone,
           // Mesma senha dos dois lados: é a mesma conta, com dois perfis.
           passwordHash: client.passwordHash!,
         },
@@ -242,12 +267,15 @@ export class EstablishmentAuthService {
         shopName: dto.shopName,
         ownerUserId: user.id,
         ownerName: user.name,
+        // A ficha de barbeiro do dono PODE repetir o número: a unicidade é do
+        // login (`User.phone`), não do contato do profissional.
         ownerPhone: client.phone,
         ownerEmail: dto.email,
       });
 
-      return { userId: user.id, tenantId: tenant.id };
-    });
+        return { userId: user.id, tenantId: tenant.id };
+      }),
+    );
 
     await this.audit.record(
       {
@@ -263,6 +291,52 @@ export class EstablishmentAuthService {
     );
 
     return this.issueForUser(userId, tenantId, request);
+  }
+
+  // ── Unicidade de e-mail e celular ─────────────────────────────────────────
+
+  /**
+   * Traduz o `P2002` do Prisma para o código que o formulário sabe tratar.
+   *
+   * `register` e `linkClientAccount` consultam antes de criar, mas consulta e
+   * `create` não são atômicos: dois envios simultâneos do mesmo cadastro
+   * passam os dois pela consulta e o segundo estoura no índice. O
+   * `AllExceptionsFilter` já mapeia `P2002` para 409, só que com "Já existe um
+   * registro com esses dados" — verdadeiro e inútil, porque não diz QUAL campo
+   * marcar. Aqui o `meta.target` diz, e a corrida termina na mesma mensagem
+   * que o caminho tranquilo daria.
+   */
+  private async uniqueOrConflict<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      const target = (error as { code?: string; meta?: { target?: unknown } })?.code === 'P2002'
+        ? String((error as { meta?: { target?: unknown } }).meta?.target ?? '')
+        : null;
+      if (target?.includes('phone')) {
+        throw ApiException.conflict('Este celular já está em uso.', ErrorCode.PHONE_IN_USE);
+      }
+      if (target?.includes('email')) {
+        throw ApiException.conflict(
+          'Ops! Já existe um cadastro com este e-mail.',
+          ErrorCode.EMAIL_IN_USE,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Telefone que pode ir para um `User` NOVO, ou `null` se já for de outro.
+   *
+   * Só serve ao fluxo de vínculo, onde o número vem do `Client` e não de um
+   * campo da tela: ali, recusar o cadastro por um dado que o dono não digitou
+   * (e não tem onde corrigir) seria pior do que nascer sem telefone.
+   */
+  private async phoneFreeForNewUser(phone: string | null): Promise<string | null> {
+    if (!phone) return null;
+    const taken = await this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
+    return taken ? null : phone;
   }
 
   // ── Sessão ────────────────────────────────────────────────────────────────

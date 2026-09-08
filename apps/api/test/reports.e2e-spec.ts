@@ -30,7 +30,7 @@ describe('relatórios (e2e)', () => {
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-rel-${run}`;
   const essencialSlug = `e2e-rel-ess-${run}`;
-  const password = 'RelatoriosSenha1';
+  const password = 'RelatoriosSenha1!';
   const TZ = 'America/Sao_Paulo';
 
   let tenantId: string;

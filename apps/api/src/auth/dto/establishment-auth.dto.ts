@@ -10,6 +10,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsStrongPassword } from '../validators/is-strong-password.validator';
+import { MatchesProperty } from '../validators/matches-property.validator';
 import { IsBrazilPhone } from '../validators/is-brazil-phone.validator';
 
 /** `@Transform` de e-mail: minúsculas sem espaço — a chave é sempre canônica. */
@@ -43,9 +44,30 @@ export class RegisterEstablishmentDto {
   @IsEmail({}, { message: 'E-mail inválido.' })
   email!: string;
 
-  @ApiProperty({ example: 'minhasenha123', minLength: 8 })
+  /**
+   * Repetição do e-mail. O `register` cria a conta ATIVA e não manda link de
+   * verificação (`emailVerifiedAt` fica nulo) — um e-mail digitado errado vira
+   * conta cuja recuperação de senha chega na caixa de outra pessoa. Este campo
+   * é a única rede contra isso hoje.
+   *
+   * Normalizado igual ao `email` antes de comparar: quem digita `Voce@Email.com`
+   * na confirmação de `voce@email.com` acertou.
+   */
+  @ApiProperty({ example: 'voce@suabarbearia.com', description: 'Repetição do e-mail.' })
+  @Transform(normalizeEmail)
+  @IsEmail({}, { message: 'E-mail inválido.' })
+  @MatchesProperty('email', { message: 'Os e-mails não coincidem.' })
+  confirmEmail!: string;
+
+  @ApiProperty({ example: 'MinhaSenha@2026', minLength: 8 })
   @IsStrongPassword()
   password!: string;
+
+  /** Repetição da senha — só o `password` é gravado; este par só valida. */
+  @ApiProperty({ example: 'MinhaSenha@2026', description: 'Repetição da senha.' })
+  @IsString()
+  @MatchesProperty('password', { message: 'As senhas não coincidem.' })
+  confirmPassword!: string;
 
   @ApiProperty({ example: 'Studio Navalha', description: 'Nome da barbearia.' })
   @Transform(trim)

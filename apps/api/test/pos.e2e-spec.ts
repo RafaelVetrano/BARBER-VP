@@ -24,7 +24,7 @@ describe('comandas — auditoria da aba (e2e)', () => {
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-pos-${run}`;
-  const password = 'ComandasSenhaForte1';
+  const password = 'ComandasSenhaForte1!';
 
   let tenantId: string;
   let ownerToken: string;

@@ -28,8 +28,8 @@ describe('rate limit compartilhado entre réplicas (e2e)', () => {
   let replicaB: INestApplication;
   let prefix: string;
 
-  /** Limite de `/auth/check-email`, declarado no controller. */
-  const CHECK_EMAIL_LIMIT = 20;
+  /** Limite de `/auth/check-email`, declarado no controller (5/min desde o agente 32). */
+  const CHECK_EMAIL_LIMIT = 5;
 
   const buildReplica = async (): Promise<INestApplication> => {
     const moduleRef: TestingModule = await Test.createTestingModule({

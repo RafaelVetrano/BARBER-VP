@@ -25,7 +25,7 @@ describe('super admin (e2e)', () => {
   let prefix: string;
 
   const run = Date.now().toString().slice(-8);
-  const password = 'SuperAdminSenha1';
+  const password = 'SuperAdminSenha1!';
 
   let superAdminToken: string;
   let tenantId: string;

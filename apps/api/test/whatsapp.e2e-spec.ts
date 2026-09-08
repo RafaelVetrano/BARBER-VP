@@ -34,7 +34,7 @@ describe('aba WhatsApp — automações, reativação e histórico (e2e)', () =>
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-wa-${run}`;
   const slugBasico = `e2e-wa-basico-${run}`;
-  const password = 'WhatsappSenhaForte1';
+  const password = 'WhatsappSenhaForte1!';
 
   let tenantId: string;
   let ownerToken: string;

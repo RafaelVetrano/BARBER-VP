@@ -1,7 +1,67 @@
 # BarberVP — CONTEXT (memória entre sessões)
 
-Atualizado por último: 2026-09-04 — **agente 31 (concluir sem comanda, e
-comanda de R$ 0 que fecha ou cancela)** concluído.
+Atualizado por último: 2026-09-05 — **agente 32 (regras do cadastro do
+estabelecimento)** concluído.
+
+Três mudanças pedidas pelo dono do produto em 2026-09-04, na ordem em que doem.
+
+**1. A senha ficou mais forte, e isso invalidou senhas que a suíte usava.** A
+regra passou de "8+ com letra e número" para **8+ com maiúscula, número e
+caractere especial** — e são exatamente QUATRO requisitos: **minúscula não é
+um deles** (decisão do dono; `SENHA@2026` é senha válida). A regra mora em um
+único lugar, `isPasswordValid` em `packages/types/src/auth.ts`, então API,
+painel, área do cliente e booking apertaram juntos, de graça. O preço: 46
+senhas espalhadas pela suíte deixaram de valer e foram atualizadas — todas
+falhavam só no requisito de especial, e ganharam um `!`. **Senha existente
+continua entrando**: nenhum caminho de LOGIN aplica a regra, e há teste
+provando que `senha123` ainda abre uma conta antiga enquanto é recusada num
+cadastro novo.
+
+O defeito que a mudança expôs: **`signup-form.tsx` duplicava a regra** num
+`.min(8).regex().regex()` próprio, em vez de reusar a de `packages/types` —
+violação da regra 1 do kit, e exatamente o mecanismo pelo qual o campo fica
+verde e o POST volta 400. Havia uma segunda cópia em `recover-password-form.tsx`
+e mais quatro telas repetindo a frase "Mínimo 8 caracteres, com letra e
+número" à mão. Todas passaram a consumir `isPasswordValid` e
+`PASSWORD_RULE_MESSAGE`. A varredura do critério de aceite não devolve mais
+nenhuma regra duplicada.
+
+A régua de força foi reescrita junto, porque com a regra nova **qualquer senha
+aceita já valeria 4** e as barrinhas viravam decoração: agora é **uma barra por
+requisito atendido**, e sob elas vai a **lista dos requisitos com ✓/○ ao vivo**
+— "Força da senha: Fraca" não diz QUAL requisito falta.
+
+**2. Celular virou único.** `User.phone` ganhou `@unique`
+(`20260905120000_user_phone_unico`) e segue **opcional**: no Postgres vários
+`NULL` convivem num índice único, e é isso que deixa quem entra por convite da
+Equipe não ter telefone. A premissa vai coberta por teste, porque é ela que
+sustenta o campo continuar nulável. Os **quatro** caminhos que gravam
+`User.phone` tratam o conflito, não só o cadastro — e a migration desempatou
+duplicata real: o banco desta máquina tinha **quatro contas de teste com o
+mesmo número**.
+
+**3. Confirmar e-mail e confirmar senha.** O `register` cria a conta ATIVA e
+não manda link de verificação (`emailVerifiedAt` fica nulo), então e-mail
+digitado errado é conta cuja recuperação de senha chega na caixa de outra
+pessoa. "Confirmar e-mail" bloqueia colar — colar repete o mesmo erro de
+digitação. Os dois pares são validados **também no servidor**, pelo
+`MatchesProperty` novo.
+
+O **nome da barbearia NÃO ficou único** — avaliado e descartado pelo dono, com
+teste que protege a decisão.
+
+**Um defeito antigo apareceu na conferência do navegador**, e não no código:
+`maskPhoneInput` descartava o código do país errado — colar `+55 16 99999-0001`
+deixava `(55) 1 6999-9900` no campo, um número DIFERENTE, gravado sem aviso.
+Com o celular agora `@unique`, isso virou o dono achando que cadastrou o número
+dele. Corrigido reusando a regra de `normalizePhone`, com teste.
+
+Suíte: **103 unit · 392 e2e · 186 isolamento**, mais **38 unit de frontend**
+(+6 unit, +10 e2e, +5 de frontend). `lint`/`typecheck` 11/11, `build` 3/3,
+varredura responsiva sem pendência em `/cadastro` nos 5 tamanhos.
+
+Antes disso, o **agente 31 (concluir sem comanda, e comanda de R$ 0 que fecha
+ou cancela)**.
 
 A fase começa por uma **regra de produto**: **concluir um atendimento e cobrar
 por ele são ações independentes.** Até aqui o único caminho para
@@ -343,6 +403,7 @@ achados"). Antes disso, o agente 16 reconstruiu a `/app/clientes`, o 14 separou
 | 29 | Reparos transversais — fecha o 15 e as dívidas em aberto | ✅ |
 | 30 | Configuração inicial obrigatória — wizard `/app/configurar` (`auditoria/`) | ✅ |
 | 31 | Concluir sem comanda, e comanda de R$ 0 que fecha ou cancela (`auditoria/`) | ✅ |
+| 32 | Regras do cadastro: celular único, senha forte, campos de confirmação (`auditoria/`) | ✅ |
 
 (⬜ pendente · 🟨 em andamento · ✅ concluída — só marcar ✅ com critérios de
 aceite verdes; NUNCA avançar com a fase anterior quebrada)
@@ -371,9 +432,9 @@ Todas `@TenantOptional()`: o tenant destas rotas nasce do login, nunca de header
 
 | Método | Rota | Auth | Rate limit | Observações |
 |---|---|---|---|---|
-| POST | `/auth/check-email` | pública | 20/min | `available` \| `establishment` \| `client` — os 3 estados do campo de e-mail do cadastro. |
-| POST | `/auth/register` | pública | 5/h | `User`+`Tenant`(TRIAL)+`Membership` OWNER+`TenantSettings`+7 `TenantBusinessHour`+`Barber` do dono, em UMA transação. 201. |
-| POST | `/auth/register/link` | pública | 5/h | Vincula conta de `Client` existente (confirma senha atual). 201. |
+| POST | `/auth/check-email` | pública | **5/min** | `available` \| `establishment` \| `client` — os 3 estados do campo de e-mail do cadastro. **Agente 32**: era 20/min — 1.200 consultas/hora faziam da rota um varredor confortável de lista de e-mails vazada. |
+| POST | `/auth/register` | pública | 5/h | `User`+`Tenant`(TRIAL)+`Membership` OWNER+`TenantSettings`+7 `TenantBusinessHour`+`Barber` do dono, em UMA transação. 201. **Agente 32**: exige `confirmEmail` e `confirmPassword` (conferidos no servidor pelo `MatchesProperty`), e devolve 409 `PHONE_IN_USE` além de `EMAIL_IN_USE` — `User.phone` virou `@unique`. |
+| POST | `/auth/register/link` | pública | 5/h | Vincula conta de `Client` existente (confirma senha atual). 201. **Agente 32**: se o telefone do `Client` já for de outro `User`, o `User` novo nasce com `phone: null` em vez de o vínculo falhar. |
 | POST | `/auth/login` | pública | 10/min | Aceita `tenantId` opcional para quem tem N barbearias. |
 | POST | `/auth/refresh` | cookie | 60/min | Rotaciona; reuso do token antigo revoga a família inteira. |
 | POST | `/auth/logout` | opcional | — | Revoga a sessão e limpa o cookie. 204. |
@@ -1300,6 +1361,186 @@ Contas de desenvolvimento criadas pelo seed (senha `BarberVP@2026`):
   `TENANT_SUSPENDED` (403) e reativar devolvendo o acesso, impersonar
   devolvendo token que resolve em `/auth/me` como o OWNER de verdade. Banco
   reseedado ao final.
+
+## O que o agente 32 (regras do cadastro do estabelecimento) entregou
+
+Alvo: `/cadastro` e o módulo `apps/api/src/auth`. Três mudanças pedidas pelo
+dono do produto em 2026-09-04.
+
+**Divergência do enunciado, registrada como o kit manda:** o prompt dizia ter
+sido escrito lendo o commit `d1aca88` (merge do PR #4). Esse commit **não
+existe neste repositório** — o `HEAD` era `a5ec3be` (agente 31). Os caminhos e
+as linhas citados no enunciado bateram com o código mesmo assim; só o `CONTEXT.md`
+está em `agentes/CONTEXT.md`, e não na raiz.
+
+### A regra de senha (Bloco B)
+
+**Onde mora:** `isPasswordValid` em `packages/types/src/auth.ts` — o único
+lugar. Com isso ganharam a regra de graça o decorator `IsStrongPassword` (e por
+tabela `RegisterEstablishmentDto`, reset, troca de senha do painel e todo o
+lado do cliente), o `PasswordInput` de `packages/ui`, `aceitar-convite`,
+`meu-perfil`, `new-password-screen` e `tab-dados`.
+
+**São quatro requisitos**, expostos um a um em `passwordChecks()`:
+comprimento ≥ 8, maiúscula, dígito, caractere especial. `isPasswordValid` é a
+conjunção dos quatro.
+
+- **O conjunto de caracteres especiais é explícito**, em
+  `PASSWORD_SPECIAL_CHARS`: `` !@#$%^&*()-_=+[]{};:'",.<>/?\|`~ ``. Lista, e
+  não "tudo que não é letra nem dígito", porque a diferença aparece na tela:
+  `ç` e `ã` são LETRAS, e com uma regra frouxa o requisito acenderia com elas
+  sem o dono entender por quê. **Espaço fica de fora de propósito** — senha que
+  depende de um espaço no fim é senha que se perde ao copiar e colar.
+- **Maiúscula é `\p{Lu}`, não `[A-Z]`**: `Ç` e `Á` contam. Recusar `ÇASA@2026`
+  seria uma recusa que ninguém consegue explicar para um dono brasileiro.
+- **A frase da recusa também é compartilhada** (`PASSWORD_RULE_MESSAGE`): os
+  dois lados não só concordam na decisão como no texto. Três `@IsStrongPassword`
+  de `client-auth.dto.ts` tinham `message:` próprio com o texto ANTIGO — o
+  override saiu.
+
+**A régua de 4 barras foi reescrita.** Antes ela pontuava por escada própria
+(8 chars → +letra/número → +10 chars → +especial), sem relação com o que o
+servidor exigia; com a regra nova **qualquer senha aceita já valeria 4** e as
+barras viravam decoração. Agora `passwordStrength` é *quantos dos quatro
+requisitos a senha cumpre* — quatro requisitos, quatro barras, e "4 de 4" é
+exatamente o ponto em que o POST para de voltar 400. Há teste afirmando essa
+equivalência (`passwordStrength(x) === 4` ⟺ `isPasswordValid(x)`), que é o que
+impede a régua de voltar a decorar. `STRENGTH_LABEL` continua com 5 posições,
+com rótulos ajustados à escada nova (`Muito fraca · Fraca · Quase lá · Forte`).
+
+**Sob as barras, a lista de requisitos com ✓/○ ao vivo**, em `aria-live="polite"`,
+atrás da prop `showStrength` que já existia — quem não a usa não vê diferença.
+A razão: "Força da senha: Fraca" não diz QUAL requisito falta, e a régua nova
+(uma barra por requisito) só faz sentido se der para ler quais barras são quais.
+
+**O defeito que a fase encontrou:** `signup-form.tsx` **duplicava a regra**
+(`.min(8).regex(/[A-Za-z]/).regex(/\d/)`) em vez de reusá-la — violação da
+regra 1 do kit e o mecanismo exato pelo qual front e API discordam. Havia uma
+segunda cópia inteira em `recover-password-form.tsx`, mais quatro telas com a
+frase "Mínimo 8 caracteres, com letra e número" escrita à mão. Todas passaram a
+consumir `isPasswordValid`/`PASSWORD_RULE_MESSAGE`; a varredura do critério de
+aceite não devolve mais nenhuma regra duplicada.
+
+**Senhas existentes continuam valendo.** Nenhum caminho de LOGIN aplica
+`isPasswordValid` — conferido em `login`, `refresh` e no lado do cliente — e há
+teste que cria uma conta com `senha123` direto no banco, entra com ela, e no
+mesmo caso confirma que um cadastro NOVO com a mesma senha é recusado. É a
+diferença entre "a regra vale daqui pra frente" e "a regra invalidou o passado".
+
+### Celular único (Bloco A.2)
+
+`User.phone` ganhou `@unique` e **segue opcional**. A premissa — vários `NULL`
+convivem num índice único no Postgres — tem teste próprio, porque é ela que
+deixa o convite de equipe criar barbeiro sem telefone (e o `/me` cair para
+`Barber.phone`).
+
+**A migration desempatou duplicata REAL.** O `seed.ts` cria todos os `User` sem
+telefone, então em banco recém-semeado a etapa não toca em nada — mas o banco
+desta máquina trazia **quatro contas de teste do mesmo dono com
+`5516996022093`**, cadastros manuais feitos enquanto a tela era testada. A
+decisão, escrita na própria migration para valer em qualquer ambiente:
+**preservar CONTA, não telefone.** Quem entra é o e-mail; `User.phone` é dado
+de contato que se repõe em "Meu perfil". Então a linha mais recente de cada
+grupo fica com o número e as anteriores vão para `NULL` — nenhuma conta
+apagada, nenhum login quebrado. Verificado depois de aplicar: as quatro contas
+sobreviveram, uma com o número, três sem.
+
+**Os quatro caminhos que gravam `User.phone`:**
+
+| Onde | O que faz agora |
+|---|---|
+| Cadastro (`establishment-auth.service.ts`) | Normaliza, consulta e devolve 409 `PHONE_IN_USE`. |
+| Vínculo cliente→dono | O `User` nasce com `phone: null` se o número do `Client` já for de outro login. |
+| Aceite de convite (`invites.service.ts`) | Mesma escolha do vínculo: entra sem telefone no `User`; o `Barber` fica com o número. |
+| Meu perfil (`my-profile.service.ts`) | Ganhou a checagem que só o e-mail tinha — 409 `PHONE_IN_USE`. |
+
+**A corrida está coberta.** `register` consulta antes de criar, mas consulta e
+`create` não são atômicos: dois envios simultâneos passam os dois pela consulta
+e o segundo bate no índice. O `AllExceptionsFilter` já mapeava `P2002` para
+409, com "Já existe um registro com esses dados" — verdadeiro e inútil, porque
+não diz ao formulário qual campo marcar. O `uniqueOrConflict` do serviço lê o
+`meta.target` e traduz para `EMAIL_IN_USE` ou `PHONE_IN_USE`, e o teste dispara
+os dois cenários com `Promise.all`.
+
+No formulário, o 409 volta **marcando o campo** (`setError` + `setFocus`), não
+só a faixa vermelha do pé: "Este celular já está em uso." dito lá embaixo não
+diz qual dos sete campos reescrever.
+
+### O defeito que só a conferência no navegador achou
+
+**`maskPhoneInput` mangava o número colado com o código do país.** A máscara
+pegava os 11 PRIMEIROS dígitos do que se digita, então colar
+`+55 16 99999-0001` — o formato que o WhatsApp e o catálogo do celular
+entregam — deixava `(55) 1 6999-9900` no campo: DDD 55, um número **diferente e
+igualmente válido**, gravado sem um aviso sequer.
+
+Existia desde a fase 02 e passou por todas as auditorias, porque lendo o código
+a máscara parece certa e a suíte nunca colou um `+55` num campo. Apareceu no
+critério de aceite "repetir celular em outro formato": a tela aceitou o
+cadastro que devia recusar, e o banco mostrou por quê — dois `User` com
+telefones diferentes, quando o humano digitara o mesmo número duas vezes.
+
+Com o celular agora `@unique`, isso deixou de ser um contato errado e virou o
+dono achando que cadastrou o número dele. A correção reusa a regra que já
+existia em `normalizePhone` (`55` na frente de MAIS de 11 dígitos), e não uma
+nova: `(55) 9 9999-0001` continua sendo DDD 55, que é o Rio Grande do Sul.
+Coberto em `apps/web/test/phone-mask.spec.ts`, cujo último caso compara a
+máscara com `normalizeMobilePhone` em vez de repetir a expectativa à mão — se
+as duas voltarem a discordar, é ali que aparece.
+
+### Confirmar e-mail e confirmar senha (Bloco C)
+
+Campos novos em `signup-form.tsx` e em `RegisterEstablishmentDto`, validados
+**nos dois lados** — o servidor confere o par pelo `MatchesProperty` novo, e a
+comparação usa o valor já transformado, então `Voce@Email.com` confirma
+`voce@email.com`. "Confirmar e-mail" **bloqueia colar** (`onPaste`/`onDrop`),
+porque quem cola repete o mesmo erro de digitação e o campo deixa de confirmar
+coisa nenhuma. Os dois entram no ramo `!isClientLink`: no vínculo a conta já
+existe e eles não fazem sentido.
+
+Ordem final da coluna: Nome completo · Celular · E-mail · Confirmar e-mail ·
+Senha (barras + requisitos ✓/○) · Confirmar senha · Nome da barbearia ·
+termos · botão.
+
+### `/auth/check-email` permanece, com o teto menor (Bloco A.1)
+
+A rota revela se um e-mail tem conta, e é assim de propósito: a tela depende
+disso para oferecer o vínculo (o "Que bom te ver de novo!") e o submit
+revelaria o mesmo. Removê-la exigiria redesenhar a tela inteira. O ajuste
+defensável foi o teto: **20/min → 5/min por IP**. 20/min são 1.200 consultas
+por hora contra as 5/h do `register`, o que fazia da rota um varredor
+confortável de lista de e-mails vazada; 5/min continua folgado para alguém
+digitando um endereço com debounce de 450ms, que é o único uso legítimo.
+
+### A suíte, e o que ela custou
+
+**46 senhas** espalhadas por 22 arquivos de teste deixaram de valer. Todas
+falhavam **só** no requisito de especial, e ganharam um `!` — o que preserva
+exatamente o que cada caso provava (as senhas deliberadamente erradas continuam
+erradas, porque continuam diferentes das certas). Três literais ficaram como
+estavam de propósito: `abcdefgh` (o caso que DEVE ser recusado), `errada` (login
+inválido) e `unused`/`'password' in client` (falsos positivos — hash
+placeholder e checagem de chave).
+
+**As seeds não precisaram mudar:** `BarberVP@2026` já cumpre os quatro
+requisitos. Os roteiros de verificação do `CONTEXT.md` seguem verdadeiros.
+
+**O que quase virou falso vermelho:** `/auth/register` é **5 por hora por IP**,
+e os casos novos estouravam esse teto entre si — 429 onde o teste esperava 201.
+Afrouxar o limite para o teste passar seria trocar segurança por conveniência;
+a saída foi dar **um IP por chamada de cadastro** (`nextIp()` + `trust proxy`),
+o mesmo recurso que `throttle-redis.e2e-spec.ts` já usava, sem tocar na regra.
+O teto em si continua coberto lá.
+
+Casos novos, além dos de `shared-rules.spec.ts`: dois `User` com `phone: null`
+convivendo; celular repetido em outro formato → 409 `PHONE_IN_USE`; a corrida
+mapeando `P2002` para o campo certo nos dois sentidos; e-mail de `Client` ainda
+abrindo o vínculo (o teste que protege o fluxo da fase 03); vínculo com
+telefone ocupado nascendo sem telefone, com o `Client` e o dono original
+intactos; `senha123` recusada no cadastro e aceita no login de conta antiga;
+`SENHA@2026` aceita; troca de senha do vinculado atualizando os DOIS hashes sob
+a regra nova; confirmações divergentes → 400; e duas barbearias homônimas se
+cadastrando sem erro, com slugs diferentes.
 
 ## O que o agente 31 (concluir e comanda de R$ 0) entregou
 
@@ -4901,6 +5142,70 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
 
 ## Decisões tomadas
 
+- 2026-09-04 (agente 32) — **Minúscula NÃO é requisito de senha.** São quatro
+  requisitos, não cinco: comprimento ≥ 8, maiúscula, dígito e caractere
+  especial. `SENHA@2026` é senha válida. Decisão do dono do produto, fixada em
+  teste (`aceita SEM minúscula — são quatro requisitos, não cinco`) justamente
+  para que ninguém acrescente `/[a-z]/` a `isPasswordValid` daqui a três meses
+  achando que corrige um esquecimento. A lista de requisitos da tela mostra os
+  quatro, e nada além deles.
+- 2026-09-04 (agente 32) — **Senhas existentes não são invalidadas.** A regra
+  vale para senha NOVA. Nenhum caminho de login aplica `isPasswordValid`: quem
+  tem `senha123` continua entrando, sem troca forçada e sem aviso. Invalidar o
+  passado trancaria do lado de fora todo mundo que se cadastrou antes da regra
+  — e a senha fraca de ontem não fica mais fraca por causa de um deploy.
+- 2026-09-05 (agente 32) — **O conjunto de caracteres especiais é uma LISTA
+  explícita** (`PASSWORD_SPECIAL_CHARS`), e não "tudo que não é letra nem
+  dígito". `ç` e `ã` são letras: com a regra frouxa o requisito acenderia com
+  elas e a recusa seguinte seria inexplicável. **Espaço fica de fora** — senha
+  que depende de um espaço no fim se perde ao copiar e colar. Já a MAIÚSCULA é
+  `\p{Lu}` e não `[A-Z]`: `Ç` e `Á` contam, porque recusá-las seria uma recusa
+  que ninguém explica a um dono brasileiro.
+- 2026-09-04 (agente 32) — **Nome da barbearia NÃO é único.** Avaliado e
+  descartado pelo dono. `Tenant.slug` já é `@unique` e resolve a colisão que
+  importa, que é a da URL pública; `Tenant.name` é nome de exibição, e barbearia
+  é ramo de nomes repetidos por natureza — travar a segunda "Barbearia do Zé"
+  do Brasil entregaria a ela um erro sem sentido nenhum do ponto de vista dela.
+  Sem constraint, sem checagem, sem mensagem. Há teste (`duas barbearias com o
+  MESMO nome se cadastram sem erro`) para que a discussão não reabra.
+- 2026-09-05 (agente 32) — **`/auth/check-email` permanece, com o teto
+  reduzido de 20/min para 5/min por IP.** A rota revela se um e-mail tem conta,
+  e é assim de propósito: a tela DEPENDE disso para oferecer o vínculo, e o
+  submit revelaria o mesmo. A mitigação é o rate limit, não esconder o que a UI
+  mostra — mas 20/min eram 1.200 consultas por hora contra as 5/h do
+  `register`, o que fazia da rota um varredor confortável de lista de e-mails
+  vazada. 5/min continua folgado para alguém digitando um endereço com debounce
+  de 450ms, que é o único uso legítimo.
+- 2026-09-05 (agente 32) — **No vínculo cliente→dono e no aceite de convite, o
+  `User` nasce SEM telefone quando o número já é de outro login.** Nos dois
+  fluxos o telefone vem de outro registro (`Client.phone`, `StaffInvite.phone`)
+  e não de um campo que a pessoa esteja preenchendo — ela não teria onde
+  corrigi-lo. Perder o campo é reparável em "Meu perfil"; perder o vínculo (e
+  com ele o histórico do cliente) ou a vaga na equipe não é. O `Client` e o
+  `Barber` continuam com o número: **a unicidade é do LOGIN, não do contato.**
+- 2026-09-05 (agente 32) — **A migration de celular único preserva CONTA, não
+  telefone.** Ao encontrar duplicata, mantém o número na linha mais recente de
+  cada grupo e zera as anteriores, em vez de apagar linha. Quem entra é o
+  e-mail; o telefone se repõe na tela. Não foi hipótese: o banco de
+  desenvolvimento desta máquina tinha quatro contas de teste com o mesmo
+  número, e as quatro sobreviveram à migration.
+- 2026-09-05 (agente 32) — **O cadastro continua em UMA etapa**, com sete
+  campos. A coluna cresceu de 5 para 7 mais a lista de requisitos, e a hipótese
+  de quebrar em duas etapas (acesso → barbearia) foi levantada no enunciado. Não
+  foi preciso: o `AuthSplitLayout` é `min-h-dvh` com rolagem normal de
+  documento, não uma caixa de altura fixa — nada é cortado, e a varredura
+  responsiva passa nos cinco tamanhos sem rolagem horizontal. Rolar um pouco
+  num cadastro é comum; dividir em duas etapas acrescentaria um passo, um
+  estado intermediário e um lugar a mais para desistir, para resolver um
+  problema que não existe. `h-12` e `size="lg"` ficaram como estão.
+- 2026-09-05 (agente 32) — **Os casos de cadastro da suíte saem de um IP por
+  chamada**, e não de um teto afrouxado. `/auth/register` é 5/h por IP e os
+  casos novos estouravam esse teto entre si. Mexer no limite para o teste
+  passar seria trocar segurança por conveniência — a mesma decisão que
+  `load-env.ts` já registra para os limites do booking. `nextIp()` +
+  `trust proxy` não tocam na regra, e o teto segue coberto por
+  `throttle-redis.e2e-spec.ts`.
+
 - 2026-09-04 (agente 31) — **Concluir um atendimento e cobrar por ele são
   ações INDEPENDENTES.** Regra de produto do dono. Até aqui o único caminho
   para `AppointmentStatus.DONE` era fechar a comanda vinculada (regra da fase
@@ -5852,6 +6157,30 @@ consertar isso é mudança de lógica, que esta fase não podia fazer.
   **resolvida na fase 04**: OTP condicional por regra de risco, com os três
   limites em env (`BOOKING_GUEST_IP_HOURLY_LIMIT`, `BOOKING_GUEST_OPEN_LIMIT`,
   `BOOKING_CREATE_HOURLY_LIMIT`). Ver decisão da fase 04.
+
+### Dívidas novas do agente 32 (regras do cadastro)
+
+- **O cadastro do painel NÃO verifica o e-mail.** `POST /auth/register` cria a
+  conta ATIVA e deixa `User.emailVerifiedAt` nulo — só o seed preenche esse
+  campo. Não existe link de verificação em lugar nenhum do fluxo de
+  estabelecimento (o lado do CLIENTE tem OTP; o do dono não tem nada). O
+  "Confirmar e-mail" do agente 32 mitiga **erro de digitação**, que é o dano
+  provável, mas **não prova posse**: quem digitar de propósito o e-mail de
+  outra pessoa, duas vezes, cria uma conta com o e-mail dela — e a recuperação
+  de senha dessa conta vai para a caixa dela. A correção real é verificação por
+  link (`MailOutbox` + token, como o `password/forgot` já faz), com a conta
+  nascendo utilizável e o e-mail confirmado depois.
+- **`Tenant.email` e `Tenant.phone` não são únicos, e nem foram avaliados.** A
+  fase 32 tratou da identidade do LOGIN (`User`). O contato da barbearia é
+  outro dado, com outra pergunta de produto por trás (duas unidades do mesmo
+  dono podem legitimamente compartilhar telefone?). Fica registrado que ninguém
+  olhou, para que a ausência não seja lida como decisão.
+- **A régua de força só tem os quatro requisitos, e nada além.** Depois da
+  reescrita, `passwordStrength` é a contagem dos requisitos — o que a torna
+  honesta em relação ao servidor, mas cega para o resto: `Senha@123` e uma
+  passphrase de 40 caracteres marcam as mesmas quatro barras. Se o produto
+  quiser premiar comprimento, isso volta como um quinto nível (a régua já tem
+  5 posições em `STRENGTH_LABEL`), não como um quinto requisito.
 
 ### Dívidas novas do agente 31 (concluir e comanda de R$ 0)
 
@@ -6836,11 +7165,29 @@ declarado fora do v1 no `SPEC.md`, com o caminho de entrada documentado.
 
 | Suíte | Casos |
 |---|---|
-| Unitários (`apps/api`) | 97 |
-| Unitários (`apps/web`) | **33** |
-| E2E | **382** |
-| Isolamento de tenant (gate) | **186** |
-| **Total** | **698** |
+| Unitários (`apps/api`) | **103** |
+| Unitários (`apps/web`) | **38** |
+| E2E | **392** |
+| Isolamento de tenant (gate) | 186 |
+| **Total** | **719** |
+
+> Contagem do agente 32 (2026-09-05), medida rodando as QUATRO suítes, uma de
+> cada vez, com o container `web` parado — pelo mesmo motivo de RAM registrado
+> abaixo (a primeira tentativa com a stack inteira de pé foi morta pelo OOM
+> killer, exit 137). O agente 32 somou **+6 unit** (os requisitos da senha um a
+> um em `shared-rules.spec.ts`, incluindo o caso `SENHA@2026` que fixa a
+> decisão de quatro requisitos e a equivalência entre força 4 e senha válida),
+> **+10 e2e** (celular único, a corrida mapeando `P2002` para o campo certo, o
+> vínculo com telefone ocupado, a senha antiga que ainda entra, as
+> confirmações divergentes e as duas barbearias homônimas) e **+5 de frontend**
+> (`phone-mask.spec.ts`, sobre o código do país que a máscara descartava
+> errado). Isolamento inalterado: nenhuma rota nova, e as regras da fase são de
+> identidade global (`User`), não de recorte por tenant.
+>
+> **46 senhas da suíte foram atualizadas**, em 22 arquivos — todas falhavam só
+> no requisito de caractere especial e ganharam um `!`. Nenhum caso foi
+> removido nem enfraquecido: as senhas deliberadamente erradas continuam
+> erradas, e `abcdefgh` segue sendo o caso que DEVE ser recusado.
 
 > Contagem do agente 31 (2026-09-04), medida rodando as QUATRO suítes, uma de
 > cada vez, com o container `web` parado — pelo mesmo motivo de RAM registrado

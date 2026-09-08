@@ -32,7 +32,11 @@ export interface RegisterEstablishmentInput {
   name: string;
   phone: string;
   email: string;
+  /** Repetição do e-mail — o servidor confere o par (agente 32). */
+  confirmEmail: string;
   password: string;
+  /** Repetição da senha — o servidor confere o par (agente 32). */
+  confirmPassword: string;
   shopName: string;
   acceptTerms: boolean;
 }

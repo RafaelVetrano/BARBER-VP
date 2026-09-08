@@ -134,9 +134,9 @@ describe('hardening (e2e)', () => {
     it('a resposta de erro não devolve a senha enviada', async () => {
       const response = await api()
         .post(url('/auth/login'))
-        .send({ email: 'ninguem@barbervp.test', password: 'SenhaSecreta123' });
+        .send({ email: 'ninguem@barbervp.test', password: 'SenhaSecreta123!' });
 
-      expect(JSON.stringify(response.body)).not.toContain('SenhaSecreta123');
+      expect(JSON.stringify(response.body)).not.toContain('SenhaSecreta123!');
     });
   });
 

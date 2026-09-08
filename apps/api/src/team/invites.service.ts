@@ -314,8 +314,24 @@ export class InvitesService {
         // Conta de estabelecimento já existe (dono de outra barbearia, por
         // exemplo) — a senha dela continua valendo; o convite não a substitui.
       } else {
+        // `User.phone` é `@unique` desde o agente 32, e `invite.phone` já nasce
+        // normalizado (`normalizeInvitePhone`, na emissão do convite). Se o
+        // número já for de outro login, o convidado entra SEM telefone no
+        // `User` e repõe em "Meu perfil" — a mesma escolha do vínculo
+        // cliente→dono: recusar o aceite por um dado que o convidado não
+        // digitou custaria a vaga na equipe. O `Barber` abaixo continua com o
+        // número: a unicidade é do login, não da ficha do profissional.
+        const phoneTaken = invite.phone
+          ? await tx.user.findUnique({ where: { phone: invite.phone }, select: { id: true } })
+          : null;
+
         user = await tx.user.create({
-          data: { name: invite.name, email: invite.email, phone: invite.phone, passwordHash },
+          data: {
+            name: invite.name,
+            email: invite.email,
+            phone: phoneTaken ? null : invite.phone,
+            passwordHash,
+          },
           select: { id: true },
         });
       }

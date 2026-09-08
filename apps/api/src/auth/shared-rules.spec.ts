@@ -1,6 +1,8 @@
 import {
+  PASSWORD_SPECIAL_CHARS,
   formatPhone,
   isPasswordValid,
+  passwordChecks,
   isValidSlug,
   maskEmailForDisplay,
   maskPhoneForDisplay,
@@ -19,24 +21,90 @@ import {
  * `BarberVP Configurar Barbearia.dc.html`).
  */
 describe('regras compartilhadas de auth', () => {
+  /**
+   * Regra de 2026-09-04 (agente 32): 8+ caracteres, com MAIÚSCULA, NÚMERO e
+   * CARACTERE ESPECIAL. São exatamente QUATRO requisitos — minúscula não é um
+   * deles, e estes testes existem para que ninguém acrescente o quinto sem
+   * perceber que está mudando uma decisão do dono do produto.
+   *
+   * Os casos que a regra ANTIGA aceitava (`senha123`, `minhasenha123`) ficaram
+   * aqui de propósito, agora do lado das recusas: eles são a prova de que a
+   * regra apertou, e não um resto do enunciado velho.
+   */
   describe('senha', () => {
-    it('aceita a partir de 8 caracteres com letra e número', () => {
-      expect(isPasswordValid('senha123')).toBe(true);
-      expect(isPasswordValid('minhasenha123')).toBe(true);
+    it('aceita quando os quatro requisitos estão presentes', () => {
+      expect(isPasswordValid('Senha@123')).toBe(true);
+      expect(isPasswordValid('MinhaSenha@2026')).toBe(true);
     });
 
-    it('recusa curta demais, só letras ou só números', () => {
-      expect(isPasswordValid('senha12')).toBe(false);
-      expect(isPasswordValid('senhasenha')).toBe(false);
-      expect(isPasswordValid('12345678')).toBe(false);
+    it('aceita SEM minúscula — são quatro requisitos, não cinco', () => {
+      // A decisão do dono do produto em 2026-09-04, fixada em teste: se alguém
+      // acrescentar `/[a-z]/` a `isPasswordValid`, esta linha reprova.
+      expect(isPasswordValid('SENHA@2026')).toBe(true);
+      expect(passwordChecks('SENHA@2026')).toEqual({
+        length: true,
+        upper: true,
+        digit: true,
+        special: true,
+      });
     });
 
-    it('gradua a força igual às 4 barrinhas do protótipo', () => {
+    it('recusa o que a regra ANTIGA aceitava — sem maiúscula e sem especial', () => {
+      expect(isPasswordValid('senha123')).toBe(false);
+      expect(isPasswordValid('minhasenha123')).toBe(false);
+    });
+
+    it('recusa cada requisito isolado que falte', () => {
+      expect(isPasswordValid('Se@12')).toBe(false); // curta demais
+      expect(isPasswordValid('senha@123')).toBe(false); // sem maiúscula
+      expect(isPasswordValid('SenhaSenha@')).toBe(false); // sem número
+      expect(isPasswordValid('SenhaSenha1')).toBe(false); // sem especial
+    });
+
+    it('detalha QUAL requisito falta — é o que a tela desenha em ✓/○', () => {
+      expect(passwordChecks('senha')).toEqual({
+        length: false,
+        upper: false,
+        digit: false,
+        special: false,
+      });
+      expect(passwordChecks('SenhaSenha1')).toEqual({
+        length: true,
+        upper: true,
+        digit: true,
+        special: false,
+      });
+    });
+
+    it('trata acento como LETRA, nunca como caractere especial', () => {
+      // `ç`/`ã` são letras: sozinhas não satisfazem o requisito de especial.
+      expect(passwordChecks('Senhaç123').special).toBe(false);
+      expect(isPasswordValid('Senhaç123')).toBe(false);
+      // Maiúscula acentuada é maiúscula de verdade.
+      expect(passwordChecks('çasa@2026').upper).toBe(false);
+      expect(passwordChecks('Çasa@2026').upper).toBe(true);
+    });
+
+    it('aceita TODOS os caracteres da lista documentada', () => {
+      for (const char of PASSWORD_SPECIAL_CHARS) {
+        expect(passwordChecks(`Senha123${char}`).special).toBe(true);
+      }
+      // Espaço fica de fora de propósito.
+      expect(passwordChecks('Senha123 ').special).toBe(false);
+    });
+
+    it('gradua a força como "quantos dos 4 requisitos" — barras e lista batem', () => {
       expect(passwordStrength('')).toBe(0);
-      expect(passwordStrength('abcdefgh')).toBe(1);
-      expect(passwordStrength('senha123')).toBe(2);
-      expect(passwordStrength('senha12345')).toBe(3);
-      expect(passwordStrength('senha12345!')).toBe(4);
+      expect(passwordStrength('abcdefgh')).toBe(1); // só comprimento
+      expect(passwordStrength('senha123')).toBe(2); // comprimento + dígito
+      expect(passwordStrength('Senha123')).toBe(3); // falta o especial
+      expect(passwordStrength('Senha@123')).toBe(4); // os quatro
+    });
+
+    it('força 4 e senha válida são a MESMA coisa — a régua não decora', () => {
+      for (const candidate of ['Senha@123', 'SENHA@2026', 'senha123', 'Senha123', 'Se@1', '']) {
+        expect(passwordStrength(candidate) === 4).toBe(isPasswordValid(candidate));
+      }
     });
   });
 

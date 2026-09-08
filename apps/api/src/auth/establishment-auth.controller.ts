@@ -47,10 +47,20 @@ export class EstablishmentAuthController {
     private readonly cookies: RefreshCookieService,
   ) {}
 
+  /**
+   * 5/min por IP (agente 32 — era 20/min).
+   *
+   * A rota REVELA se um e-mail tem conta, e é assim de propósito: a tela
+   * depende disso para oferecer o vínculo e o submit revelaria o mesmo. Mas
+   * 20/min são 1.200 consultas por hora contra as 5/h do `register`, o que
+   * transformava a rota num varredor confortável de lista de e-mails vazada.
+   * 5/min continua folgado para alguém DIGITANDO um endereço com debounce de
+   * 450ms, que é o único uso legítimo.
+   */
   @Post('check-email')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Estado do e-mail no cadastro',
     description:

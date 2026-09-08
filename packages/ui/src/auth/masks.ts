@@ -6,9 +6,21 @@
  * regras de `@barbervp/types` (as mesmas da API).
  */
 
-/** `16999990001` → `(16) 9 9999-0001`, progressivo enquanto se digita. */
+/**
+ * `16999990001` → `(16) 9 9999-0001`, progressivo enquanto se digita.
+ *
+ * O código do país é DESCARTADO antes de mascarar, com a mesma regra que
+ * `normalizePhone` de `@barbervp/types` usa (`55` na frente de mais de 11
+ * dígitos). Sem isso, colar `+55 16 99999-0001` — o formato que o WhatsApp e o
+ * catálogo do celular entregam — deixava `55169999900` no campo: DDD 55, um
+ * número DIFERENTE e igualmente válido, gravado sem um aviso sequer. Foi o
+ * agente 32 que topou com isso, ao conferir no navegador que o mesmo celular
+ * em outro formato é recusado.
+ */
 export function maskPhoneInput(value: string): string {
-  const digits = (value ?? '').replace(/\D/g, '').slice(0, 11);
+  const todos = (value ?? '').replace(/\D/g, '');
+  const local = todos.startsWith('55') && todos.length > 11 ? todos.slice(2) : todos;
+  const digits = local.slice(0, 11);
   if (digits.length === 0) return '';
 
   let out = `(${digits.slice(0, 2)}`;

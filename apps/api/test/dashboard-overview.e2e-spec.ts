@@ -29,7 +29,7 @@ describe('dashboard overview (fase 13, e2e)', () => {
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-d13-${run}`;
   const emptySlug = `e2e-d13-vazio-${run}`;
-  const password = 'DashboardTrezeSenha1';
+  const password = 'DashboardTrezeSenha1!';
 
   let tenantId: string;
   let ownerToken: string;

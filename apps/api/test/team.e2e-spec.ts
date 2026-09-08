@@ -29,7 +29,7 @@ describe('aba Equipe — teto de plano, escala e convites (e2e)', () => {
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-team-${run}`;
-  const password = 'EquipeSenhaForte1';
+  const password = 'EquipeSenhaForte1!';
   const ownerEmail = `e2e-team-owner-${run}@barbervp.test`;
   const barberEmail = `e2e-team-barber-${run}@barbervp.test`;
 
@@ -253,7 +253,7 @@ describe('aba Equipe — teto de plano, escala e convites (e2e)', () => {
       const secret = 'segredo-que-nao-bate';
       const refused = await api()
         .post(url('/staff-invites/accept'))
-        .send({ token: `${pending.id}.${secret}`, password: 'SenhaDoConvidado1' });
+        .send({ token: `${pending.id}.${secret}`, password: 'SenhaDoConvidado1!' });
 
       // Token inválido para no 400 antes do teto; o caso do teto real é o
       // seguinte, com o token certo emitido pelo próprio endpoint.
@@ -264,7 +264,7 @@ describe('aba Equipe — teto de plano, escala e convites (e2e)', () => {
 
       const overflow = await api()
         .post(url('/staff-invites/accept'))
-        .send({ token, password: 'SenhaDoConvidado1' })
+        .send({ token, password: 'SenhaDoConvidado1!' })
         .expect(403);
 
       expect(overflow.body.code).toBe('PLAN_LIMIT_REACHED');
@@ -406,7 +406,7 @@ describe('aba Equipe — teto de plano, escala e convites (e2e)', () => {
 
       await api()
         .post(url('/staff-invites/accept'))
-        .send({ token, password: 'SenhaDoConvidado1' })
+        .send({ token, password: 'SenhaDoConvidado1!' })
         .expect(200);
 
       const barbers = await asOwner().get('/barbers').expect(200);

@@ -1,7 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { ErrorCode, isEmail, normalizeMobilePhone, type OtpChallenge } from '@barbervp/types';
+import {
+  ErrorCode,
+  PASSWORD_RULE_MESSAGE,
+  isEmail,
+  normalizeMobilePhone,
+  type OtpChallenge,
+} from '@barbervp/types';
 import {
   Button,
   Checkbox,
@@ -201,7 +207,7 @@ export function RegisterScreen({ onChallenge, onGoToLogin }: RegisterScreenProps
         onBlur={() => touch('password')}
         placeholder="mínimo 8 caracteres"
         autoComplete="new-password"
-        error={errorFor('password', 'Mínimo 8 caracteres, com letra e número')}
+        error={errorFor('password', PASSWORD_RULE_MESSAGE)}
       />
 
       <PasswordInput

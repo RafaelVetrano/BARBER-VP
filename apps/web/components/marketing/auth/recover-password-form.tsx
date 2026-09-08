@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { PASSWORD_RULE_MESSAGE, isPasswordValid } from '@barbervp/types';
 import {
   AlertCircleIcon,
   Button,
@@ -23,11 +24,9 @@ const requestSchema = z.object({
 
 const resetSchema = z
   .object({
-    password: z
-      .string()
-      .min(8, 'Mínimo 8 caracteres, com letra e número.')
-      .regex(/[A-Za-z]/, 'Mínimo 8 caracteres, com letra e número.')
-      .regex(/\d/, 'Mínimo 8 caracteres, com letra e número.'),
+    // A regra mora em `@barbervp/types` — a MESMA que o `IsStrongPassword` do
+    // servidor aplica. Reescrevê-la aqui é como os dois lados se desalinham.
+    password: z.string().refine(isPasswordValid, PASSWORD_RULE_MESSAGE),
     confirmPassword: z.string(),
   })
   .refine((values) => values.password === values.confirmPassword, {
