@@ -37,7 +37,7 @@ describe('onboarding — wizard obrigatório, cidades e upload (e2e)', () => {
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-onb-${run}`;
-  const password = 'OnboardingForte1';
+  const password = 'OnboardingForte1!';
   const ownerEmail = `e2e-onb-owner-${run}@barbervp.test`;
   const barberEmail = `e2e-onb-barber-${run}@barbervp.test`;
 

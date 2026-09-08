@@ -1,3 +1,4 @@
+import { hash } from '@node-rs/argon2';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { REFRESH_COOKIE } from '@barbervp/types';
@@ -23,15 +24,33 @@ describe('auth (e2e)', () => {
   /** Sufixo por execução — a suíte roda no mesmo banco do seed sem sujá-lo. */
   const run = Date.now().toString().slice(-6);
   const ownerEmail = `e2e-owner-${run}@barbervp.test`;
-  const ownerPassword = 'SenhaForte2026';
+  const ownerPassword = 'SenhaForte2026!';
   // Celular válido e único por execução: DDD 16 + 9 + 8 dígitos.
   const clientDigits = `${run}00`;
   const clientPhone = `(16) 9 ${clientDigits.slice(0, 4)}-${clientDigits.slice(4)}`;
   const clientEmail = `e2e-cliente-${run}@barbervp.test`;
-  const clientPassword = 'ClienteSenha1';
+  const clientPassword = 'ClienteSenha1!';
 
   const api = () => request(app.getHttpServer());
   const url = (path: string) => `/${prefix}${path}`;
+
+  /**
+   * Um IP por chamada de cadastro.
+   *
+   * `/auth/register` e `/auth/register/link` são 5 por HORA por IP — aperto de
+   * propósito, porque cadastro é o alvo óbvio de abuso. Uma suíte faz em
+   * segundos o que um humano faria em semanas: sem um endereço por chamada, os
+   * casos gastariam o teto uns dos outros e virariam 429, um vermelho que não
+   * diz nada sobre a regra sob teste. Afrouxar o teto no código para o teste
+   * passar seria trocar segurança por conveniência (a mesma decisão que
+   * `load-env.ts` registra para os limites do booking); trocar de IP não mexe
+   * na regra — e o teto em si continua coberto por `throttle-redis.e2e-spec.ts`.
+   */
+  let ipSeed = 0;
+  const nextIp = (): string => {
+    ipSeed += 1;
+    return `10.32.${Math.floor(ipSeed / 250) + 1}.${(ipSeed % 250) + 1}`;
+  };
 
   /** Lê o código de 6 dígitos da última mensagem enviada ao destino. */
   const lastOtpFor = async (destination: string): Promise<string> => {
@@ -68,6 +87,9 @@ describe('auth (e2e)', () => {
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
+    // Sem isto o `X-Forwarded-For` de `nextIp()` é ignorado e todos os cadastros
+    // deste arquivo contariam no mesmo IP do supertest.
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
     await app.init();
   });
 
@@ -91,30 +113,108 @@ describe('auth (e2e)', () => {
     let refreshCookie: string;
     let tenantId: string;
 
-    it('recusa senha fora da regra do protótipo (8+, letra e número)', async () => {
+    it('recusa senha fora da regra (8+, maiúscula, número e especial)', async () => {
+      const fracas = [
+        'abcdefgh', // sem maiúscula, sem número, sem especial
+        'senha123', // o que a regra ANTIGA aceitava
+        'Senha123', // falta só o especial
+        'SENHA@ABC', // falta só o número
+      ];
+
+      for (const password of fracas) {
+        const response = await api()
+          .post(url('/auth/register'))
+          .set('X-Forwarded-For', nextIp())
+          .send({
+            name: 'Fulano de Tal',
+            phone: '(16) 9 9111-2233',
+            email: `fraca-${run}@barbervp.test`,
+            confirmEmail: `fraca-${run}@barbervp.test`,
+            password,
+            confirmPassword: password,
+            shopName: 'Barbearia Teste',
+            acceptTerms: true,
+          })
+          .expect(400);
+
+        expect(response.body.code).toBe('VALIDATION_ERROR');
+      }
+    });
+
+    it('aceita senha SEM minúscula — são quatro requisitos, não cinco', async () => {
+      // `SENHA@2026` é a decisão do dono do produto de 2026-09-04 virada teste:
+      // se alguém acrescentar minúscula como quinto requisito, isto reprova.
+      const email = `semminuscula-${run}@barbervp.test`;
       const response = await api()
         .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
         .send({
-          name: 'Fulano de Tal',
-          phone: '(16) 9 9111-2233',
-          email: `fraca-${run}@barbervp.test`,
-          password: 'abcdefgh',
-          shopName: 'Barbearia Teste',
+          name: 'Sem Minuscula',
+          phone: `(16) 9 9${run.slice(0, 3)}-${run.slice(3)}1`,
+          email,
+          confirmEmail: email,
+          password: 'SENHA@2026',
+          confirmPassword: 'SENHA@2026',
+          shopName: `Sem Minuscula ${run}`,
           acceptTerms: true,
         })
-        .expect(400);
+        .expect(201);
 
-      expect(response.body.code).toBe('VALIDATION_ERROR');
+      const created = response.body.user.id;
+      await prisma.tenant.deleteMany({ where: { memberships: { some: { userId: created } } } });
+      await prisma.user.delete({ where: { id: created } });
+    });
+
+    it('recusa confirmação de e-mail e de senha divergentes', async () => {
+      const email = `divergente-${run}@barbervp.test`;
+      const base = {
+        name: 'Confirma Errado',
+        phone: '(16) 9 9111-2244',
+        shopName: 'Barbearia Confirma',
+        acceptTerms: true,
+      };
+
+      const emailDiferente = await api()
+        .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
+        .send({
+          ...base,
+          email,
+          confirmEmail: `outro-${email}`,
+          password: ownerPassword,
+          confirmPassword: ownerPassword,
+        })
+        .expect(400);
+      expect(emailDiferente.body.code).toBe('VALIDATION_ERROR');
+
+      const senhaDiferente = await api()
+        .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
+        .send({
+          ...base,
+          email,
+          confirmEmail: email,
+          password: ownerPassword,
+          confirmPassword: `${ownerPassword}x`,
+        })
+        .expect(400);
+      expect(senhaDiferente.body.code).toBe('VALIDATION_ERROR');
+
+      // Nenhum dos dois pode ter criado conta.
+      expect(await prisma.user.count({ where: { email } })).toBe(0);
     });
 
     it('cria User + Tenant (TRIAL) + Membership OWNER em uma transação', async () => {
       const response = await api()
         .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
         .send({
           name: 'Ana Paula Souza',
           phone: '(16) 9 9111-2233',
           email: ownerEmail,
+          confirmEmail: ownerEmail,
           password: ownerPassword,
+          confirmPassword: ownerPassword,
           shopName: `Studio E2E ${run}`,
           acceptTerms: true,
         })
@@ -148,11 +248,14 @@ describe('auth (e2e)', () => {
     it('recusa o mesmo e-mail num segundo cadastro', async () => {
       const response = await api()
         .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
         .send({
           name: 'Outro Alguém',
           phone: '(16) 9 9444-5566',
           email: ownerEmail,
+          confirmEmail: ownerEmail,
           password: ownerPassword,
+          confirmPassword: ownerPassword,
           shopName: 'Outra Barbearia',
           acceptTerms: true,
         })
@@ -160,6 +263,151 @@ describe('auth (e2e)', () => {
 
       expect(response.body.code).toBe('EMAIL_IN_USE');
       expect(response.body.message).toContain('Já existe um cadastro com este e-mail');
+    });
+
+    it('recusa o mesmo CELULAR num segundo cadastro, em outro formato', async () => {
+      // O cadastro de cima gravou `(16) 9 9111-2233`. Aqui o mesmo número
+      // chega em E.164 com `+`: se a checagem não normalizasse antes de
+      // consultar, este cadastro passaria e o índice único estouraria com um
+      // 500 — ou, pior, passaria mesmo, se o índice não existisse.
+      const email = `outro-celular-${run}@barbervp.test`;
+      const response = await api()
+        .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
+        .send({
+          name: 'Mesmo Celular',
+          phone: '+55 16 99111-2233',
+          email,
+          confirmEmail: email,
+          password: ownerPassword,
+          confirmPassword: ownerPassword,
+          shopName: 'Barbearia do Mesmo Celular',
+          acceptTerms: true,
+        })
+        .expect(409);
+
+      expect(response.body.code).toBe('PHONE_IN_USE');
+      expect(response.body.message).toContain('Este celular já está em uso');
+      expect(await prisma.user.count({ where: { email } })).toBe(0);
+    });
+
+    it('dois User sem telefone convivem — é a premissa do índice único', async () => {
+      // `User.phone` é `@unique` E nulável: no Postgres vários `NULL` convivem
+      // num índice único. É isso que deixa o convite de equipe criar barbeiro
+      // sem telefone. Se esta premissa cair, o `@unique` precisa virar índice
+      // parcial — e o teste é quem avisa.
+      const criados = await Promise.all(
+        [1, 2].map((n) =>
+          prisma.user.create({
+            data: {
+              email: `sem-telefone-${n}-${run}@barbervp.test`,
+              name: `Sem Telefone ${n}`,
+              passwordHash: 'nao-usado-neste-teste',
+              phone: null,
+            },
+            select: { id: true, phone: true },
+          }),
+        ),
+      );
+
+      expect(criados).toHaveLength(2);
+      expect(criados.every((u) => u.phone === null)).toBe(true);
+
+      await prisma.user.deleteMany({ where: { id: { in: criados.map((u) => u.id) } } });
+    });
+
+    it('a corrida do cadastro vira 409 do CAMPO certo, não o P2002 genérico', async () => {
+      // `register` consulta antes de criar, mas consulta e `create` não são
+      // atômicos: dois envios simultâneos passam os dois pela consulta. O que
+      // salva é o índice — e o que traduz o P2002 para o código que o
+      // formulário sabe tratar é o `uniqueOrConflict` do serviço.
+      const emailNovo = `corrida-email-${run}@barbervp.test`;
+      const phoneNovo = `(16) 9 9${run.slice(0, 3)}-${run.slice(3)}7`;
+
+      const enviar = (email: string, phone: string) =>
+        api()
+          .post(url('/auth/register'))
+          .set('X-Forwarded-For', nextIp())
+          .send({
+            name: 'Corrida Simultanea',
+            phone,
+            email,
+            confirmEmail: email,
+            password: ownerPassword,
+            confirmPassword: ownerPassword,
+            shopName: `Corrida ${run}`,
+            acceptTerms: true,
+          });
+
+      // Mesmo e-mail, celulares diferentes: quem perder a corrida bate no
+      // índice de e-mail.
+      const porEmail = await Promise.all([
+        enviar(emailNovo, phoneNovo),
+        enviar(emailNovo, `(16) 9 9${run.slice(0, 3)}-${run.slice(3)}8`),
+      ]);
+      const criadosPorEmail = porEmail.filter((r) => r.status === 201);
+      const recusadosPorEmail = porEmail.filter((r) => r.status === 409);
+      expect(criadosPorEmail).toHaveLength(1);
+      expect(recusadosPorEmail).toHaveLength(1);
+      expect(recusadosPorEmail[0]!.body.code).toBe('EMAIL_IN_USE');
+
+      // Mesmo celular, e-mails diferentes: o índice que fala é o de telefone,
+      // e o código precisa mudar junto.
+      const phoneDisputado = `(16) 9 9${run.slice(0, 3)}-${run.slice(3)}9`;
+      const porTelefone = await Promise.all([
+        enviar(`corrida-fone-a-${run}@barbervp.test`, phoneDisputado),
+        enviar(`corrida-fone-b-${run}@barbervp.test`, phoneDisputado),
+      ]);
+      const criadosPorFone = porTelefone.filter((r) => r.status === 201);
+      const recusadosPorFone = porTelefone.filter((r) => r.status === 409);
+      expect(criadosPorFone).toHaveLength(1);
+      expect(recusadosPorFone).toHaveLength(1);
+      expect(recusadosPorFone[0]!.body.code).toBe('PHONE_IN_USE');
+
+      const lixo = [...porEmail, ...porTelefone]
+        .filter((r) => r.status === 201)
+        .map((r) => r.body.user.id as string);
+      await prisma.tenant.deleteMany({ where: { memberships: { some: { userId: { in: lixo } } } } });
+      await prisma.user.deleteMany({ where: { id: { in: lixo } } });
+    });
+
+    it('duas barbearias com o MESMO nome se cadastram sem erro', async () => {
+      // `Tenant.name` NÃO é único, e é decisão de produto (2026-09-04): o
+      // `slug` já resolve a colisão que importa, que é a da URL pública.
+      // Barbearia é ramo de nome repetido — travar a segunda "Barbearia do
+      // Zé" do Brasil seria um erro sem sentido do ponto de vista dela.
+      const mesmoNome = `Barbearia Homonima ${run}`;
+      const criados: string[] = [];
+
+      for (const n of [1, 2]) {
+        const email = `homonima-${n}-${run}@barbervp.test`;
+        const response = await api()
+          .post(url('/auth/register'))
+          .set('X-Forwarded-For', nextIp())
+          .send({
+            name: `Dono Homonimo ${n}`,
+            phone: `(16) 9 8${run.slice(0, 3)}-${run.slice(3)}${n}`,
+            email,
+            confirmEmail: email,
+            password: ownerPassword,
+            confirmPassword: ownerPassword,
+            shopName: mesmoNome,
+            acceptTerms: true,
+          })
+          .expect(201);
+        criados.push(response.body.user.id);
+      }
+
+      const tenants = await prisma.tenant.findMany({
+        where: { name: mesmoNome },
+        select: { slug: true },
+      });
+      expect(tenants).toHaveLength(2);
+      // Mesmo nome, slugs diferentes — é o slug que garante a unicidade útil.
+      expect(new Set(tenants.map((t) => t.slug)).size).toBe(2);
+
+      await prisma.tenant.deleteMany({ where: { name: mesmoNome } });
+      await prisma.user.deleteMany({ where: { id: { in: criados } } });
     });
 
     it('check-email distingue os três estados da tela de cadastro', async () => {
@@ -191,12 +439,12 @@ describe('auth (e2e)', () => {
     it('responde 401 genérico para senha errada — sem revelar se a conta existe', async () => {
       const senhaErrada = await api()
         .post(url('/auth/login'))
-        .send({ email: ownerEmail, password: 'SenhaErrada123' })
+        .send({ email: ownerEmail, password: 'SenhaErrada123!' })
         .expect(401);
 
       const contaInexistente = await api()
         .post(url('/auth/login'))
-        .send({ email: `naoexiste-${run}@barbervp.test`, password: 'SenhaErrada123' })
+        .send({ email: `naoexiste-${run}@barbervp.test`, password: 'SenhaErrada123!' })
         .expect(401);
 
       expect(senhaErrada.body).toEqual(contaInexistente.body);
@@ -266,7 +514,7 @@ describe('auth (e2e)', () => {
       await api()
         .post(url('/auth/password/change'))
         .set('Authorization', `Bearer ${sessionB.body.accessToken}`)
-        .send({ currentPassword: ownerPassword, newPassword: 'NovaSenha2026' })
+        .send({ currentPassword: ownerPassword, newPassword: 'NovaSenha2026!' })
         .expect(204);
 
       // A sessão que trocou continua viva; a outra, não.
@@ -281,7 +529,7 @@ describe('auth (e2e)', () => {
 
       await api()
         .post(url('/auth/login'))
-        .send({ email: ownerEmail, password: 'NovaSenha2026' })
+        .send({ email: ownerEmail, password: 'NovaSenha2026!' })
         .expect(200);
       accessToken = sessionB.body.accessToken;
     });
@@ -446,7 +694,7 @@ describe('auth (e2e)', () => {
     it('usa a mesma mensagem de erro do protótipo em credencial inválida', async () => {
       const response = await api()
         .post(url('/client-auth/login'))
-        .send({ identifier: clientPhone, password: 'ErradaDeProposito1' })
+        .send({ identifier: clientPhone, password: 'ErradaDeProposito1!' })
         .expect(401);
 
       expect(response.body.message).toBe('Telefone/e-mail ou senha incorretos');
@@ -488,14 +736,14 @@ describe('auth (e2e)', () => {
         .post(url('/client-auth/password/reset'))
         .send({
           resetToken: verified.body.resetToken,
-          password: 'RecuperadaBvp9',
-          confirmPassword: 'RecuperadaBvp9',
+          password: 'RecuperadaBvp9!',
+          confirmPassword: 'RecuperadaBvp9!',
         })
         .expect(204);
 
       await api()
         .post(url('/client-auth/login'))
-        .send({ identifier: clientPhone, password: 'RecuperadaBvp9' })
+        .send({ identifier: clientPhone, password: 'RecuperadaBvp9!' })
         .expect(200);
 
       // O token de troca é de uso único.
@@ -503,8 +751,8 @@ describe('auth (e2e)', () => {
         .post(url('/client-auth/password/reset'))
         .send({
           resetToken: verified.body.resetToken,
-          password: 'OutraSenha123',
-          confirmPassword: 'OutraSenha123',
+          password: 'OutraSenha123!',
+          confirmPassword: 'OutraSenha123!',
         })
         .expect(400);
     });
@@ -529,7 +777,7 @@ describe('auth (e2e)', () => {
     it('a sessão do cliente usa audience própria e não abre o painel', async () => {
       const login = await api()
         .post(url('/client-auth/login'))
-        .send({ identifier: clientPhone, password: 'RecuperadaBvp9' })
+        .send({ identifier: clientPhone, password: 'RecuperadaBvp9!' })
         .expect(200);
 
       await api()
@@ -541,6 +789,204 @@ describe('auth (e2e)', () => {
         .get(url('/auth/me'))
         .set('Authorization', `Bearer ${login.body.accessToken}`)
         .expect(403);
+    });
+  });
+  // ── Senha antiga, vínculo e telefone (agente 32) ───────────────────────────
+
+  describe('regras do agente 32', () => {
+    const argon = (senha: string) =>
+      hash(senha, { memoryCost: 19_456, timeCost: 2, parallelism: 1 });
+
+    const legadoEmail = `legado-${run}@barbervp.test`;
+    const legadoSenha = 'senha123'; // válida na regra ANTIGA, recusada na nova
+    const criados: string[] = [];
+
+    afterAll(async () => {
+      await prisma.tenant.deleteMany({
+        where: { memberships: { some: { userId: { in: criados } } } },
+      });
+      await prisma.client.deleteMany({ where: { userId: { in: criados } } });
+      await prisma.user.deleteMany({ where: { id: { in: criados } } });
+    });
+
+    it('quem já tinha senha fraca CONTINUA entrando — a regra vale para senha nova', async () => {
+      // A conta nasce direto no banco, como as que já existiam quando a regra
+      // apertou. Nenhum caminho de LOGIN pode aplicar `isPasswordValid`: fazer
+      // isso trancaria do lado de fora todo mundo que se cadastrou antes.
+      const user = await prisma.user.create({
+        data: {
+          email: legadoEmail,
+          name: 'Conta Antiga',
+          passwordHash: await argon(legadoSenha),
+        },
+        select: { id: true },
+      });
+      criados.push(user.id);
+
+      const login = await api()
+        .post(url('/auth/login'))
+        .send({ email: legadoEmail, password: legadoSenha })
+        .expect(200);
+      expect(login.body.accessToken).toEqual(expect.any(String));
+
+      // Mas um cadastro NOVO com a mesma senha é recusado — é a diferença
+      // entre "a regra vale daqui pra frente" e "a regra invalidou o passado".
+      const novo = `legado-novo-${run}@barbervp.test`;
+      await api()
+        .post(url('/auth/register'))
+        .set('X-Forwarded-For', nextIp())
+        .send({
+          name: 'Cadastro Novo',
+          phone: `(16) 9 7${run.slice(0, 3)}-${run.slice(3)}1`,
+          email: novo,
+          confirmEmail: novo,
+          password: legadoSenha,
+          confirmPassword: legadoSenha,
+          shopName: `Legado ${run}`,
+          acceptTerms: true,
+        })
+        .expect(400);
+    });
+
+    it('e-mail de cliente ainda abre o card de vínculo, e o vínculo funciona', async () => {
+      // O teste que protege o fluxo da fase 03: se `check-email` deixar de
+      // devolver `client`, a tela some com o "Que bom te ver de novo!" e o
+      // cadastro vira um 409 sem saída para quem já é cliente da casa.
+      const email = `vinculo-${run}@barbervp.test`;
+      const senha = 'ClienteVinculo@1';
+      const telefone = `55169${run}11`.slice(0, 13);
+
+      const client = await prisma.client.create({
+        data: {
+          phone: telefone,
+          name: 'Cliente Que Vira Dono',
+          email,
+          passwordHash: await argon(senha),
+          phoneVerifiedAt: new Date(),
+        },
+        select: { id: true },
+      });
+
+      const estado = await api().post(url('/auth/check-email')).send({ email }).expect(200);
+      expect(estado.body.status).toBe('client');
+      expect(estado.body.account.name).toBe('Cliente Que Vira Dono');
+
+      const vinculo = await api()
+        .post(url('/auth/register/link'))
+        .set('X-Forwarded-For', nextIp())
+        .send({ email, password: senha, shopName: `Vinculada ${run}`, acceptTerms: true })
+        .expect(201);
+
+      criados.push(vinculo.body.user.id);
+
+      // As duas pontas amarradas: o histórico do cliente sobrevive.
+      const depois = await prisma.client.findUniqueOrThrow({ where: { id: client.id } });
+      expect(depois.userId).toBe(vinculo.body.user.id);
+
+      // Telefone LIVRE: o `User` herda o número do `Client`.
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: vinculo.body.user.id } });
+      expect(user.phone).toBe(telefone);
+    });
+
+    it('vínculo com telefone JÁ OCUPADO não quebra — o User nasce sem telefone', async () => {
+      // O caso delicado: o número vem do `Client`, não de um campo da tela. Se
+      // outro `User` já o tiver, o dono não teria onde corrigi-lo — então a
+      // escolha é nascer sem telefone e repor em "Meu perfil", em vez de
+      // perder o vínculo (e com ele o histórico do cliente).
+      const telefone = `55169${run}22`.slice(0, 13);
+      const dono = await prisma.user.create({
+        data: {
+          email: `dono-do-numero-${run}@barbervp.test`,
+          name: 'Dono do Numero',
+          passwordHash: await argon('DonoDoNumero@1'),
+          phone: telefone,
+        },
+        select: { id: true },
+      });
+      criados.push(dono.id);
+
+      const email = `vinculo-ocupado-${run}@barbervp.test`;
+      const senha = 'ClienteOcupado@1';
+      await prisma.client.create({
+        data: {
+          phone: telefone,
+          name: 'Cliente Com Numero Ocupado',
+          email,
+          passwordHash: await argon(senha),
+          phoneVerifiedAt: new Date(),
+        },
+      });
+
+      const vinculo = await api()
+        .post(url('/auth/register/link'))
+        .set('X-Forwarded-For', nextIp())
+        .send({ email, password: senha, shopName: `Vinculada Ocupada ${run}`, acceptTerms: true })
+        .expect(201);
+
+      criados.push(vinculo.body.user.id);
+
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: vinculo.body.user.id } });
+      expect(user.phone).toBeNull();
+
+      // O `Client` continua com o número — a unicidade é do LOGIN, não do
+      // cadastro do cliente.
+      const client = await prisma.client.findFirstOrThrow({ where: { email } });
+      expect(client.phone).toBe(telefone);
+
+      // E o dono original não perdeu nada.
+      const original = await prisma.user.findUniqueOrThrow({ where: { id: dono.id } });
+      expect(original.phone).toBe(telefone);
+    });
+
+    it('troca de senha do vinculado atualiza os DOIS hashes sob a regra nova', async () => {
+      // No vínculo, `User` e `Client` guardam o MESMO `passwordHash`. Como a
+      // regra é única em `packages/types`, os dois lados ficam coerentes por
+      // construção — mas isto é a premissa inteira do fluxo, então vai coberta.
+      const email = `troca-vinculada-${run}@barbervp.test`;
+      const senhaAntiga = 'TrocaVinculo@1';
+      const senhaNova = 'TrocaVinculo@2026';
+      const telefone = `55169${run}33`.slice(0, 13);
+
+      await prisma.client.create({
+        data: {
+          phone: telefone,
+          name: 'Cliente Que Troca Senha',
+          email,
+          passwordHash: await argon(senhaAntiga),
+          phoneVerifiedAt: new Date(),
+        },
+      });
+
+      const vinculo = await api()
+        .post(url('/auth/register/link'))
+        .set('X-Forwarded-For', nextIp())
+        .send({ email, password: senhaAntiga, shopName: `Troca ${run}`, acceptTerms: true })
+        .expect(201);
+      criados.push(vinculo.body.user.id);
+
+      // Senha nova FORA da regra é recusada antes de tocar em qualquer hash.
+      await api()
+        .post(url('/auth/password/change'))
+        .set('Authorization', `Bearer ${vinculo.body.accessToken}`)
+        .send({ currentPassword: senhaAntiga, newPassword: 'senha123' })
+        .expect(400);
+
+      await api()
+        .post(url('/auth/password/change'))
+        .set('Authorization', `Bearer ${vinculo.body.accessToken}`)
+        .send({ currentPassword: senhaAntiga, newPassword: senhaNova })
+        .expect(204);
+
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: vinculo.body.user.id } });
+      const client = await prisma.client.findFirstOrThrow({ where: { email } });
+      expect(client.passwordHash).toBe(user.passwordHash);
+
+      // E a senha nova entra pelos DOIS lados.
+      await api().post(url('/auth/login')).send({ email, password: senhaNova }).expect(200);
+      await api()
+        .post(url('/client-auth/login'))
+        .send({ identifier: email, password: senhaNova })
+        .expect(200);
     });
   });
 });

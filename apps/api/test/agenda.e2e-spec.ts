@@ -31,7 +31,7 @@ describe('aba Agenda (agente 15, e2e)', () => {
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-ag15-${run}`;
-  const password = 'AgendaQuinzeSenha1';
+  const password = 'AgendaQuinzeSenha1!';
 
   let tenantId: string;
   let ownerToken: string;

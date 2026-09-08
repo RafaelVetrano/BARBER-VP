@@ -33,7 +33,7 @@ describe('fluxos críticos (e2e)', () => {
   let prefix: string;
 
   const run = Date.now().toString().slice(-9);
-  const password = 'FluxoCritico2026';
+  const password = 'FluxoCritico2026!';
 
   const api = () => request(app.getHttpServer());
   const url = (path: string) => `/${prefix}${path}`;
@@ -147,7 +147,9 @@ describe('fluxos críticos (e2e)', () => {
           name: 'Dono do Fluxo Um',
           phone: `11${run.slice(0, 9)}`.slice(0, 11),
           email: ownerEmail,
+          confirmEmail: ownerEmail,
           password,
+          confirmPassword: password,
           shopName: `Barbearia Fluxo Um ${run}`,
           acceptTerms: true,
         })

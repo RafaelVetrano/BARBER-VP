@@ -32,7 +32,7 @@ describe('aba Configurações — barbearia, unidades, plano e preferências (e2
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-cfg-${run}`;
   const otherSlug = `e2e-cfg-outra-${run}`;
-  const password = 'ConfigSenhaForte1';
+  const password = 'ConfigSenhaForte1!';
   const ownerEmail = `e2e-cfg-owner-${run}@barbervp.test`;
   const managerEmail = `e2e-cfg-manager-${run}@barbervp.test`;
 

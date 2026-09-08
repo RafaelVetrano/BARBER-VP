@@ -134,23 +134,85 @@ export type OtpVerifyResult =
 
 // ── Regras de validação (idênticas na API e no formulário) ──────────────────
 
-/** Mínimo do protótipo: 8 caracteres, com pelo menos uma letra e um número. */
+/**
+ * Caracteres especiais aceitos — lista EXPLÍCITA, e não "tudo que não é letra
+ * nem dígito".
+ *
+ * A diferença importa na prática: `ç`, `á` e `ã` são LETRAS, não especiais.
+ * Quem digitasse `Senhaç123` com uma regra frouxa veria o requisito acender
+ * sem entender por quê; com esta lista, o requisito só acende com um dos
+ * caracteres abaixo — e a tela mostra quais são.
+ *
+ * Espaço fica de fora de propósito: senha que depende de um espaço no fim é
+ * senha que o usuário perde ao copiar e colar.
+ */
+export const PASSWORD_SPECIAL_CHARS = '!@#$%^&*()-_=+[]{};:\'",.<>/?\\|`~';
+
+const SPECIAL_RE = new RegExp(`[${PASSWORD_SPECIAL_CHARS.replace(/[\\^\]-]/g, '\\$&')}]`);
+
+/** Comprimento mínimo — o mesmo número que a tela promete no placeholder. */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Os QUATRO requisitos da senha, avaliados um a um.
+ *
+ * Quatro, não cinco: **minúscula não é requisito** (decidido pelo dono do
+ * produto em 2026-09-04). `SENHA@2026` é senha válida. A lista da tela e as
+ * quatro barrinhas do `PasswordInput` saem daqui, então elas batem com o 400
+ * do servidor por construção — não por coincidência.
+ */
+export interface PasswordChecks {
+  /** Pelo menos 8 caracteres. */
+  length: boolean;
+  /** Pelo menos uma letra maiúscula (`Ç` e `Á` contam — são maiúsculas). */
+  upper: boolean;
+  /** Pelo menos um dígito. */
+  digit: boolean;
+  /** Pelo menos um de `PASSWORD_SPECIAL_CHARS`. */
+  special: boolean;
+}
+
+export function passwordChecks(password: string): PasswordChecks {
+  const value = password ?? '';
+  return {
+    length: value.length >= PASSWORD_MIN_LENGTH,
+    upper: /\p{Lu}/u.test(value),
+    digit: /\d/.test(value),
+    special: SPECIAL_RE.test(value),
+  };
+}
+
+/** Rótulos dos requisitos — a MESMA lista que a tela desenha, na mesma ordem. */
+export const PASSWORD_REQUIREMENT_LABELS: ReadonlyArray<{ key: keyof PasswordChecks; label: string }> = [
+  { key: 'length', label: 'Mínimo 8 caracteres' },
+  { key: 'upper', label: 'Uma letra maiúscula' },
+  { key: 'digit', label: 'Um número' },
+  { key: 'special', label: `Um caractere especial (${PASSWORD_SPECIAL_CHARS.slice(0, 8)}…)` },
+];
+
+/** Mensagem única de recusa — API e formulário dizem a MESMA frase. */
+export const PASSWORD_RULE_MESSAGE =
+  'A senha precisa de no mínimo 8 caracteres, com maiúscula, número e caractere especial.';
+
+/** Senha válida = os quatro requisitos atendidos. Nada além disso. */
 export function isPasswordValid(password: string): boolean {
-  return password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password);
+  const checks = passwordChecks(password);
+  return checks.length && checks.upper && checks.digit && checks.special;
 }
 
 /**
- * Força da senha em 4 níveis — a `pwStrength` de `ClienteAuth.dc.html`.
- * Alimenta as 4 barrinhas do `PasswordInput`.
+ * Força da senha = quantos dos QUATRO requisitos ela cumpre.
+ *
+ * Antes a escada era própria (8 chars → +letra/número → +10 chars → +especial)
+ * e não tinha relação com o que o servidor exigia. Agora uma barra por
+ * requisito: as 4 barrinhas e a lista de ✓/○ contam a mesma história, e "4 de
+ * 4" é exatamente o ponto em que o botão para de devolver 400.
  */
 export function passwordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
   if (!password) return 0;
-  let score: 0 | 1 | 2 | 3 | 4 = 0;
-  if (password.length >= 8) score = 1;
-  if (password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password)) score = 2;
-  if (score >= 2 && password.length >= 10) score = 3;
-  if (score >= 3 && /[^A-Za-z0-9]/.test(password)) score = 4;
-  return score;
+  const checks = passwordChecks(password);
+  const met = [checks.length, checks.upper, checks.digit, checks.special].filter(Boolean).length;
+  return met as 0 | 1 | 2 | 3 | 4;
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

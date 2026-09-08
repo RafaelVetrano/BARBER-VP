@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { EMAIL_RE, formatPhone, isPasswordValid, type OtpChallenge } from '@barbervp/types';
+import {
+  EMAIL_RE,
+  PASSWORD_RULE_MESSAGE,
+  formatPhone,
+  isPasswordValid,
+  type OtpChallenge,
+} from '@barbervp/types';
 import {
   Button,
   Checkbox,
@@ -215,7 +221,7 @@ export function TabDados({ onClose }: { onClose: () => void }) {
               onChange={(event) => setNewPassword(event.target.value)}
               onBlur={() => setPasswordTouched(true)}
               placeholder="mínimo 8 caracteres"
-              error={passwordTouched && !newPasswordValid ? 'Mínimo 8 caracteres, com letra e número' : undefined}
+              error={passwordTouched && !newPasswordValid ? PASSWORD_RULE_MESSAGE : undefined}
               showStrength
             />
             <PasswordInput

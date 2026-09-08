@@ -21,7 +21,7 @@ describe('isolamento — feature flags e tenant (fase 07)', () => {
   let prefix: string;
 
   const run = Date.now().toString().slice(-8);
-  const password = 'IsolamentoD2Senha1';
+  const password = 'IsolamentoD2Senha1!';
 
   const api = () => request(app.getHttpServer());
   const url = (path: string) => `/${prefix}${path}`;

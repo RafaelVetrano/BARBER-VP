@@ -34,7 +34,7 @@ describe('fidelidade — assinaturas (e2e)', () => {
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-fid-${run}`;
   const profissionalSlug = `e2e-fid-pro-${run}`;
-  const password = 'FidelidadeSenha1';
+  const password = 'FidelidadeSenha1!';
   const planCodes = [`e2e-fid-avancado-${run}`, `e2e-fid-profissional-${run}`];
 
   let tenantId: string;

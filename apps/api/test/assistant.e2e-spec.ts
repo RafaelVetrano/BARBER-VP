@@ -37,7 +37,7 @@ describe('aba Assistente IA — cota por plano, histórico e cartões (e2e)', ()
   let prefix: string;
 
   const run = Date.now().toString().slice(-8);
-  const password = 'AssistenteSenhaForte1';
+  const password = 'AssistenteSenhaForte1!';
   const ownerEmail = `e2e-ia-owner-${run}@barbervp.test`;
   const managerEmail = `e2e-ia-manager-${run}@barbervp.test`;
   const barberEmail = `e2e-ia-barber-${run}@barbervp.test`;

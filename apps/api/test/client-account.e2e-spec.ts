@@ -27,7 +27,7 @@ describe('área do cliente (e2e)', () => {
   const clientDigits = `${run}01`;
   const clientPhone = `(16) 9 ${clientDigits.slice(0, 4)}-${clientDigits.slice(4)}`;
   const clientEmail = `e2e-conta-${run}@barbervp.test`;
-  const clientPassword = 'ClienteSenha1';
+  const clientPassword = 'ClienteSenha1!';
 
   const api = () => request(app.getHttpServer());
   const url = (path: string) => `/${prefix}${path}`;
@@ -263,7 +263,7 @@ describe('área do cliente (e2e)', () => {
   describe('POST /client-auth/password/change', () => {
     it('recusa com a senha atual errada', async () => {
       await auth.post(url('/client-auth/password/change'))
-        .send({ currentPassword: 'errada', newPassword: 'NovaSenha1', confirmNewPassword: 'NovaSenha1' })
+        .send({ currentPassword: 'errada', newPassword: 'NovaSenha1!', confirmNewPassword: 'NovaSenha1!' })
         .expect(401);
     });
 
@@ -271,14 +271,14 @@ describe('área do cliente (e2e)', () => {
       await auth.post(url('/client-auth/password/change'))
         .send({
           currentPassword: clientPassword,
-          newPassword: 'NovaSenha1',
-          confirmNewPassword: 'NovaSenha1',
+          newPassword: 'NovaSenha1!',
+          confirmNewPassword: 'NovaSenha1!',
         })
         .expect(204);
 
       const login = await api()
         .post(url('/client-auth/login'))
-        .send({ identifier: clientEmail, password: 'NovaSenha1' })
+        .send({ identifier: clientEmail, password: 'NovaSenha1!' })
         .expect(200);
 
       accessToken = login.body.accessToken;
@@ -468,7 +468,7 @@ describe('área do cliente (e2e)', () => {
       // Login antigo não funciona mais.
       await api()
         .post(url('/client-auth/login'))
-        .send({ identifier: clientEmail, password: 'NovaSenha1' })
+        .send({ identifier: clientEmail, password: 'NovaSenha1!' })
         .expect(401);
 
       // O telefone original está livre — não sobrou preso num placeholder.
@@ -480,8 +480,8 @@ describe('área do cliente (e2e)', () => {
           phone: clientPhone,
           email: `${clientEmail}.novo`,
           confirmEmail: `${clientEmail}.novo`,
-          password: 'OutraSenha1',
-          confirmPassword: 'OutraSenha1',
+          password: 'OutraSenha1!',
+          confirmPassword: 'OutraSenha1!',
           acceptTerms: true,
         })
         .expect(202);

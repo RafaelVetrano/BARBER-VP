@@ -23,7 +23,7 @@ describe('dashboard II — comandas/financeiro/comissões (e2e)', () => {
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-d2-${run}`;
-  const password = 'DashboardDoisSenha1';
+  const password = 'DashboardDoisSenha1!';
 
   let tenantId: string;
   let ownerToken: string;

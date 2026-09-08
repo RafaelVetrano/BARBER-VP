@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { isPasswordValid } from '@barbervp/types';
+import { PASSWORD_RULE_MESSAGE, isPasswordValid } from '@barbervp/types';
 import { Button, PasswordInput, authErrorMessage, clientApi, useClientAuth } from '@barbervp/ui';
 
 export interface NewPasswordScreenProps {
@@ -55,7 +55,7 @@ export function NewPasswordScreen({ resetToken, onDone }: NewPasswordScreenProps
         autoComplete="new-password"
         autoFocus
         error={
-          touched.password && !passwordValid ? 'Mínimo 8 caracteres, com letra e número' : undefined
+          touched.password && !passwordValid ? PASSWORD_RULE_MESSAGE : undefined
         }
       />
 

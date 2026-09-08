@@ -128,6 +128,18 @@ export class MyProfileService {
       }
     }
 
+    // Mesma história para o celular desde o agente 32: `User.phone` virou
+    // `@unique`, e esta tela é justamente onde quem entrou por convite (ou
+    // pelo vínculo cliente→dono) repõe o número que não coube no cadastro.
+    // Sem esta checagem, repor um número já usado viraria o 409 genérico do
+    // filtro, que não diz ao formulário qual campo marcar.
+    if (phone && phone !== user.phone) {
+      const taken = await this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
+      if (taken && taken.id !== user.id) {
+        throw ApiException.conflict('Este celular já está em uso.', 'PHONE_IN_USE');
+      }
+    }
+
     const name = dto.name ?? user.name;
 
     await this.prisma.$transaction(async (tx) => {

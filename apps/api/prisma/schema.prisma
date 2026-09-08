@@ -386,7 +386,12 @@ model User {
   email           String    @unique
   passwordHash    String
   name            String
-  phone           String?
+  /// Celular do login, em E.164 sem `+` (`5516999990001`). `@unique` desde o
+  /// agente 32: dois donos não podem se cadastrar com o mesmo celular. Segue
+  /// OPCIONAL — no Postgres vários `NULL` convivem num índice único, e quem
+  /// entra por convite da Equipe pode não ter telefone (o `/me` cai para
+  /// `Barber.phone` justamente por isso).
+  phone           String?   @unique
   /// Foto do menu do avatar e da tela "Meu perfil". Enviada pelo
   /// `StorageAdapter`, igual ao logo da barbearia.
   avatarUrl       String?

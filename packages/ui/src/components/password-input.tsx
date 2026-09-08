@@ -1,22 +1,28 @@
 'use client';
 
 import { forwardRef, useState, type InputHTMLAttributes } from 'react';
-import { isPasswordValid, passwordStrength } from '@barbervp/types';
+import {
+  PASSWORD_REQUIREMENT_LABELS,
+  isPasswordValid,
+  passwordChecks,
+  passwordStrength,
+} from '@barbervp/types';
 import { EyeIcon, EyeOffIcon } from '../icons';
 import { cn } from '../lib/cn';
 import { Field, controlClasses, describedBy, useFieldIds, type FieldOwnProps } from './field';
 
-// A régua da senha (mínimo 8 com letra e número, força em 4 níveis) mora em
-// `@barbervp/types` desde a fase 03: a API valida com a MESMA função, então o
-// indicador visual nunca discorda do 400 que o servidor devolve.
-export { isPasswordValid, passwordStrength };
+// A régua da senha (8+ com maiúscula, número e especial; força em 4 níveis)
+// mora em `@barbervp/types` desde a fase 03: a API valida com a MESMA função,
+// então o indicador visual nunca discorda do 400 que o servidor devolve.
+export { isPasswordValid, passwordChecks, passwordStrength };
 
-const STRENGTH_LABEL = ['', 'Fraca', 'Fraca', 'Média', 'Forte'] as const;
+// Uma barra por requisito atendido — 4 requisitos, 4 barras.
+const STRENGTH_LABEL = ['', 'Muito fraca', 'Fraca', 'Quase lá', 'Forte'] as const;
 
 export interface PasswordInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'className' | 'type'>,
     FieldOwnProps {
-  /** Mostra as 4 barras de força + rótulo. Ligado nas telas de cadastro. */
+  /** Mostra as 4 barras de força + a lista de requisitos. Ligado no cadastro. */
   showStrength?: boolean;
   /** Valor controlado — necessário para o medidor de força. */
   value?: string;
@@ -28,6 +34,10 @@ export interface PasswordInputProps
  *
  * O protótipo usava os emojis 👁/🙈 no botão; aqui virou ícone do design
  * system, com `aria-label` que muda de acordo com o estado.
+ *
+ * Sob as barras vai a LISTA dos requisitos com ✓/○ ao vivo: "Força da senha:
+ * Fraca" não diz QUAL requisito falta, e a régua nova (uma barra por
+ * requisito) só faz sentido se der para ler quais barras são quais.
  */
 export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(function PasswordInput(
   { label, required, hint, error, success, className, id, showStrength = false, value = '', ...props },
@@ -35,7 +45,9 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
 ) {
   const ids = useFieldIds(id);
   const [visible, setVisible] = useState(false);
-  const score = passwordStrength(String(value));
+  const typed = String(value);
+  const score = passwordStrength(typed);
+  const checks = passwordChecks(typed);
 
   return (
     <Field label={label} required={required} hint={hint} error={error} ids={ids} className={className}>
@@ -86,8 +98,33 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(fu
               />
             ))}
           </div>
-          <span className="text-xs text-fg-muted" aria-live="polite">
-            {score > 0 ? `Força da senha: ${STRENGTH_LABEL[score]}` : ' '}
+
+          {/* Uma linha por requisito: é isto que diz o que ainda falta. */}
+          <ul className="flex flex-col gap-0.5" aria-live="polite">
+            {PASSWORD_REQUIREMENT_LABELS.map(({ key, label: requirement }) => {
+              const met = checks[key];
+              return (
+                <li
+                  key={key}
+                  className={cn(
+                    'flex items-center gap-1.5 text-[11.5px] font-medium transition-colors',
+                    met ? 'text-success' : 'text-fg-muted',
+                  )}
+                >
+                  <span aria-hidden="true" className="w-3 shrink-0 text-center">
+                    {met ? '✓' : '○'}
+                  </span>
+                  <span>
+                    <span className="sr-only">{met ? 'Requisito atendido: ' : 'Falta: '}</span>
+                    {requirement}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+
+          <span className="text-xs text-fg-muted">
+            {score > 0 ? `Força da senha: ${STRENGTH_LABEL[score]}` : ' '}
           </span>
         </div>
       )}

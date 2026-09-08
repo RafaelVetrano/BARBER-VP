@@ -44,7 +44,7 @@ describe('aba Clientes (agente 16, e2e)', () => {
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-cl16-${run}`;
   const planCode = `e2e-cl16-${run}`;
-  const password = 'ClientesDezesseis1';
+  const password = 'ClientesDezesseis1!';
 
   let tenantId: string;
   let ownerToken: string;

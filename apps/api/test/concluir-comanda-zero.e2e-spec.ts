@@ -32,7 +32,7 @@ describe('concluir e comanda de R$ 0 (agente 31, e2e)', () => {
 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-ag31-${run}`;
-  const password = 'ConcluirSenhaForte1';
+  const password = 'ConcluirSenhaForte1!';
 
   let tenantId: string;
   let ownerToken: string;

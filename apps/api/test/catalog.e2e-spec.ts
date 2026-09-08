@@ -40,7 +40,7 @@ describe('aba Serviços & Produtos — catálogo, estoque e calculadora (e2e)', 
   const run = Date.now().toString().slice(-8);
   const slug = `e2e-cat-${run}`;
   const slugEssencial = `e2e-cat-ess-${run}`;
-  const password = 'CatalogoSenhaForte1';
+  const password = 'CatalogoSenhaForte1!';
 
   let tenantId: string;
   let ownerToken: string;
